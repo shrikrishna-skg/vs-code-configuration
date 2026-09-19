@@ -12,3 +12,10 @@ auth.json
 logs/
 tool-output/
 file-history/
+claude-code/backups/
+claude-code/cache/
+claude-code/debug/
+claude-code/history/
+claude-code/projects/
+claude-code/sessions/
+claude-code/private/

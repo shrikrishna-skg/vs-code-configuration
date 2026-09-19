@@ -7,7 +7,10 @@ cd "$root"
 
 node --check examples/bridges/claude-cli-mcp.mjs
 node --check examples/patches/remember-last-agent.mjs
+node --check claude-code/scripts/validate.mjs
+node claude-code/scripts/validate.mjs
 python3 -m json.tool examples/kilo.jsonc >/dev/null
+python3 -m json.tool claude-code/config/settings.json >/dev/null
 python3 -m json.tool .vscode/extensions.json >/dev/null
 sed '/^[[:space:]]*\/\//d' examples/vscode/settings.jsonc | python3 -m json.tool >/dev/null
 xmllint --noout assets/hero.svg

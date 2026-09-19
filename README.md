@@ -2,7 +2,7 @@
 
 ![Kilo Code multi-agent configuration](assets/hero.svg)
 
-A reproducible, security-conscious blueprint for the VS Code + Kilo Code workflow used on this machine. It combines a direct-first Astra lead, a local-CLI-backed Fable lead, bounded specialist agents, proportional verification, persistent agent selection, and a consistent response contract.
+A reproducible, security-conscious blueprint for the VS Code workflows used on this machine. It includes the Kilo Code Astra/Fable setup and a native Claude Code extension setup where Fable supervises bounded Opus and Sonnet agents.
 
 > This repository contains sanitized examples only. API keys, OAuth tokens, account identifiers, logs, chat history, and machine-specific credentials are deliberately excluded.
 
@@ -76,6 +76,8 @@ flowchart TD
 
 Run the repository's static and bridge-protocol checks at any time with `./scripts/verify.sh`.
 
+The native Claude Code extension snapshot is under [`claude-code/`](claude-code/README.md).
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
@@ -98,6 +100,7 @@ Run the repository's static and bridge-protocol checks at any time with `./scrip
 ├── assets/                  # GitHub-ready vector artwork
 ├── diagrams/                # Editable Mermaid diagram sources
 ├── docs/                    # Architecture and operating guides
+├── claude-code/             # Native Claude Code extension state and agents
 ├── scripts/                 # Runnable repository verification
 ├── third-party/             # Required third-party license notices
 └── examples/

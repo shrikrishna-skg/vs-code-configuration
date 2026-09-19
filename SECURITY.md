@@ -5,6 +5,7 @@
 - API keys, OAuth access/refresh tokens, session cookies, or keychain exports
 - Kilo, Claude, OpenAI, DeepSeek, or OpenRouter auth databases
 - Agent logs, tool outputs, transcripts, or file-history directories
+- Claude `projects/`, `sessions/`, cache, usage, debug, and local backup data
 - Private repository content copied only for debugging
 - Personal account IDs or machine-specific secrets
 
