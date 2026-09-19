@@ -1,0 +1,17 @@
+sequenceDiagram
+    actor Developer
+    participant Lead as Astra / Fable Lead
+    participant Worker as Specialist Worker
+    participant Repo as Shared Workspace
+    Developer->>Lead: Request
+    Lead->>Repo: Focused inspection
+    alt Small task
+        Lead->>Repo: Implement directly
+    else Delegation justified
+        Lead->>Worker: Objective + file scope + checks
+        Worker->>Repo: Scoped implementation
+        Worker-->>Lead: Changed files + test evidence + risks
+        Lead->>Repo: Inspect diff and integration
+    end
+    Lead->>Repo: Proportional final verification
+    Lead-->>Developer: Result + evidence + limitations

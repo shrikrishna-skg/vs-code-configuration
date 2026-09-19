@@ -1,0 +1,97 @@
+# VS Code Configuration
+
+![Kilo Code multi-agent configuration](assets/hero.svg)
+
+A reproducible, security-conscious blueprint for the VS Code + Kilo Code workflow used on this machine. It combines direct-first engineering leads, bounded specialist agents, proportional verification, and an optional local Claude CLI bridge.
+
+> This repository contains sanitized examples only. API keys, OAuth tokens, account identifiers, logs, chat history, and machine-specific credentials are deliberately excluded.
+
+## Why this setup works
+
+The selected engineering lead remains responsible for the whole task. It handles ordinary work directly and delegates only when the work is large enough, separable enough, or risky enough to justify the coordination cost.
+
+```mermaid
+flowchart TD
+    U[Developer in VS Code] --> K[Kilo Code]
+    K --> A{Selected engineering lead}
+    A -->|Default| ASTRA[GPT Astra Engineering Lead]
+    A -->|Alternative| FABLE[Fable Engineering Lead]
+
+    ASTRA --> R{Route by task shape}
+    FABLE --> R
+    R -->|Small / ordinary| DIRECT[Lead works directly]
+    R -->|Bounded implementation| DS[DeepSeek Implementer]
+    R -->|Large separable system| DSL[DeepSeek Workstream Lead]
+    DSL --> DS2[Bounded DeepSeek workers]
+    R -->|Unclear cause / independent review| GLM[GLM Investigator]
+    R -->|Tiny mechanical chore| LUNA[Luna Utility]
+    R -->|High-risk escalation| MCP[Local MCP bridge]
+    MCP --> CLAUDE[Authenticated Claude CLI]
+
+    DIRECT --> V[Lead inspects diff and verifies]
+    DS --> V
+    DS2 --> V
+    GLM --> V
+    LUNA --> V
+    CLAUDE --> V
+    V --> DONE[Final answer with evidence]
+```
+
+## Agent roles
+
+| Role | Best use | Important boundary |
+|---|---|---|
+| Astra Engineering Lead | Default planning, direct implementation, integration, final verification | Delegates only when useful |
+| Fable Engineering Lead | Alternative full-session engineering lead | Never delegates to another primary lead |
+| DeepSeek Implementer | Substantial but well-bounded coding | Exclusive file ownership; cannot delegate |
+| DeepSeek Workstream Lead | Large work with multiple independent streams | Coordinates bounded workers; cannot create another lead |
+| GLM Investigator | Read-only tracing, diagnosis, and review | Cannot edit files |
+| Luna Utility | Tiny deterministic chores | Not for architecture, debugging, or broad edits |
+| Local Claude CLI | Difficult architecture/security/concurrency escalation or standalone profile | Runs outside Kilo's native shared-agent board |
+
+## Operating principles
+
+- Direct first: small tasks stay with the lead.
+- One writer per file or subsystem.
+- Delegation assignments include scope, constraints, deliverables, and checks.
+- Worker summaries are evidence leads to inspect, not proof by themselves.
+- Verification is proportional to risk.
+- No deprecated Orchestrator mode is required; the lead performs orchestration when needed.
+- Credentials remain in provider keychains/auth stores and never in this repository.
+
+## Quick start
+
+1. Install VS Code, Kilo Code, and any provider CLIs you intend to use.
+2. Copy `examples/kilo.jsonc` to `~/.config/kilo/kilo.jsonc` and replace every placeholder.
+3. Copy the files under `examples/agent/` to `~/.config/kilo/agent/`.
+4. If using the local Claude CLI route, copy the bridge and configure its absolute Node, bridge, and Claude binary paths.
+5. Authenticate providers through Kilo Code or the provider's official CLI. Never paste credentials into configuration committed to Git.
+6. Restart VS Code and select **Astra Engineering Lead** as the normal default.
+7. Run the smoke checks in [Installation and recovery](docs/installation.md).
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Task routing and operating process](docs/task-routing.md)
+- [Installation and recovery](docs/installation.md)
+- [Local Claude CLI bridge](docs/local-cli-bridge.md)
+- [Security and secret handling](SECURITY.md)
+
+## Repository map
+
+```text
+.
+├── README.md
+├── SECURITY.md
+├── assets/                  # GitHub-ready vector artwork
+├── diagrams/                # Editable Mermaid diagram sources
+├── docs/                    # Architecture and operating guides
+└── examples/
+    ├── kilo.jsonc           # Sanitized Kilo configuration
+    ├── agent/               # Lead and specialist definitions
+    └── bridges/             # Optional local CLI MCP bridge
+```
+
+## Versioning note
+
+Model names, extension directories, and provider identifiers can change. Treat the examples as a known-good architectural pattern and verify the currently available model IDs before applying them to a different machine.

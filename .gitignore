@@ -1,0 +1,14 @@
+.DS_Store
+*.log
+*.bak
+*.backup
+auth.json
+**/auth.json
+**/credentials*
+**/*token*
+**/.env
+**/.env.*
+!**/.env.example
+logs/
+tool-output/
+file-history/

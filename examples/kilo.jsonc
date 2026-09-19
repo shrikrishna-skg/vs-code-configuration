@@ -1,0 +1,39 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "instructions": [
+    "<ABSOLUTE_PATH_TO_GLOBAL_AGENTS_MD>",
+    "<ABSOLUTE_PATH_TO_RESPONSE_STYLE_MD>"
+  ],
+  "model": "openai/gpt-6-astra-fast",
+  "small_model": "openai/gpt-5.6-luna-fast",
+  "subagent_model": "deepseek/deepseek-flash",
+  "default_agent": "astra-engineering-lead",
+  "subagent_depth": 2,
+  "agent": {
+    "general": {
+      "model": "deepseek/deepseek-flash"
+    },
+    "explore": {
+      "model": "openrouter/z-ai/glm-5.3-flash"
+    }
+  },
+  "mcp": {
+    "Claude Code Local": {
+      "type": "local",
+      "command": [
+        "<ABSOLUTE_PATH_TO_NODE>",
+        "<ABSOLUTE_PATH_TO_BRIDGE_MJS>",
+        "<ABSOLUTE_PATH_TO_CLAUDE_EXECUTABLE>"
+      ],
+      "enabled": true,
+      "timeout": 600000
+    }
+  },
+  "reasoning_display": "preview",
+  "terminal_command_display": "collapsed",
+  "subagent_variant_overrides": {
+    "deepseek/deepseek-flash": "high"
+  },
+  "hide_prompt_training_models": true,
+  "web_search": true
+}
