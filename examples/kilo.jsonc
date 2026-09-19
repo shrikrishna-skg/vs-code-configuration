@@ -9,6 +9,17 @@
   "subagent_model": "deepseek/deepseek-flash",
   "default_agent": "astra-engineering-lead",
   "subagent_depth": 2,
+  "permission": {
+    "external_directory": {
+      "~/.claude/file-history/*": "allow",
+      "~/.config/ponytail/*": "allow",
+      "~/.claude/CLAUDE.md": "allow",
+      "~/.codex/AGENTS.md": "allow",
+      "~/.copilot/copilot-instructions.md": "allow",
+      "<ABSOLUTE_PATH_TO_NODE_BIN>/*": "allow",
+      "<ABSOLUTE_PATH_TO_NODE_MODULES>/*": "allow"
+    }
+  },
   "agent": {
     "general": {
       "model": "deepseek/deepseek-flash"

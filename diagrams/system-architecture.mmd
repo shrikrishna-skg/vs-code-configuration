@@ -3,7 +3,7 @@ flowchart LR
     K --> C[kilo.jsonc]
     C --> P[Primary lead]
     P --> A[Astra Engineering Lead]
-    P --> F[Fable Engineering Lead]
+    P --> F[Fable controller]
     A --> T[Kilo task delegation]
     F --> T
     T --> DSI[DeepSeek Implementer]
@@ -13,5 +13,5 @@ flowchart LR
     DSW --> DSI
     A --> M[MCP bridge]
     F --> M
-    M --> CC[Authenticated local Claude CLI]
+    M --> CC[Authenticated Fable / Opus CLI]
     C -. provider auth outside Git .-> S[(Keychain / auth store)]

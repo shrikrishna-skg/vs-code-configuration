@@ -2,7 +2,7 @@
 
 ![Kilo Code multi-agent configuration](assets/hero.svg)
 
-A reproducible, security-conscious blueprint for the VS Code + Kilo Code workflow used on this machine. It combines direct-first engineering leads, bounded specialist agents, proportional verification, and an optional local Claude CLI bridge.
+A reproducible, security-conscious blueprint for the VS Code + Kilo Code workflow used on this machine. It combines a direct-first Astra lead, a local-CLI-backed Fable lead, bounded specialist agents, proportional verification, persistent agent selection, and a consistent response contract.
 
 > This repository contains sanitized examples only. API keys, OAuth tokens, account identifiers, logs, chat history, and machine-specific credentials are deliberately excluded.
 
@@ -18,22 +18,25 @@ flowchart TD
     A -->|Alternative| FABLE[Fable Engineering Lead]
 
     ASTRA --> R{Route by task shape}
+    FABLE --> MCP[Local MCP bridge]
+    MCP --> FCLI[Authenticated Fable CLI]
     FABLE --> R
-    R -->|Small / ordinary| DIRECT[Lead works directly]
+    R -->|Small / ordinary| DIRECT[Astra direct / Fable CLI]
     R -->|Bounded implementation| DS[DeepSeek Implementer]
     R -->|Large separable system| DSL[DeepSeek Workstream Lead]
     DSL --> DS2[Bounded DeepSeek workers]
     R -->|Unclear cause / independent review| GLM[GLM Investigator]
     R -->|Tiny mechanical chore| LUNA[Luna Utility]
-    R -->|High-risk escalation| MCP[Local MCP bridge]
-    MCP --> CLAUDE[Authenticated Claude CLI]
+    R -->|High-risk escalation| MCP
+    MCP --> OPUS[Local Opus High CLI]
 
     DIRECT --> V[Lead inspects diff and verifies]
     DS --> V
     DS2 --> V
     GLM --> V
     LUNA --> V
-    CLAUDE --> V
+    FCLI --> V
+    OPUS --> V
     V --> DONE[Final answer with evidence]
 ```
 
@@ -42,7 +45,7 @@ flowchart TD
 | Role | Best use | Important boundary |
 |---|---|---|
 | Astra Engineering Lead | Default planning, direct implementation, integration, final verification | Delegates only when useful |
-| Fable Engineering Lead | Alternative full-session engineering lead | Never delegates to another primary lead |
+| Fable Engineering Lead | Full-session lead whose primary work runs through authenticated local Fable CLI | Reports bridge failures; never silently switches providers |
 | DeepSeek Implementer | Substantial but well-bounded coding | Exclusive file ownership; cannot delegate |
 | DeepSeek Workstream Lead | Large work with multiple independent streams | Coordinates bounded workers; cannot create another lead |
 | GLM Investigator | Read-only tracing, diagnosis, and review | Cannot edit files |
@@ -56,18 +59,22 @@ flowchart TD
 - Delegation assignments include scope, constraints, deliverables, and checks.
 - Worker summaries are evidence leads to inspect, not proof by themselves.
 - Verification is proportional to risk.
+- Every user-facing reply follows the `Answer` → `My opinion` → `Next step` contract unless the user requests another format.
 - No deprecated Orchestrator mode is required; the lead performs orchestration when needed.
 - Credentials remain in provider keychains/auth stores and never in this repository.
 
 ## Quick start
 
 1. Install VS Code, Kilo Code, and any provider CLIs you intend to use.
-2. Copy `examples/kilo.jsonc` to `~/.config/kilo/kilo.jsonc` and replace every placeholder.
-3. Copy the files under `examples/agent/` to `~/.config/kilo/agent/`.
-4. If using the local Claude CLI route, copy the bridge and configure its absolute Node, bridge, and Claude binary paths.
-5. Authenticate providers through Kilo Code or the provider's official CLI. Never paste credentials into configuration committed to Git.
-6. Restart VS Code and select **Astra Engineering Lead** as the normal default.
-7. Run the smoke checks in [Installation and recovery](docs/installation.md).
+2. Install the global coding policy and chat response-style instructions.
+3. Copy `examples/kilo.jsonc` to `~/.config/kilo/kilo.jsonc` and replace every placeholder.
+4. Copy the files under `examples/agent/` to `~/.config/kilo/agent/`.
+5. Merge the relevant keys from `examples/vscode/settings.jsonc` into VS Code user settings.
+6. Configure the local Claude CLI bridge and authenticate providers outside Git.
+7. Optionally apply the version-sensitive remember-last-agent patch.
+8. Restart VS Code, select **Astra Engineering Lead**, and run the scenario checks.
+
+Run the repository's static and bridge-protocol checks at any time with `./scripts/verify.sh`.
 
 ## Documentation
 
@@ -75,6 +82,10 @@ flowchart TD
 - [Task routing and operating process](docs/task-routing.md)
 - [Installation and recovery](docs/installation.md)
 - [Local Claude CLI bridge](docs/local-cli-bridge.md)
+- [VS Code settings](docs/vscode-settings.md)
+- [Remember-last-agent patch](docs/remember-last-agent-patch.md)
+- [Scenario checklist](docs/scenario-checklist.md)
+- [Configuration inventory](docs/configuration-inventory.md)
 - [Security and secret handling](SECURITY.md)
 
 ## Repository map
@@ -83,13 +94,19 @@ flowchart TD
 .
 ├── README.md
 ├── SECURITY.md
+├── THIRD_PARTY_NOTICES.md
 ├── assets/                  # GitHub-ready vector artwork
 ├── diagrams/                # Editable Mermaid diagram sources
 ├── docs/                    # Architecture and operating guides
+├── scripts/                 # Runnable repository verification
+├── third-party/             # Required third-party license notices
 └── examples/
     ├── kilo.jsonc           # Sanitized Kilo configuration
     ├── agent/               # Lead and specialist definitions
-    └── bridges/             # Optional local CLI MCP bridge
+    ├── bridges/             # Local CLI MCP bridge
+    ├── instructions/        # Coding and chat-output contracts
+    ├── patches/             # Optional version-sensitive UI patch
+    └── vscode/              # Relevant VS Code user settings
 ```
 
 ## Versioning note

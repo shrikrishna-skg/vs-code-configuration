@@ -4,8 +4,11 @@
 
 ```mermaid
 flowchart TD
-    S[New request] --> Q{Question or small direct task?}
-    Q -->|Yes| D[Lead handles directly]
+    S[New request] --> P{Selected lead}
+    P -->|Fable| F[Run local Fable High]
+    P -->|Astra| Q{Question or small direct task?}
+    F --> Q
+    Q -->|Yes| D[Astra direct / Fable result]
     Q -->|No| M{One bounded implementation?}
     M -->|Yes| I[One DeepSeek Implementer]
     M -->|No| L{At least three independent workstreams?}
@@ -62,3 +65,5 @@ The lead reports:
 2. Which files or subsystems were affected.
 3. What was verified and the result.
 4. Any remaining risk, limitation, or required external action.
+
+The user-facing response then follows the global contract: `Answer`, `My opinion`, and `Next step`, in that order. This formatting rule does not alter tool payloads, code, commit messages, or documents written for their own readers.

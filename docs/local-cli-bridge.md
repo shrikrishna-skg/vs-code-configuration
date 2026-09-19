@@ -2,7 +2,9 @@
 
 ## Purpose
 
-The bridge exposes a small set of complete-task profiles from an authenticated local Claude CLI to Kilo Code through MCP. It is appropriate for deliberate escalation or standalone local-CLI modes, not as a default hop for every task.
+The bridge exposes four complete-task profiles from an authenticated local Claude CLI to Kilo Code through MCP: Fable High, Fable Max, Opus Fast, and Opus High.
+
+In this setup, the visible Fable Engineering Lead uses Fable High through this bridge for every request. Astra uses the bridge only for justified Opus escalation, and the remaining profile agents provide optional standalone routes.
 
 ```mermaid
 sequenceDiagram
@@ -34,7 +36,7 @@ The bridge:
 
 ## Operational boundary
 
-The local CLI process does not join Kilo's native shared-agent board. Treat its response like an external implementation result: inspect the workspace diff and run a focused independent check before accepting it.
+The local CLI process does not join Kilo's native shared-agent board. The Kilo-side engineering lead/controller therefore remains responsible for inspecting the workspace diff and running a focused independent check before accepting it.
 
 ## Updating after an extension change
 

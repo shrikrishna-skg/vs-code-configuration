@@ -1,0 +1,23 @@
+{
+  // Commands Kilo handles in the agent terminal rather than forwarding to the shell.
+  "terminal.integrated.commandsToSkipShell": [
+    "kilo-code.new.agentManagerOpen",
+    "kilo-code.new.agentManager.showTerminal",
+    "kilo-code.new.agentManager.previousTerminal",
+    "kilo-code.new.agentManager.nextTerminal",
+    "kilo-code.new.agentManager.runScript"
+  ],
+
+  "claudeCode.preferredLocation": "panel",
+  "claudeCode.hideOnboarding": true,
+  "editor.accessibilitySupport": "on",
+
+  "kilo-code.new.agentWorkStyle": "autonomous",
+  "kilo-code.new.model.providerID": "openai",
+  "kilo-code.new.model.modelID": "openai/gpt-5.6-sol-fast",
+  "kilo-code.new.showTaskTimeline": false,
+  "kilo-code.new.autoApprove.enabled": true,
+  "kilo-code.new.attention.enabled": true,
+  "kilo-code.new.attention.OSNotifications": false,
+  "kilo-code.new.attention.notifications": true
+}

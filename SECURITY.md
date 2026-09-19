@@ -18,6 +18,7 @@ Agent permissions should follow least privilege:
 - Leaf workers cannot create additional agents.
 - Concurrent writers receive non-overlapping ownership.
 - External-directory access is granted only for explicitly required paths.
+- The reproduced Claude file-history permission supports local recovery/context workflows but exposes historical file copies to Kilo; remove it when that capability is unnecessary.
 - Local CLI results are reviewed by the lead before acceptance.
 
 ## Reporting a problem
