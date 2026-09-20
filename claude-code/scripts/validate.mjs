@@ -49,6 +49,8 @@ for (const phrase of [
   "Never claim completion without evidence",
   "Claude Code's native Focus view",
   "`## Answer`, optional `## Verification`, `## My opinion`, and",
+  "roughly 80-180 words",
+  "at most three concise",
   "Avoid dense walls of text"
 ]) assert(policy.includes(phrase), `Policy is missing: ${phrase}`);
 

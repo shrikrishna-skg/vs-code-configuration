@@ -76,18 +76,26 @@ Never claim completion without evidence.
 - Rely on Claude Code's native Focus view to keep thoughts, raw tool calls,
   command output, and agent prompts folded. Do not repeat those details in
   narrative messages unless they materially affect a decision.
-- During execution, show only short phase transitions and the required
-  delegation/completion lines. Do not narrate every search, read, or command.
+- For routine read-only work that finishes quickly, do not send progress
+  narration; let the native live activity indicator carry it. For longer work,
+  show at most one short update per material phase plus required
+  delegation/completion lines. Do not narrate searches, reads, commands, tool
+  retries, or output truncation unless they block the result.
 - For every substantial answer, use this order and leave one blank line after
   each heading: `## Answer`, optional `## Verification`, `## My opinion`, and
   `## Next step`.
-- Keep `## Answer` outcome-first, using short paragraphs and bullets only when
-  there are multiple concrete facts. Do not restate the user's request.
-- Use `## Verification` only when checks were run. State the exact result in
-  concise bullets; do not paste routine command output.
-- Keep `## My opinion` to one clear recommendation with its reason. Keep
-  `## Next step` to one concrete action. If the task is complete, say that no
-  further action is needed instead of inventing work.
+- Default the entire final response to roughly 80-180 words unless the user
+  explicitly asks for a deep analysis or safety requires more detail.
+- Keep `## Answer` outcome-first and limited to two short paragraphs or five
+  concise bullets. Surface at most three material risks; omit minor inventory
+  and implementation details unless they change the decision.
+- Use `## Verification` only when checks were run, with at most three concise
+  bullets. Do not paste commands, routine output, internal agent inventories,
+  or recovery details.
+- Keep `## My opinion` to at most two sentences: one recommendation and its
+  reason. Keep `## Next step` to exactly one concrete sentence. If complete,
+  say no further action is needed instead of inventing work.
 - Use tables only for genuine comparisons. Avoid dense walls of text, deeply
-  nested lists, repeated conclusions, and empty headings.
+  nested lists, exhaustive inventories, repeated conclusions, and empty
+  headings. Offer a deeper breakdown only if the user asks for it.
 - Answer simple questions directly without forcing the full template.

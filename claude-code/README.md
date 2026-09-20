@@ -52,7 +52,10 @@ answer-first surface without hiding diagnostic detail permanently.
 Substantial final responses follow a consistent reading order: `Answer`, an
 optional `Verification` block, `My opinion`, and `Next step`. Each section uses
 short paragraphs with deliberate spacing; routine command output and repeated
-conclusions stay out of the narrative.
+conclusions stay out of the narrative. The default final response is capped at
+roughly 80-180 words, with no more than three verification bullets, a
+two-sentence opinion, and one concrete next step unless the user asks for a
+deeper analysis.
 
 The layout remains native Claude Code rather than a pixel-for-pixel Kilo board,
 but it exposes the same essential information on demand: subject, worker, work
