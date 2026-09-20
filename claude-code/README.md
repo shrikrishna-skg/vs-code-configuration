@@ -49,6 +49,11 @@ compact live indicator reports the current activity. The full transcript and
 agent tree remain one click away. This gives the default conversation a clean,
 answer-first surface without hiding diagnostic detail permanently.
 
+Substantial final responses follow a consistent reading order: `Answer`, an
+optional `Verification` block, `My opinion`, and `Next step`. Each section uses
+short paragraphs with deliberate spacing; routine command output and repeated
+conclusions stay out of the narrative.
+
 The layout remains native Claude Code rather than a pixel-for-pixel Kilo board,
 but it exposes the same essential information on demand: subject, worker, work
 performed, progress, and result.

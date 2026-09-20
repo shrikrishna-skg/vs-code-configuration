@@ -48,7 +48,8 @@ for (const phrase of [
   "do not launch a retry storm",
   "Never claim completion without evidence",
   "Claude Code's native Focus view",
-  "start with `## Answer`"
+  "`## Answer`, optional `## Verification`, `## My opinion`, and",
+  "Avoid dense walls of text"
 ]) assert(policy.includes(phrase), `Policy is missing: ${phrase}`);
 
 const agentDir = resolve(root, "config/agents");

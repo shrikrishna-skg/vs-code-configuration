@@ -78,8 +78,16 @@ Never claim completion without evidence.
   narrative messages unless they materially affect a decision.
 - During execution, show only short phase transitions and the required
   delegation/completion lines. Do not narrate every search, read, or command.
-- For implementation and diagnostic work, make the final response easy to scan:
-  start with `## Answer`, add `## Verification` when checks were run, and add
-  `## Remaining limitation` or `## Next step` only when those sections contain
-  useful information. Put the outcome before process details.
-- Answer simple questions directly without forcing empty sections.
+- For every substantial answer, use this order and leave one blank line after
+  each heading: `## Answer`, optional `## Verification`, `## My opinion`, and
+  `## Next step`.
+- Keep `## Answer` outcome-first, using short paragraphs and bullets only when
+  there are multiple concrete facts. Do not restate the user's request.
+- Use `## Verification` only when checks were run. State the exact result in
+  concise bullets; do not paste routine command output.
+- Keep `## My opinion` to one clear recommendation with its reason. Keep
+  `## Next step` to one concrete action. If the task is complete, say that no
+  further action is needed instead of inventing work.
+- Use tables only for genuine comparisons. Avoid dense walls of text, deeply
+  nested lists, repeated conclusions, and empty headings.
+- Answer simple questions directly without forcing the full template.
