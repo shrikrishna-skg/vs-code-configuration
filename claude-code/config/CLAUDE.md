@@ -77,7 +77,8 @@ Never claim completion without evidence.
   command output, and agent prompts folded. Do not repeat those details in
   narrative messages unless they materially affect a decision.
 - For routine read-only work that finishes quickly, do not send progress
-  narration; let the native live activity indicator carry it. For longer work,
+  narration; call the tool immediately with no pre-tool acknowledgement and let
+  the native live activity indicator carry it. For longer work,
   show at most one short update per material phase plus required
   delegation/completion lines. Do not narrate searches, reads, commands, tool
   retries, or output truncation unless they block the result.
