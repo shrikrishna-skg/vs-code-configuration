@@ -34,6 +34,10 @@ assert(settings.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS === "0", "Experimental 
 assert(settings.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH === "2", "Nesting must be capped at two");
 assert(settings.env.CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS === "6", "Concurrency must be capped at six");
 
+const vscodeSettings = JSON.parse(await readFile(resolve(root, "config/vscode-settings.json"), "utf8"));
+assert(vscodeSettings["claudeCode.focusView"] === true, "Claude Focus view must be enabled");
+assert(vscodeSettings["claudeCode.preferredLocation"] === "panel", "Claude must open in the panel");
+
 const policy = await readFile(resolve(root, "config/CLAUDE.md"), "utf8");
 for (const phrase of [
   "Fable Engineering Lead",
@@ -42,7 +46,9 @@ for (const phrase of [
   "Delegating: **<subject>**",
   "three-to-five-word subject",
   "do not launch a retry storm",
-  "Never claim completion without evidence"
+  "Never claim completion without evidence",
+  "Claude Code's native Focus view",
+  "start with `## Answer`"
 ]) assert(policy.includes(phrase), `Policy is missing: ${phrase}`);
 
 const agentDir = resolve(root, "config/agents");

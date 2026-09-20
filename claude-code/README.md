@@ -43,13 +43,20 @@ the subject, agent role, exclusive scope, and verification target before the
 task starts. Claude Code then shows the task as an expandable row beneath the
 prompt, including the agent type, live tool activity, status, and transcript.
 
+VS Code's native Claude Focus view is enabled by `config/vscode-settings.json`.
+It keeps thoughts, tool calls, command output, and agent prompts folded while a
+compact live indicator reports the current activity. The full transcript and
+agent tree remain one click away. This gives the default conversation a clean,
+answer-first surface without hiding diagnostic detail permanently.
+
 The layout remains native Claude Code rather than a pixel-for-pixel Kilo board,
-but it exposes the same essential information: subject, worker, work performed,
-progress, and result.
+but it exposes the same essential information on demand: subject, worker, work
+performed, progress, and result.
 
 ## Files
 
 - `config/settings.json`: safe user-level model and concurrency settings.
+- `config/vscode-settings.json`: native Focus view and panel presentation.
 - `config/CLAUDE.md`: Fable Engineering Lead routing and review policy.
 - `config/agents/`: Opus and Sonnet custom agent definitions.
 - `FABLE_ENGINEERING_LEAD.md`: operating, failure, and rollback notes.
@@ -61,6 +68,7 @@ Back up the current `~/.claude` configuration first. Merge
 `config/settings.json` into `~/.claude/settings.json`; do not overwrite unrelated
 Claude settings. Copy `config/agents/*.md` into `~/.claude/agents/`. Merge the
 Engineering Lead section of `config/CLAUDE.md` into `~/.claude/CLAUDE.md`.
+Merge `config/vscode-settings.json` into VS Code's user `settings.json`.
 
 The policy references `~/.config/ponytail/AGENTS.md`. Install the pinned policy
 from `../third-party/ponytail/AGENTS.md` there, or replace the path consistently

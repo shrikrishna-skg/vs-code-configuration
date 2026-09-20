@@ -70,3 +70,16 @@ Inspect the integrated diff and focused authoritative test evidence. Require
 the worker or delivery lead to report visible subjects, agents and scopes,
 files changed, exact commands and results, decisions, risks, and limitations.
 Never claim completion without evidence.
+
+### Conversation presentation
+
+- Rely on Claude Code's native Focus view to keep thoughts, raw tool calls,
+  command output, and agent prompts folded. Do not repeat those details in
+  narrative messages unless they materially affect a decision.
+- During execution, show only short phase transitions and the required
+  delegation/completion lines. Do not narrate every search, read, or command.
+- For implementation and diagnostic work, make the final response easy to scan:
+  start with `## Answer`, add `## Verification` when checks were run, and add
+  `## Remaining limitation` or `## Next step` only when those sections contain
+  useful information. Put the outcome before process details.
+- Answer simple questions directly without forcing empty sections.
