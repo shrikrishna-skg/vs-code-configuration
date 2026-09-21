@@ -34,6 +34,8 @@ The three new agents are supplied through per-process `KILO_CONFIG_CONTENT`; ins
 
 After deployment, refresh/restart the Codex app if necessary to reload its model catalog. Existing tasks may retain their prior selection. Test a new task in a valid project workspace.
 
+Each completed local-CLI request appends one line to the router's `stdout.log`, for example `route=deepseek-high output_tokens=812 elapsed=27.4s tok/s=29.6`. The rate is an average over the whole run because Kilo output is buffered until the run finishes; the Codex app itself has no tokens-per-second display.
+
 ### Misleading “high demand” errors
 
 The Codex app can present its generic “currently experiencing high demand” message when a local custom-model request fails before reaching the provider. Check the router's `stderr.log` before treating that message as a DeepSeek, GLM or Astra outage.

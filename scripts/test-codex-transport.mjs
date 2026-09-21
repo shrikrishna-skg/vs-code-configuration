@@ -19,9 +19,10 @@ let input=''; process.stdin.on('data',c=>input+=c); process.stdin.on('end',()=>{
 `, {mode:0o700});
 const server = spawn(process.execPath,['examples/codex-router/router.mjs'],{env:{...process.env,CODEX_CLAUDE_ROUTER_PORT:'0',CODEX_KILO_BINARY:fake},stdio:['ignore','pipe','pipe']});
 let errors=''; server.stderr.on('data',c=>errors+=c);
+let serverOutput=''; server.stdout.on('data',c=>serverOutput+=c);
 try {
  const address=await new Promise((resolve,reject)=>{
-  let text='';server.stdout.on('data',c=>{text+=c;const match=text.match(/http:\/\/127.0.0.1:(\d+)/);if(match)resolve('http://127.0.0.1:'+match[1]);});
+   let text='';server.stdout.on('data',c=>{text+=c;const match=text.match(/http:\/\/127\.0\.0\.1:(\d+)/);if(match)resolve('http://127.0.0.1:'+match[1]);});
   server.on('error',reject);server.on('exit',code=>reject(new Error('router exited '+code+' '+errors)));
  });
  const catalog=await (await fetch(address+'/v1/models')).json();
@@ -37,6 +38,7 @@ try {
   const events=stream.split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
   assert.equal(events.at(-1).response.model,slug);
  }
+ for(const slug of ['astra-engineering-lead','deepseek-high','glm-high']) assert.match(serverOutput,new RegExp(`route=${slug} output_tokens=2 elapsed=\\d+\\.\\ds tok/s=`));
  assert.equal((await request('deepseek-high','no workspace')).status,500);
  assert.equal((await request('glm-high',`<cwd>${root}</cwd>`,{reasoning:{effort:'ultra'}})).status,500);
  const failure=await (await request('deepseek-high',`<cwd>${root}</cwd> FAIL_CLI`)).text();

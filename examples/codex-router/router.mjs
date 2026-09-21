@@ -128,6 +128,11 @@ function workingDirectory(prompt) {
   return process.cwd();
 }
 
+function throughputLine(model, outputTokens, elapsedMs) {
+  const seconds = elapsedMs / 1000;
+  return `route=${model} output_tokens=${outputTokens} elapsed=${seconds.toFixed(1)}s tok/s=${(seconds > 0 ? outputTokens / seconds : 0).toFixed(1)}`;
+}
+
 function responseObject(id, model, status, output = [], usage = null) {
   return {
     id,
@@ -183,6 +188,7 @@ async function runClaude(request, response, body, profile) {
   writeEvent(response, { type: "response.created", response: responseObject(responseId, body.model, "in_progress"), sequence_number: sequence++ });
   writeEvent(response, { type: "response.in_progress", response: responseObject(responseId, body.model, "in_progress"), sequence_number: sequence++ });
 
+  const startedAt = Date.now();
   const child = spawn(spec?.command || CLAUDE, spec?.args || [
     "-p",
     "--model", profile.model,
@@ -241,6 +247,7 @@ async function runClaude(request, response, body, profile) {
     output_tokens_details: { reasoning_tokens: 0 },
     total_tokens: (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0),
   };
+  console.log(`${new Date().toISOString()} ${throughputLine(body.model, usage.output_tokens, Date.now() - startedAt)}`);
   writeEvent(response, { type: "response.completed", response: responseObject(responseId, body.model, "completed", [item], usage), sequence_number: sequence++ });
   response.end();
 }
@@ -301,6 +308,8 @@ async function handler(request, response) {
 
 if (process.argv.includes("--self-test")) {
   assert.ok(Object.values(CLAUDE_MODELS).every(({ effort }) => effort === "high"));
+  assert.equal(throughputLine("deepseek-high", 300, 10000), "route=deepseek-high output_tokens=300 elapsed=10.0s tok/s=30.0");
+  assert.match(throughputLine("glm-high", 5, 0), /elapsed=0\.0s tok\/s=0\.0$/);
   const testPrompt = await promptFromRequest({ input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }] });
   assert.match(testPrompt.prompt, /USER:\nhello/);
   assert.equal(testPrompt.attachmentDirectory, null);
