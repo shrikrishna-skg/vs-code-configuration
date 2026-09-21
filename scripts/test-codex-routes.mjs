@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { KILO_MODELS, effectiveEffort, strictWorkspace, kiloInvocation, kiloResult } from '../examples/codex-router/kilo-route.mjs';
 
 const model = KILO_MODELS['deepseek-high'];
@@ -9,6 +12,19 @@ await assert.rejects(strictWorkspace('missing workspace'), /absolute workspace/)
 await assert.rejects(strictWorkspace('<cwd>relative</cwd>'), /absolute workspace/);
 await assert.rejects(strictWorkspace('<cwd>/definitely-missing-codex-test-directory</cwd>'));
 assert.equal(await strictWorkspace('<cwd>/invalid</cwd><cwd>/tmp</cwd>'), '/tmp');
+const renamedWorkspace = await mkdtemp(path.join(os.tmpdir(), 'codex-renamed-workspace-'));
+try {
+  const target = path.join(renamedWorkspace, 'target');
+  const alias = path.join(renamedWorkspace, 'old-name');
+  await mkdir(target);
+  await symlink(target, alias);
+  assert.equal(await strictWorkspace(`<cwd>${alias}</cwd>`), alias);
+  const aliasConfig = JSON.parse((await kiloInvocation(model, `<cwd>${alias}</cwd>`, 'high')).env.KILO_CONFIG_CONTENT);
+  assert.equal(aliasConfig.permission.external_directory[alias + '/*'], 'allow');
+  assert.equal(aliasConfig.permission.external_directory[(await realpath(target)) + '/*'], 'allow');
+} finally {
+  await rm(renamedWorkspace, { recursive: true, force: true });
+}
 for (const profile of Object.values(KILO_MODELS)) {
   const spec = await kiloInvocation(profile, '<cwd>/tmp</cwd>', profile.effort);
   const config = JSON.parse(spec.env.KILO_CONFIG_CONTENT);

@@ -34,6 +34,12 @@ The three new agents are supplied through per-process `KILO_CONFIG_CONTENT`; ins
 
 After deployment, refresh/restart the Codex app if necessary to reload its model catalog. Existing tasks may retain their prior selection. Test a new task in a valid project workspace.
 
+### Misleading “high demand” errors
+
+The Codex app can present its generic “currently experiencing high demand” message when a local custom-model request fails before reaching the provider. Check the router's `stderr.log` before treating that message as a DeepSeek, GLM or Astra outage.
+
+One confirmed cause is a saved Codex project whose directory was renamed or moved. Kilo routes deliberately require a valid absolute workspace and will reject a missing `<cwd>`. Update/reopen the Codex project at its new location, or retain the old path as a symlink to the renamed workspace when that mapping is unambiguous. The route accepts such a symlink and grants Kilo access to both the alias and its canonical target. Do not silently redirect an ambiguous missing workspace to the router's own directory.
+
 The pre-change router is retained locally as `router.before-kilo-20260921.mjs`. To roll back, restore that file as `router.mjs` and restart the `ai.codex.claude-router` LaunchAgent. Leave credentials and the existing Codex provider configuration in place. The added module can remain unused.
 
 ## Permissions and limits
