@@ -82,6 +82,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 
 ## Documentation
 
+- [Codex model picker: Astra lead, DeepSeek and GLM](docs/codex-model-picker.md)
 - [Architecture](docs/architecture.md)
 - [Task routing and operating process](docs/task-routing.md)
 - [Installation and recovery](docs/installation.md)

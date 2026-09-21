@@ -1,0 +1,46 @@
+// Explicit live acceptance test: incurs provider usage and uses a disposable workspace.
+import assert from 'node:assert/strict';
+import { mkdtemp, writeFile, readFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { KILO_MODELS, kiloInvocation, kiloResult } from '../examples/codex-router/kilo-route.mjs';
+
+const slug = process.argv[2];
+const profile = KILO_MODELS[slug];
+assert.ok(profile, 'Provide astra-engineering-lead, deepseek-high, or glm-high');
+const cwd = await mkdtemp(path.join(os.tmpdir(), 'codex-route-accept-'));
+const source = 'export function uniqueNames(values) { return values; }\n';
+await writeFile(path.join(cwd, 'names.mjs'), source);
+await writeFile(path.join(cwd, 'unrelated.txt'), 'Keep this file unchanged.\n');
+await writeFile(path.join(cwd, 'check.mjs'), `import assert from 'node:assert/strict';
+import {uniqueNames} from './names.mjs';
+assert.deepEqual(uniqueNames([' Alice ', 'alice', '', ' BOB ', 'bob']), ['alice','bob']);
+assert.deepEqual(uniqueNames([]), []);
+assert.throws(()=>uniqueNames(null), TypeError);
+assert.throws(()=>uniqueNames(['ok', 1]), TypeError);
+console.log('acceptance passed');\n`);
+const assignment = `Implement uniqueNames in names.mjs: accept an array of strings only (otherwise throw TypeError), trim and lowercase strings, remove empty strings, remove duplicates preserving first occurrence. Do not edit check.mjs or unrelated.txt. Run node check.mjs and report evidence. Stay inside this workspace. ` + (slug === 'astra-engineering-lead' ? 'For this delegation acceptance test, explicitly assign the implementation to deepseek-implementer, then ask glm-investigator to review read-only. Inspect the diff and verify the result yourself. Forward Ponytail and preserve the response format.' : 'Work independently without delegation.');
+const originalCheck = await readFile(path.join(cwd, 'check.mjs'), 'utf8');
+const prompt = `<environment_context><cwd>${cwd}</cwd></environment_context>\nUSER: ${assignment}`;
+const spec = await kiloInvocation(profile, prompt, process.argv[3] || profile.effort);
+const child = spawn(spec.command, spec.args, {cwd,env:spec.env,stdio:['pipe','pipe','pipe']});
+let stdout='', stderr='';
+child.stdout.on('data',c=>stdout+=c); child.stderr.on('data',c=>stderr+=c);
+child.stdin.end(prompt);
+const timeout = setTimeout(()=>child.kill('SIGTERM'), 240000);
+const code = await new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',resolve);});
+clearTimeout(timeout);
+assert.equal(code,0,stderr);
+const result = kiloResult(stdout);
+assert.deepEqual([...result.result.matchAll(/^## (.+)$/gm)].map(m=>m[1]), ['Answer','My opinion','Next step'], 'Response style headings drifted');
+const test = spawnSync(process.execPath,['check.mjs'],{cwd,encoding:'utf8'});
+assert.equal(test.status,0,test.stderr);
+assert.equal(await readFile(path.join(cwd, 'check.mjs'), 'utf8'), originalCheck);
+assert.equal(await readFile(path.join(cwd,'unrelated.txt'),'utf8'),'Keep this file unchanged.\n');
+const delegates = stdout.split('\n').filter(Boolean).map(line=>JSON.parse(line)).filter(e=>e.type==='tool_use' && e.part?.tool==='task').map(e=>e.part.state?.input?.subagent_type);
+if (slug === 'astra-engineering-lead') {
+  assert.ok(delegates.includes('deepseek-implementer'), 'Missing DeepSeek delegation');
+  assert.ok(delegates.includes('glm-investigator'), 'Missing GLM review');
+} else assert.equal(delegates.length,0,'Standalone model delegated');
+console.log(JSON.stringify({slug,cwd,session:result.session_id,delegates,verification:test.stdout.trim(),response:result.result},null,2));
