@@ -11,7 +11,7 @@ const upstream=http.createServer(async(request,response)=>{
  const chunks=[];for await(const chunk of request)chunks.push(chunk);
  const body=JSON.parse(Buffer.concat(chunks));
  const original={id:'resp_native',object:'response',status:'completed',model:body.model,output:[],usage:{input_tokens:5,output_tokens:20,total_tokens:25}};
- response.writeHead(200,{'content-type':'text/event-stream'});
+ response.writeHead(200); // The authenticated Codex backend currently omits Content-Type for its SSE stream.
  response.write('event: response.created\ndata: '+JSON.stringify({type:'response.created',response:{...original,status:'in_progress',output:[],usage:null},sequence_number:0})+'\n\n');
  response.end('event: response.completed\ndata: '+JSON.stringify({type:'response.completed',response:original,sequence_number:1})+'\n\n');
 });

@@ -298,7 +298,8 @@ async function forwardOpenAI(request, response, bodyBuffer, model) {
   }
   response.writeHead(upstream.status, responseHeaders);
   if (!upstream.body) return response.end();
-  if (!upstream.headers.get("content-type")?.includes("text/event-stream")) {
+  const contentType = upstream.headers.get("content-type") || "";
+  if (contentType && !contentType.includes("text/event-stream")) {
     for await (const chunk of upstream.body) response.write(chunk);
     return response.end();
   }
