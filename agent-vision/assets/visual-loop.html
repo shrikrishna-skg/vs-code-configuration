@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1600px; height: 1000px;
+    background: #1b1b1f;
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+    color: #d4d4d4;
+    padding: 44px 52px;
+    display: flex; flex-direction: column; gap: 26px;
+  }
+  h1 { font-size: 32px; font-weight: 650; color: #fff; letter-spacing: -0.4px; }
+  .sub { font-size: 16px; color: #8a8a94; margin-top: 7px; }
+  .body { display: grid; grid-template-columns: 300px 1fr 300px; gap: 26px; flex: 1; align-items: center; }
+
+  .panel {
+    background: #232328; border: 1px solid #33333a; border-radius: 14px;
+    padding: 22px; display: flex; flex-direction: column;
+  }
+  .ptitle { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #8a8a94; margin-bottom: 4px; }
+  .pname { font-size: 20px; font-weight: 640; color: #fff; margin-bottom: 16px; }
+  .pname.blue { color: #4aa8ff; } .pname.pink { color: #e08cd6; } .pname.green { color: #4ec9b0; }
+  .item { font-size: 14px; line-height: 1.5; color: #b6b6bd; padding: 10px 0; border-top: 1px solid #2e2e35; }
+  .item:first-of-type { border-top: none; }
+  .item b { color: #e6e6ea; font-weight: 600; }
+  .tag { display:inline-block; font-size: 11px; padding: 3px 9px; border-radius: 20px; margin-top: 14px; font-weight: 600; letter-spacing: .3px; }
+  .tag.new { background: #2b3f57; color: #6cb6ff; }
+  .tag.live { background: #2a4038; color: #6fd7bb; }
+
+  .loop { display: flex; flex-direction: column; justify-content: center; gap: 0; }
+  .steps { display: grid; grid-template-columns: 1fr 44px 1fr; grid-template-rows: 1fr 44px 1fr; gap: 0; height: 560px; }
+  .step {
+    background: #232328; border: 1px solid #3a3a43; border-radius: 14px; padding: 20px 22px;
+    display: flex; flex-direction: column; justify-content: center; gap: 8px; position: relative;
+  }
+  .num { position:absolute; top: 16px; right: 18px; font-size: 13px; font-weight: 700; color: #55555f; }
+  .stitle { font-size: 21px; font-weight: 650; color: #fff; }
+  .sdesc { font-size: 14px; line-height: 1.5; color: #a4a4ac; }
+  .stool { font-size: 12px; font-weight: 600; letter-spacing: .3px; margin-top: 4px; }
+  .arrow { display: flex; align-items: center; justify-content: center; font-size: 26px; color: #4aa8ff; }
+
+  .foot {
+    background: #232328; border: 1px solid #33333a; border-radius: 14px;
+    padding: 18px 24px; display: flex; align-items: center; gap: 28px;
+  }
+  .foot .lbl { font-size: 12px; letter-spacing: 1.4px; text-transform: uppercase; color: #8a8a94; }
+  .chip { font-size: 14px; color: #c8c8d0; background: #2b2b32; border-radius: 8px; padding: 8px 14px; }
+  .chip span { color: #6fd7bb; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div>
+    <h1>What VS Code becomes</h1>
+    <div class="sub">One closed loop in the middle. Design feeds it from the left, hooks guard it from the right.</div>
+  </div>
+
+  <div class="body">
+
+    <div class="panel">
+      <div class="ptitle">Feeds the loop</div>
+      <div class="pname pink">Figma MCP</div>
+      <div class="item"><b>Real frames, not screenshots.</b> The agent reads the file itself.</div>
+      <div class="item"><b>Tokens come through.</b> Exact hex, spacing scale, type ramp.</div>
+      <div class="item"><b>Step 4 gets an answer.</b> "Matches the design" stops being a guess.</div>
+      <span class="tag new">TO ADD</span>
+    </div>
+
+    <div class="loop">
+      <div class="steps">
+        <div class="step">
+          <div class="num">01</div>
+          <div class="stitle">Edit</div>
+          <div class="sdesc">Agent writes the change in your repo.</div>
+          <div class="stool" style="color:#8a8a94">files · git</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="step">
+          <div class="num">02</div>
+          <div class="stitle">Run</div>
+          <div class="sdesc">Starts the dev server or launches the app.</div>
+          <div class="stool" style="color:#8a8a94">shell</div>
+        </div>
+
+        <div class="arrow"></div>
+        <div class="arrow"></div>
+        <div class="arrow">↓</div>
+
+        <div class="step" style="border-color:#3a5570">
+          <div class="num">04</div>
+          <div class="stitle">Compare &amp; fix</div>
+          <div class="sdesc">Holds the result against the design. Wrong? Loops back to 01 on its own.</div>
+          <div class="stool" style="color:#e08cd6">figma reference</div>
+        </div>
+        <div class="arrow">←</div>
+        <div class="step" style="border-color:#3a5570">
+          <div class="num">03</div>
+          <div class="stitle">See</div>
+          <div class="sdesc">Screenshots it. Clicks through the real flow like a user.</div>
+          <div class="stool" style="color:#6fd7bb">playwright · peekaboo</div>
+        </div>
+      </div>
+      <div style="text-align:center; font-size:14px; color:#7a7a84; margin-top:18px;">
+        ↻ repeats until it matches — you watch, you don't drive
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="ptitle">Guards the loop</div>
+      <div class="pname blue">Hooks</div>
+      <div class="item"><b>After every edit</b> → formatter runs.</div>
+      <div class="item"><b>On write to .env</b> → blocked outright.</div>
+      <div class="item"><b>When it stops</b> → tests run.</div>
+      <div class="item" style="color:#8a8a94">The harness enforces these, not the model. They fire even when it forgets.</div>
+      <span class="tag new">TO ADD</span>
+    </div>
+
+  </div>
+
+  <div class="foot">
+    <div class="lbl">Already live</div>
+    <div class="chip"><span>Playwright</span> — drives a real browser</div>
+    <div class="chip"><span>Peekaboo</span> — clicks any app on the Mac</div>
+    <div class="chip"><span>Shell · files · git</span> — built in</div>
+  </div>
+</body>
+</html>

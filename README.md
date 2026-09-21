@@ -78,12 +78,15 @@ Run the repository's static and bridge-protocol checks at any time with `./scrip
 
 The native Claude Code extension snapshot is under [`claude-code/`](claude-code/README.md).
 
+Browser automation and macOS computer use are documented under [`agent-vision/`](agent-vision/README.md).
+
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Task routing and operating process](docs/task-routing.md)
 - [Installation and recovery](docs/installation.md)
 - [Local Claude CLI bridge](docs/local-cli-bridge.md)
+- [Agent vision: browser and computer use](agent-vision/README.md)
 - [VS Code settings](docs/vscode-settings.md)
 - [Remember-last-agent patch](docs/remember-last-agent-patch.md)
 - [Scenario checklist](docs/scenario-checklist.md)
