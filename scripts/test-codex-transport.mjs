@@ -1,11 +1,22 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, writeFile, readFile, readdir } from 'node:fs/promises';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'codex-transport-test-'));
 const attachmentDirsBefore = new Set((await readdir(os.tmpdir())).filter(name=>name.startsWith('codex-router-images-')));
+const upstream=http.createServer(async(request,response)=>{
+ const chunks=[];for await(const chunk of request)chunks.push(chunk);
+ const body=JSON.parse(Buffer.concat(chunks));
+ const original={id:'resp_native',object:'response',status:'completed',model:body.model,output:[],usage:{input_tokens:5,output_tokens:20,total_tokens:25}};
+ response.writeHead(200,{'content-type':'text/event-stream'});
+ response.write('event: response.created\ndata: '+JSON.stringify({type:'response.created',response:{...original,status:'in_progress',output:[],usage:null},sequence_number:0})+'\n\n');
+ response.end('event: response.completed\ndata: '+JSON.stringify({type:'response.completed',response:original,sequence_number:1})+'\n\n');
+});
+await new Promise((resolve,reject)=>{upstream.once('error',reject);upstream.listen(0,'127.0.0.1',resolve);});
+const upstreamUrl=`http://127.0.0.1:${upstream.address().port}/responses`;
 const fake = path.join(root, 'kilo');
 await writeFile(fake, `#!/usr/bin/env node
 let input=''; process.stdin.on('data',c=>input+=c); process.stdin.on('end',()=>{
@@ -17,7 +28,7 @@ let input=''; process.stdin.on('data',c=>input+=c); process.stdin.on('end',()=>{
  console.log(JSON.stringify({type:'step_finish',part:{reason:'stop',tokens:{input:4,output:2}}}));
 });
 `, {mode:0o700});
-const server = spawn(process.execPath,['examples/codex-router/router.mjs'],{env:{...process.env,CODEX_CLAUDE_ROUTER_PORT:'0',CODEX_KILO_BINARY:fake},stdio:['ignore','pipe','pipe']});
+const server = spawn(process.execPath,['examples/codex-router/router.mjs'],{env:{...process.env,CODEX_CLAUDE_ROUTER_PORT:'0',CODEX_KILO_BINARY:fake,CODEX_OPENAI_RESPONSES_URL:upstreamUrl},stdio:['ignore','pipe','pipe']});
 let errors=''; server.stderr.on('data',c=>errors+=c);
 let serverOutput=''; server.stdout.on('data',c=>serverOutput+=c);
 try {
@@ -40,6 +51,13 @@ try {
   assert.equal(events.at(-1).response.model,slug);
  }
  for(const slug of ['astra-engineering-lead','deepseek-high','glm-high']) assert.match(serverOutput,new RegExp(`route=${slug} output_tokens=2 elapsed=\\d+\\.\\ds tok/s=`));
+ const native=await request('gpt-5.6-sol','native success');
+ const nativeStream=await native.text();
+ assert.equal(native.status,200);assert.match(nativeStream,/⚡ \*\*\d+\.\d tok\/s\*\* · 20 output tokens · \d+\.\ds/);
+ const nativeEvents=nativeStream.split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
+ assert.equal(nativeEvents.at(-1).type,'response.completed');
+ assert.equal(nativeEvents.at(-1).response.output.at(-1).content[0].text.includes('tok/s'),true);
+ assert.match(serverOutput,/route=gpt-5\.6-sol output_tokens=20 elapsed=\d+\.\ds tok\/s=/);
  assert.equal((await request('deepseek-high','no workspace')).status,500);
  assert.equal((await request('glm-high',`<cwd>${root}</cwd>`,{reasoning:{effort:'ultra'}})).status,500);
  const failure=await (await request('deepseek-high',`<cwd>${root}</cwd> FAIL_CLI`)).text();
@@ -55,5 +73,5 @@ try {
  await new Promise(resolve=>setTimeout(resolve,500));
  abort.abort();
  for(let attempt=0;attempt<30;attempt++){try{assert.equal(await readFile(path.join(root,'cancelled'),'utf8'),'yes');break;}catch(error){if(attempt===29)throw error;await new Promise(resolve=>setTimeout(resolve,100));}}
- console.log('Transport checks passed: catalog, all three routes, SSE completion/failure, workspace, effort, image attachment, cancellation.');
-} finally { server.kill('SIGTERM'); }
+ console.log('Transport checks passed: catalog, native and local TPS, all three routes, SSE completion/failure, workspace, effort, image attachment, cancellation.');
+} finally { server.kill('SIGTERM');upstream.close(); }

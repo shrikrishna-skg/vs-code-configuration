@@ -34,7 +34,7 @@ The three new agents are supplied through per-process `KILO_CONFIG_CONTENT`; ins
 
 After deployment, refresh/restart the Codex app if necessary to reload its model catalog. Existing tasks may retain their prior selection. Test a new task in a valid project workspace.
 
-Each completed local-CLI request shows a compact footer at the end of the answer, for example `⚡ 29.6 tok/s · 812 output tokens · 27.4s`, and appends the same measurement to the router's `stdout.log`. The rate is an end-to-end average because Kilo output is buffered until the run finishes. The footer appears for the custom DeepSeek, GLM, Astra, and Claude CLI routes; native OpenAI routes pass through unchanged. The Codex app does not expose a native custom tokens-per-second status slot.
+Each completed request shows a compact footer at the end of the answer, for example `⚡ 29.6 tok/s · 812 output tokens · 27.4s`, and appends the same measurement to the router's `stdout.log`. This covers native OpenAI models plus the custom DeepSeek, GLM, Astra, Claude, and Fable routes. The router derives native-model output counts from the official `response.completed` usage and inserts a separate final text item without delaying the preceding streamed answer. Local CLI rates are end-to-end averages because their output is buffered until the run finishes. The Codex app does not expose a native custom tokens-per-second status slot.
 
 ### Misleading “high demand” errors
 

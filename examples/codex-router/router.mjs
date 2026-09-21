@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.CODEX_CLAUDE_ROUTER_PORT || 43128);
 const CLAUDE = process.env.CODEX_CLAUDE_BINARY || path.join(os.homedir(), ".vscode/extensions/anthropic.claude-code-2.1.274-darwin-arm64/resources/native-binary/claude");
-const OPENAI_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
+const OPENAI_RESPONSES_URL = process.env.CODEX_OPENAI_RESPONSES_URL || "https://chatgpt.com/backend-api/codex/responses";
 const MODELS_CACHE = path.join(os.homedir(), ".codex/models_cache.json");
 const ALLOWED_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Agent,Skill";
 
@@ -172,6 +172,33 @@ function writeEvent(response, event) {
   response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
+function throughputEvents(completedEvent, model, elapsedMs) {
+  const outputTokens = completedEvent.response?.usage?.output_tokens;
+  if (!Number.isFinite(outputTokens)) return null;
+  const output = Array.isArray(completedEvent.response.output) ? completedEvent.response.output : [];
+  const outputIndex = output.length;
+  const itemId = `msg_${randomUUID().replaceAll("-", "")}`;
+  const text = throughputFooter(outputTokens, elapsedMs);
+  const content = [{ type: "output_text", text, annotations: [], logprobs: [] }];
+  const item = { id: itemId, type: "message", status: "completed", role: "assistant", content };
+  let sequence = Number.isInteger(completedEvent.sequence_number) ? completedEvent.sequence_number : 0;
+  return [
+    { type: "response.output_item.added", output_index: outputIndex, item: { ...item, status: "in_progress", content: [] }, sequence_number: sequence++ },
+    { type: "response.content_part.added", item_id: itemId, output_index: outputIndex, content_index: 0, part: { type: "output_text", text: "", annotations: [], logprobs: [] }, sequence_number: sequence++ },
+    { type: "response.output_text.delta", item_id: itemId, output_index: outputIndex, content_index: 0, delta: text, logprobs: [], sequence_number: sequence++ },
+    { type: "response.output_text.done", item_id: itemId, output_index: outputIndex, content_index: 0, text, logprobs: [], sequence_number: sequence++ },
+    { type: "response.content_part.done", item_id: itemId, output_index: outputIndex, content_index: 0, part: content[0], sequence_number: sequence++ },
+    { type: "response.output_item.done", output_index: outputIndex, item, sequence_number: sequence++ },
+    { ...completedEvent, response: { ...completedEvent.response, model: completedEvent.response.model || model, output: [...output, item] }, sequence_number: sequence },
+  ];
+}
+
+function eventFromFrame(frame) {
+  const data = frame.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
+  if (!data || data === "[DONE]") return null;
+  try { return JSON.parse(data); } catch { return null; }
+}
+
 async function runClaude(request, response, body, profile) {
   const { prompt, attachmentDirectory, attachmentFiles } = await promptFromRequest(body);
   let spec;
@@ -260,7 +287,8 @@ async function runClaude(request, response, body, profile) {
   response.end();
 }
 
-async function forwardOpenAI(request, response, bodyBuffer) {
+async function forwardOpenAI(request, response, bodyBuffer, model) {
+  const startedAt = Date.now();
   const headers = { ...request.headers };
   for (const name of ["host", "content-length", "connection", "accept-encoding"]) delete headers[name];
   const upstream = await fetch(OPENAI_RESPONSES_URL, { method: "POST", headers, body: bodyBuffer });
@@ -269,7 +297,34 @@ async function forwardOpenAI(request, response, bodyBuffer) {
     if (!new Set(["content-length", "content-encoding", "connection", "transfer-encoding"]).has(name)) responseHeaders[name] = value;
   }
   response.writeHead(upstream.status, responseHeaders);
-  if (upstream.body) for await (const chunk of upstream.body) response.write(chunk);
+  if (!upstream.body) return response.end();
+  if (!upstream.headers.get("content-type")?.includes("text/event-stream")) {
+    for await (const chunk of upstream.body) response.write(chunk);
+    return response.end();
+  }
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for await (const chunk of upstream.body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    let boundary;
+    while ((boundary = buffer.match(/\r?\n\r?\n/))) {
+      const frame = buffer.slice(0, boundary.index);
+      buffer = buffer.slice(boundary.index + boundary[0].length);
+      const event = eventFromFrame(frame);
+      if (event?.type === "response.completed") {
+        const elapsedMs = Date.now() - startedAt;
+        const events = throughputEvents(event, model, elapsedMs);
+        if (events) {
+          for (const item of events) writeEvent(response, item);
+          console.log(`${new Date().toISOString()} ${throughputLine(model, event.response.usage.output_tokens, elapsedMs)}`);
+          continue;
+        }
+      }
+      response.write(`${frame}\n\n`);
+    }
+  }
+  buffer += decoder.decode();
+  if (buffer) response.write(buffer);
   response.end();
 }
 
@@ -299,7 +354,7 @@ async function handler(request, response) {
     console.log(`${new Date().toISOString()} model=${body.model || "unknown"} bytes=${bodyBuffer.length}`);
     const profile = Object.hasOwn(CLAUDE_MODELS, body.model) ? CLAUDE_MODELS[body.model] : Object.hasOwn(KILO_MODELS, body.model) ? KILO_MODELS[body.model] : null;
     if (profile) await runClaude(request, response, body, profile);
-    else await forwardOpenAI(request, response, bodyBuffer);
+    else await forwardOpenAI(request, response, bodyBuffer, body.model);
   } catch (error) {
     console.error(`${new Date().toISOString()} ${error.stack || error.message}`);
     if (response.headersSent && !response.destroyed) {
@@ -319,6 +374,11 @@ if (process.argv.includes("--self-test")) {
   assert.equal(throughputLine("deepseek-high", 300, 10000), "route=deepseek-high output_tokens=300 elapsed=10.0s tok/s=30.0");
   assert.match(throughputLine("glm-high", 5, 0), /elapsed=0\.0s tok\/s=0\.0$/);
   assert.equal(throughputFooter(300, 10000), "⚡ **30.0 tok/s** · 300 output tokens · 10.0s");
+  const nativeEvents = throughputEvents({ type: "response.completed", response: { model: "gpt-5.6-sol", output: [], usage: { output_tokens: 300 } }, sequence_number: 7 }, "gpt-5.6-sol", 10000);
+  assert.equal(nativeEvents.length, 7);
+  assert.equal(nativeEvents.at(-1).sequence_number, 13);
+  assert.match(nativeEvents.at(-1).response.output[0].content[0].text, /30\.0 tok\/s/);
+  assert.equal(eventFromFrame('event: response.completed\ndata: {"type":"response.completed"}').type, "response.completed");
   const testPrompt = await promptFromRequest({ input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }] });
   assert.match(testPrompt.prompt, /USER:\nhello/);
   assert.equal(testPrompt.attachmentDirectory, null);
