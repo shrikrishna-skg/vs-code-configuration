@@ -133,6 +133,12 @@ function throughputLine(model, outputTokens, elapsedMs) {
   return `route=${model} output_tokens=${outputTokens} elapsed=${seconds.toFixed(1)}s tok/s=${(seconds > 0 ? outputTokens / seconds : 0).toFixed(1)}`;
 }
 
+function throughputFooter(outputTokens, elapsedMs) {
+  const seconds = elapsedMs / 1000;
+  const tokensPerSecond = seconds > 0 ? outputTokens / seconds : 0;
+  return `⚡ **${tokensPerSecond.toFixed(1)} tok/s** · ${outputTokens} output tokens · ${seconds.toFixed(1)}s`;
+}
+
 function responseObject(id, model, status, output = [], usage = null) {
   return {
     id,
@@ -231,7 +237,16 @@ async function runClaude(request, response, body, profile) {
   if (exit.code !== 0 || exit.signal) throw new Error(stderr.trim() || `${spec ? 'Kilo' : 'Claude'} CLI exited with ${exit.signal || exit.code}`);
   const payload = spec ? kiloResult(stdout) : JSON.parse(stdout);
   if (payload.is_error) throw new Error(payload.result || "Claude CLI returned an error");
-  const text = payload.result || "Claude completed the task without a text response.";
+  const elapsedMs = Date.now() - startedAt;
+  const usage = {
+    input_tokens: payload.usage?.input_tokens || 0,
+    input_tokens_details: { cached_tokens: payload.usage?.cache_read_input_tokens || 0 },
+    output_tokens: payload.usage?.output_tokens || 0,
+    output_tokens_details: { reasoning_tokens: 0 },
+    total_tokens: (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0),
+  };
+  const result = payload.result || "Claude completed the task without a text response.";
+  const text = `${result.trimEnd()}\n\n---\n${throughputFooter(usage.output_tokens, elapsedMs)}`;
   const content = [{ type: "output_text", text, annotations: [], logprobs: [] }];
   const item = { id: itemId, type: "message", status: "completed", role: "assistant", content };
   writeEvent(response, { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] }, sequence_number: sequence++ });
@@ -240,14 +255,7 @@ async function runClaude(request, response, body, profile) {
   writeEvent(response, { type: "response.output_text.done", item_id: itemId, output_index: 0, content_index: 0, text, logprobs: [], sequence_number: sequence++ });
   writeEvent(response, { type: "response.content_part.done", item_id: itemId, output_index: 0, content_index: 0, part: content[0], sequence_number: sequence++ });
   writeEvent(response, { type: "response.output_item.done", output_index: 0, item, sequence_number: sequence++ });
-  const usage = {
-    input_tokens: payload.usage?.input_tokens || 0,
-    input_tokens_details: { cached_tokens: payload.usage?.cache_read_input_tokens || 0 },
-    output_tokens: payload.usage?.output_tokens || 0,
-    output_tokens_details: { reasoning_tokens: 0 },
-    total_tokens: (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0),
-  };
-  console.log(`${new Date().toISOString()} ${throughputLine(body.model, usage.output_tokens, Date.now() - startedAt)}`);
+  console.log(`${new Date().toISOString()} ${throughputLine(body.model, usage.output_tokens, elapsedMs)}`);
   writeEvent(response, { type: "response.completed", response: responseObject(responseId, body.model, "completed", [item], usage), sequence_number: sequence++ });
   response.end();
 }
@@ -310,6 +318,7 @@ if (process.argv.includes("--self-test")) {
   assert.ok(Object.values(CLAUDE_MODELS).every(({ effort }) => effort === "high"));
   assert.equal(throughputLine("deepseek-high", 300, 10000), "route=deepseek-high output_tokens=300 elapsed=10.0s tok/s=30.0");
   assert.match(throughputLine("glm-high", 5, 0), /elapsed=0\.0s tok\/s=0\.0$/);
+  assert.equal(throughputFooter(300, 10000), "⚡ **30.0 tok/s** · 300 output tokens · 10.0s");
   const testPrompt = await promptFromRequest({ input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }] });
   assert.match(testPrompt.prompt, /USER:\nhello/);
   assert.equal(testPrompt.attachmentDirectory, null);

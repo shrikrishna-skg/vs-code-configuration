@@ -35,6 +35,7 @@ try {
   const stream=await result.text();
   assert.equal(result.status,200);
   assert.match(stream,/response.completed/);assert.match(stream,/fixture complete/);
+  assert.match(stream,/⚡ \*\*\d+\.\d tok\/s\*\* · 2 output tokens · \d+\.\ds/);
   const events=stream.split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
   assert.equal(events.at(-1).response.model,slug);
  }
