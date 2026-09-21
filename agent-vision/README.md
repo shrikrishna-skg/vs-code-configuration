@@ -41,9 +41,24 @@ Steps 1 through 3 work today. Step 4 is the weak link: "matches the design" is
 currently a judgement the agent makes from a prose description of the intent,
 because it has no access to the design file itself. A Figma MCP server would
 give it real frames and real tokens to compare against and turn step 4 from a
-guess into a check. That server is not installed here; the left panel of the
-diagram is labelled *to add* for that reason, and so is the hooks panel on the
-right.
+guess into a check. That server is not installed here, which is why the left
+panel of the diagram is labelled *to add*.
+
+## Where hooks sit
+
+The right panel is labelled *to add* for a different reason: those hooks are
+written and tested, but not yet installed.
+
+Hooks are not a step in the loop. They sit **outside** it, and the harness runs
+them on every pass — after each edit, on writes to protected paths, when the
+agent stops. That placement is the point. A step inside the loop is something
+the model chooses to do, and can therefore forget, skip, or talk itself out of.
+A hook is a command the harness executes regardless of what the model
+remembers, or would have preferred.
+
+Vision makes the loop self-correcting; hooks make it bounded. The agent decides
+what to build, and the hooks decide what it may not touch on the way there and
+whether the tests still pass when it stops.
 
 ## Documents
 
@@ -53,6 +68,8 @@ right.
 - [Computer use](computer-use.md) — Peekaboo, 26 tools for driving any macOS
   application, the global-install decision, and the macOS permission model that
   makes the grant land on a process you did not expect.
+- [Guardrail hooks](hooks.md) — a secret-file deny, an opportunistic formatter,
+  and a warn-only test run on stop. **Staged, pending a manual install.**
 
 ## Scope and cost
 

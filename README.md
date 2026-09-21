@@ -104,6 +104,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 ├── diagrams/                # Editable Mermaid diagram sources
 ├── docs/                    # Architecture and operating guides
 ├── claude-code/             # Native Claude Code extension state and agents
+├── agent-vision/            # Browser automation, computer use, guardrail hooks
 ├── scripts/                 # Runnable repository verification
 ├── third-party/             # Required third-party license notices
 └── examples/
