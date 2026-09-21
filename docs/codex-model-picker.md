@@ -4,9 +4,9 @@ The existing local OpenAI/Claude Responses router now also exposes three Kilo-ba
 
 | Selection | Execution | Reasoning | Delegation |
 |---|---|---|---|
-| Astra Engineering Lead | `openai/gpt-6-astra-fast` through Kilo | Default xhigh; high/max available | DeepSeek implementer/workstream lead and GLM investigator |
-| DeepSeek High | `deepseek/deepseek-flash` through Kilo | Default high; max available | Task tool denied; standalone coding |
-| GLM High | `openrouter/z-ai/glm-5.3-flash` through Kilo | Default high; max available | Task tool denied; standalone coding |
+| Astra Engineering Lead | `openai/gpt-6-astra-fast` through Kilo | Default xhigh; high/max available | DeepSeek implementer/workstream lead and GLM investigator; image input |
+| DeepSeek High | `deepseek/deepseek-flash` through Kilo | Default high; max available | Task tool denied; standalone coding; image input |
+| GLM High | `openrouter/z-ai/glm-5.3-flash` through Kilo | Default high; max available | Task tool denied; standalone coding; image input |
 
 Ordinary OpenAI models continue through the existing OpenAI forwarding function. Existing Claude selections keep their CLI route. No new globally available delegation tools are installed in Codex. Selecting the Astra lead activates the Kilo delegation configuration for that request only.
 
@@ -47,7 +47,7 @@ The pre-change router is retained locally as `router.before-kilo-20260921.mjs`. 
 These are local CLI coding agents. Their tools run under Kilo permissions, not Codex's interactive approval flow. Workspace editing and shell commands are allowed for the requested coding workflow. Explicit task denials remain in effect for standalone models. Shell access is not an operating-system filesystem sandbox; use these modes in trusted workspaces.
 
 - A valid absolute workspace is required; no fallback to the router's directory.
-- New routes accept text only. Image attachments fail explicitly; existing image-capable models remain available.
+- New routes accept text plus PNG, JPEG, non-animated GIF and WEBP image uploads. The router preserves uploaded bytes in a temporary file, passes each file through Kilo's native `--file` option, and deletes the temporary directory after the run. Image analysis is supported; these routes do not generate image output. DeepSeek and GLM do not gain PDF input merely from image support.
 - Each request starts a fresh Kilo run with the supplied conversation context. Kilo session IDs exist in Kilo, but its worker panels are not displayed as Codex-native subagents.
 - Results arrive after the CLI completes; transport heartbeat messages keep the connection alive but are not progress reports.
 - Disconnects terminate the Kilo process group. Runs have a ten-minute execution limit and never silently switch providers.
@@ -63,7 +63,7 @@ node scripts/test-codex-routes.mjs
 node scripts/test-codex-transport.mjs
 ```
 
-The transport test uses a fake local CLI and a temporary port. It checks the model catalog, SSE completion/failure, cancellation, invalid effort, missing workspace, and attachment rejection without provider calls.
+The transport test uses a fake local CLI and a temporary port. It checks the model catalog, SSE completion/failure, cancellation, invalid effort, missing workspace, attachment forwarding, and unsupported image rejection without provider calls.
 
 Live coding acceptance incurs provider usage and creates a disposable workspace:
 

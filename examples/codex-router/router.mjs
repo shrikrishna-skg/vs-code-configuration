@@ -40,7 +40,7 @@ function catalogEntry(template, slug, profile) {
     context_window: 200000,
     max_context_window: 200000,
     effective_context_window_percent: 90,
-    input_modalities: profile.agent ? ["text"] : ["text", "image"],
+    input_modalities: profile.inputModalities || ["text", "image"],
     supports_search_tool: false,
     support_verbosity: false,
     supports_image_detail_original: false,
@@ -80,7 +80,9 @@ function toolOutputText(output) {
 async function promptFromRequest(body) {
   let attachmentDirectory = null;
   let attachmentIndex = 0;
+  const attachmentFiles = [];
   const messages = [];
+  try {
   for (const item of Array.isArray(body.input) ? body.input : []) {
     if (item?.type === "function_call_output" || item?.type === "custom_tool_call_output") {
       const text = toolOutputText(item.output);
@@ -94,11 +96,16 @@ async function promptFromRequest(body) {
       const source = part.image_url || part.url;
       const data = typeof source === "string" ? source.match(/^data:image\/(png|jpeg|gif|webp);base64,(.+)$/s) : null;
       if (data) {
-        attachmentDirectory ||= await mkdtemp(path.join(os.tmpdir(), "codex-claude-images-"));
+        attachmentDirectory ||= await mkdtemp(path.join(os.tmpdir(), "codex-router-images-"));
         const extension = data[1] === "jpeg" ? "jpg" : data[1];
         const filename = path.join(attachmentDirectory, `image-${++attachmentIndex}.${extension}`);
-        await writeFile(filename, Buffer.from(data[2], "base64"));
+        const image = Buffer.from(data[2], "base64");
+        if (!image.length) throw new Error("Attached image is empty.");
+        await writeFile(filename, image);
+        attachmentFiles.push(filename);
         parts.push(`[Attached image ${attachmentIndex}: ${filename}]`);
+      } else if (typeof source === "string" && source.startsWith("data:image/")) {
+        throw new Error("Unsupported attached image type. Use PNG, JPEG, GIF or WEBP.");
       } else if (typeof source === "string") {
         parts.push(`[Attached image URL: ${source}]`);
       }
@@ -106,8 +113,12 @@ async function promptFromRequest(body) {
     const text = parts.filter(Boolean).join("\n");
     if (text) messages.push(`${String(item.role || "user").toUpperCase()}:\n${text}`);
   }
+  } catch (error) {
+    if (attachmentDirectory) await rm(attachmentDirectory, { recursive: true, force: true });
+    throw error;
+  }
   const prompt = [body.instructions ? `CODEX INSTRUCTIONS:\n${body.instructions}` : "", ...messages].filter(Boolean).join("\n\n");
-  return { prompt, attachmentDirectory };
+  return { prompt, attachmentDirectory, attachmentFiles };
 }
 
 function workingDirectory(prompt) {
@@ -151,8 +162,14 @@ function writeEvent(response, event) {
 }
 
 async function runClaude(request, response, body, profile) {
-  const { prompt, attachmentDirectory } = await promptFromRequest(body);
-  const spec = profile.agent ? await kiloInvocation(profile, prompt, body.reasoning?.effort) : null;
+  const { prompt, attachmentDirectory, attachmentFiles } = await promptFromRequest(body);
+  let spec;
+  try {
+    spec = profile.agent ? await kiloInvocation(profile, prompt, body.reasoning?.effort, attachmentFiles) : null;
+  } catch (error) {
+    if (attachmentDirectory) await rm(attachmentDirectory, { recursive: true, force: true });
+    throw error;
+  }
   const cwd = spec?.cwd || workingDirectory(prompt);
   const responseId = `resp_${randomUUID().replaceAll("-", "")}`;
   const itemId = `msg_${randomUUID().replaceAll("-", "")}`;
@@ -266,7 +283,6 @@ async function handler(request, response) {
     requestedModel = body.model || requestedModel;
     console.log(`${new Date().toISOString()} model=${body.model || "unknown"} bytes=${bodyBuffer.length}`);
     const profile = Object.hasOwn(CLAUDE_MODELS, body.model) ? CLAUDE_MODELS[body.model] : Object.hasOwn(KILO_MODELS, body.model) ? KILO_MODELS[body.model] : null;
-    if (profile?.agent && Array.isArray(body.input) && body.input.some(item => Array.isArray(item.content) && item.content.some(part => part.type === "input_image"))) throw new Error("Kilo picker routes currently accept text only; use an existing image-capable model for attachments.");
     if (profile) await runClaude(request, response, body, profile);
     else await forwardOpenAI(request, response, bodyBuffer);
   } catch (error) {

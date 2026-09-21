@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { KILO_MODELS, effectiveEffort, strictWorkspace, kiloInvocation, kiloResult } from '../examples/codex-router/kilo-route.mjs';
@@ -16,16 +16,23 @@ const renamedWorkspace = await mkdtemp(path.join(os.tmpdir(), 'codex-renamed-wor
 try {
   const target = path.join(renamedWorkspace, 'target');
   const alias = path.join(renamedWorkspace, 'old-name');
+  const image = path.join(renamedWorkspace, 'image.png');
   await mkdir(target);
   await symlink(target, alias);
+  await writeFile(image, 'fixture');
   assert.equal(await strictWorkspace(`<cwd>${alias}</cwd>`), alias);
   const aliasConfig = JSON.parse((await kiloInvocation(model, `<cwd>${alias}</cwd>`, 'high')).env.KILO_CONFIG_CONTENT);
   assert.equal(aliasConfig.permission.external_directory[alias + '/*'], 'allow');
   assert.equal(aliasConfig.permission.external_directory[(await realpath(target)) + '/*'], 'allow');
+  const imageSpec = await kiloInvocation(model, `<cwd>${alias}</cwd>`, 'high', [image]);
+  assert.equal(imageSpec.args[imageSpec.args.indexOf('--file') + 1], image);
+  const imageConfig = JSON.parse(imageSpec.env.KILO_CONFIG_CONTENT);
+  assert.equal(imageConfig.permission.external_directory[renamedWorkspace + '/*'], 'allow');
 } finally {
   await rm(renamedWorkspace, { recursive: true, force: true });
 }
 for (const profile of Object.values(KILO_MODELS)) {
+  assert.deepEqual(profile.inputModalities, ['text', 'image']);
   const spec = await kiloInvocation(profile, '<cwd>/tmp</cwd>', profile.effort);
   const config = JSON.parse(spec.env.KILO_CONFIG_CONTENT);
   const task = config.agent[profile.agent].permission.task;

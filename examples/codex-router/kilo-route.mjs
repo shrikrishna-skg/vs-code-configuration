@@ -3,9 +3,9 @@ import path from 'node:path';
 import os from 'node:os';
 
 export const KILO_MODELS = {
-  'astra-engineering-lead': { displayName: 'Astra Engineering Lead', model: 'openai/gpt-6-astra-fast', agent: 'codex-astra-lead', effort: 'xhigh', efforts: ['high', 'xhigh', 'max'], priority: 54 },
-  'deepseek-high': { displayName: 'DeepSeek High', model: 'deepseek/deepseek-flash', agent: 'codex-deepseek', effort: 'high', efforts: ['high', 'max'], priority: 55 },
-  'glm-high': { displayName: 'GLM High', model: 'openrouter/z-ai/glm-5.3-flash', agent: 'codex-glm', effort: 'high', efforts: ['high', 'max'], priority: 56 },
+  'astra-engineering-lead': { displayName: 'Astra Engineering Lead', model: 'openai/gpt-6-astra-fast', agent: 'codex-astra-lead', effort: 'xhigh', efforts: ['high', 'xhigh', 'max'], inputModalities: ['text', 'image'], priority: 54 },
+  'deepseek-high': { displayName: 'DeepSeek High', model: 'deepseek/deepseek-flash', agent: 'codex-deepseek', effort: 'high', efforts: ['high', 'max'], inputModalities: ['text', 'image'], priority: 55 },
+  'glm-high': { displayName: 'GLM High', model: 'openrouter/z-ai/glm-5.3-flash', agent: 'codex-glm', effort: 'high', efforts: ['high', 'max'], inputModalities: ['text', 'image'], priority: 56 },
 };
 
 export async function kiloBinary() {
@@ -35,7 +35,7 @@ export function effectiveEffort(profile, requested) {
   return effort;
 }
 
-export async function kiloInvocation(profile, prompt, requested) {
+export async function kiloInvocation(profile, prompt, requested, attachmentFiles = []) {
   const cwd = await strictWorkspace(prompt);
   const effort = effectiveEffort(profile, requested);
   const lead = profile.agent === 'codex-astra-lead';
@@ -45,11 +45,17 @@ export async function kiloInvocation(profile, prompt, requested) {
   const leadPrompt = lead ? (await readFile(leadFile, 'utf8')).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '') : '';
   const outputContract = '\nYour final user-facing report must contain exactly these unnumbered headings in order: ## Answer, ## My opinion, ## Next step. Put verification evidence under Answer; do not add a Verification heading. Include a concise assessment under My opinion and one concrete next action (or state completion) under Next step. Explicit user requests for a different format take precedence.';
   const task = lead ? { '*': 'deny', 'deepseek-implementer': 'allow', 'glm-investigator': 'allow', 'deepseek-workstream-lead': 'allow' } : 'deny';
+  const externalDirectory = { '*': 'deny', [cwd + '/*']: 'allow', [(await realpath(cwd)) + '/*']: 'allow', [path.join(os.homedir(), '.config/ponytail/*')]: 'allow', [path.join(os.homedir(), '.config/kilo/chat-response-style.md')]: 'allow' };
+  for (const file of attachmentFiles) {
+    if (!path.isAbsolute(file) || !(await stat(file)).isFile()) throw new Error('Kilo attachments must be existing absolute files.');
+    externalDirectory[path.dirname(file) + '/*'] = 'allow';
+    externalDirectory[path.dirname(await realpath(file)) + '/*'] = 'allow';
+  }
   const config = {
     instructions,
     permission: {
       bash: 'allow', edit: 'allow',
-      external_directory: { '*': 'deny', [cwd + '/*']: 'allow', [(await realpath(cwd)) + '/*']: 'allow', [path.join(os.homedir(), '.config/ponytail/*')]: 'allow', [path.join(os.homedir(), '.config/kilo/chat-response-style.md')]: 'allow' },
+      external_directory: externalDirectory,
     },
     default_agent: profile.agent,
     subagent_depth: lead ? 2 : 0,
@@ -59,12 +65,12 @@ export async function kiloInvocation(profile, prompt, requested) {
       [profile.agent]: {
       mode: 'primary', model: profile.model, variant: effort,
       permission: { task, 'Claude_Code_Local_*': 'deny', 'Peekaboo_*': 'deny' },
-      prompt: (lead ? leadPrompt + '\nFor this Codex route, delegate only to the permitted DeepSeek and GLM agents. Forward the coding policy and scoped verification requirements. Report worker names, actual tests, and limitations. Do not claim Codex-native tools are available inside Kilo.' : 'Own the complete task independently. Do not delegate through tools, external CLIs, or other agents. Follow project instructions, Ponytail and the response style. Inspect the relevant code, preserve unrelated changes, make the smallest correct implementation, and verify it with a focused runnable check. Do not claim success without evidence.') + outputContract,
+      prompt: (lead ? leadPrompt + '\nFor this Codex route, delegate only to the permitted DeepSeek and GLM agents. Forward the coding policy and scoped verification requirements. Report worker names, actual tests, and limitations. Do not claim Codex-native tools are available inside Kilo.' : 'Own the complete task independently. Do not delegate through tools, external CLIs, or other agents. Follow project instructions, Ponytail and the response style. Inspect the relevant code, preserve unrelated changes, make the smallest correct implementation, and verify it with a focused runnable check. Do not claim success without evidence.') + '\nWhen image attachments are present, use native model vision first. Do not invoke shell commands, OCR, or image-processing tools merely to restate visible content; use them only when direct inspection is inconclusive or the user explicitly requests measured pixel-level analysis.' + outputContract,
     } },
   };
   return {
     command: await kiloBinary(), cwd,
-    args: ['run', '--format', 'json', '--agent', profile.agent, '--model', profile.model, '--variant', effort, '--dir', cwd],
+    args: ['run', '--format', 'json', '--agent', profile.agent, '--model', profile.model, '--variant', effort, ...attachmentFiles.flatMap(file => ['--file', file]), '--dir', cwd],
     env: { ...process.env, KILO_CONFIG_CONTENT: JSON.stringify(config) },
   };
 }

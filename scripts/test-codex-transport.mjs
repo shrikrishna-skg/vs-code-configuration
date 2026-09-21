@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, readdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'codex-transport-test-'));
+const attachmentDirsBefore = new Set((await readdir(os.tmpdir())).filter(name=>name.startsWith('codex-router-images-')));
 const fake = path.join(root, 'kilo');
 await writeFile(fake, `#!/usr/bin/env node
 let input=''; process.stdin.on('data',c=>input+=c); process.stdin.on('end',()=>{
  if(input.includes('FAIL_CLI')) {process.stderr.write('fixture CLI failure');process.exit(2);}
  if(input.includes('CANCEL_CLI')) { process.on('SIGTERM',()=>{require('fs').writeFileSync(${JSON.stringify(path.join(root,'cancelled'))},'yes');process.exit(0)}); setInterval(()=>{},1000);return; }
- console.log(JSON.stringify({type:'text',part:{text:'fixture complete'}}));
+ const fileIndex=process.argv.indexOf('--file');
+ if(fileIndex>=0&&!require('fs').statSync(process.argv[fileIndex+1]).isFile()) process.exit(3);
+ console.log(JSON.stringify({type:'text',part:{text:fileIndex>=0?'fixture image complete':'fixture complete'}}));
  console.log(JSON.stringify({type:'step_finish',part:{reason:'stop',tokens:{input:4,output:2}}}));
 });
 `, {mode:0o700});
@@ -23,6 +26,7 @@ try {
  });
  const catalog=await (await fetch(address+'/v1/models')).json();
  for(const slug of ['astra-engineering-lead','deepseek-high','glm-high','claude-opus-5']) assert.equal(catalog.models.filter(m=>m.slug===slug).length,1);
+ for(const slug of ['astra-engineering-lead','deepseek-high','glm-high']) assert.deepEqual(catalog.models.find(m=>m.slug===slug).input_modalities,['text','image']);
  assert.ok(catalog.models.some(m=>m.slug.startsWith('gpt-')));
  const request=(model,text,extra={})=>fetch(address+'/v1/responses',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,stream:true,input:[{type:'message',role:'user',content:[{type:'input_text',text}]}],...extra})});
  for(const slug of ['astra-engineering-lead','deepseek-high','glm-high']){
@@ -37,12 +41,16 @@ try {
  assert.equal((await request('glm-high',`<cwd>${root}</cwd>`,{reasoning:{effort:'ultra'}})).status,500);
  const failure=await (await request('deepseek-high',`<cwd>${root}</cwd> FAIL_CLI`)).text();
  assert.match(failure,/response.failed/);assert.doesNotMatch(failure,/response.completed/);
- const image=await request('glm-high','',{input:[{type:'message',role:'user',content:[{type:'input_image',image_url:'data:image/png;base64,AA=='}]}]});
- assert.equal(image.status,500);
+ const image=await request('deepseek-high','',{input:[{type:'message',role:'user',content:[{type:'input_text',text:`<cwd>${root}</cwd> inspect image`},{type:'input_image',image_url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='}]}]});
+ const imageStream=await image.text();
+ assert.equal(image.status,200);assert.match(imageStream,/fixture image complete/);assert.match(imageStream,/response.completed/);
+ const unsupported=await request('deepseek-high','',{input:[{type:'message',role:'user',content:[{type:'input_text',text:`<cwd>${root}</cwd>`},{type:'input_image',image_url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='},{type:'input_image',image_url:'data:image/svg+xml;base64,AA=='}]}]});
+ assert.equal(unsupported.status,500);
+ assert.deepEqual((await readdir(os.tmpdir())).filter(name=>name.startsWith('codex-router-images-')&&!attachmentDirsBefore.has(name)),[]);
  const abort=new AbortController();
  const pending=await fetch(address+'/v1/responses',{method:'POST',signal:abort.signal,headers:{'content-type':'application/json'},body:JSON.stringify({model:'deepseek-high',input:[{type:'message',role:'user',content:[{type:'input_text',text:`<cwd>${root}</cwd> CANCEL_CLI`}]}]})});
  await new Promise(resolve=>setTimeout(resolve,500));
  abort.abort();
  for(let attempt=0;attempt<30;attempt++){try{assert.equal(await readFile(path.join(root,'cancelled'),'utf8'),'yes');break;}catch(error){if(attempt===29)throw error;await new Promise(resolve=>setTimeout(resolve,100));}}
- console.log('Transport checks passed: catalog, all three routes, SSE completion/failure, workspace, effort, image rejection, cancellation.');
+ console.log('Transport checks passed: catalog, all three routes, SSE completion/failure, workspace, effort, image attachment, cancellation.');
 } finally { server.kill('SIGTERM'); }
