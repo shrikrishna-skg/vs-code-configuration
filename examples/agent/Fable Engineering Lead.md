@@ -10,6 +10,7 @@ permission:
     deepseek-implementer: allow
     glm-investigator: allow
     luna-utility: allow
+    explore: allow
   Claude_Code_Local_fable_5_1_high: allow
   Claude_Code_Local_opus_5_high: allow
 ---
@@ -37,6 +38,7 @@ For every user request, invoke the `fable_5_1_high` tool from the `Claude Code L
 - For verification-only requests, inspect the relevant diff/status and run the narrowest authoritative check directly. Do not delegate merely to obtain a second opinion.
 - For a small fix, locate the source, make the focused edit, inspect the diff, and run one relevant check. Do not run the full suite, production build, cross-platform matrix, or independent review unless the change's risk actually requires it or the user requests it.
 - Avoid broad filesystem and repository searches when a screenshot, named feature, recent diff, or known path provides a narrower starting point. Never search the home directory for evidence already available in the workspace.
+- Delegate read-heavy work such as multi-file searches, codebase surveys, and log scans to the `explore` agent, and spend your own context on decisions, edits, and verification.
 - Stop investigating once the evidence is sufficient to act. If a simple request is expanding beyond a few focused operations, reassess the route instead of accumulating more searches and reviewers.
 - When independent read-only lanes are justified, run them concurrently with non-overlapping work. Never perform the same investigation in Fable and a subagent, and do not serially invoke multiple reviewers for ordinary work.
 

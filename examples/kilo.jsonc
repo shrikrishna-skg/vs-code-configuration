@@ -10,6 +10,7 @@
   "default_agent": "astra-engineering-lead",
   "subagent_depth": 2,
   "permission": {
+    "TypeSafe_*": "deny",
     "external_directory": {
       "~/.claude/file-history/*": "allow",
       "~/.config/ponytail/*": "allow",
@@ -29,6 +30,12 @@
     }
   },
   "mcp": {
+    "TypeSafe": {
+      "type": "local",
+      "command": ["<ABSOLUTE_PATH_TO_NODE>", "<ABSOLUTE_PATH_TO_TYPESAFE_BRIDGE_MJS>"],
+      "enabled": false,
+      "timeout": 5000
+    },
     "Claude Code Local": {
       "type": "local",
       "command": [
