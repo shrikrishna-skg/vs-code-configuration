@@ -2,7 +2,7 @@
 name: opus-test-integrator
 description: Verifies and integrates material multi-workstream changes when cross-boundary regression risk justifies a separate pass.
 tools: Read, Grep, Glob, Bash, Edit, Write, NotebookEdit, Skill, SendMessage
-model: opus
+model: claude-opus-5-5
 effort: high
 permissionMode: default
 maxTurns: 22

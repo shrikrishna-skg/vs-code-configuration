@@ -8,7 +8,7 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 |---|---:|---|
 | VS Code | 1.138.0 | Merge only the documented settings keys |
 | Kilo Code | 7.7.2, Apple Silicon | The selected-agent patch is bundle/version-sensitive |
-| Claude Code extension | 2.1.274, Apple Silicon | Its bundled CLI path changes with extension updates |
+| Claude Code extension | 2.1.280+ (required for `claude-opus-5-5`), Apple Silicon | Its bundled CLI path changes with extension updates |
 | Node.js | Local executable | Configure an absolute path for GUI reliability |
 
 ## Active and reproduced

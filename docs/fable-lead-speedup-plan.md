@@ -12,14 +12,7 @@ Live files: `~/.config/kilo/bridges/claude-cli-provider.mjs` (LaunchAgent `ai.ki
 - [x] **Bridge uses it in tool mode only.** `claudeArgs` passes `--system-prompt` when Kilo tools are present. Conversation mode (Opus escalation, CLI runs tools) keeps the default harness. `--exclude-dynamic-system-prompt-sections` is not passed because the CLI ignores it alongside `--system-prompt`. Guarded by the bridge self-test.
 - [x] **Tool catalog once per session.** `toolsHash` persisted on the session record; a resumed step with an unchanged hash sends a one-line "catalog #xxxxxxxx unchanged" marker. An invalid-decision error resends the full catalog once (`catalog_resent` event).
 - [x] **Bridge marks tool-mode runs.** Tool-mode spawns carry `CLAUDE_BRIDGE_TOOL_MODE=1`; conversation mode strips it. Self-test asserts both.
-- [ ] **Stop hook guard.** Blocked on user approval: `~/.claude/hooks/verify-on-stop.sh` is a sensitive executable file and both the implementer and the lead were refused write access. The reviewed change is two lines after the payload drain on line 5, before the first `git` call:
-
-      ```sh
-      # Kilo bridge tool-mode steps run no tools, so npm test here is pure latency.
-      [ -n "$CLAUDE_BRIDGE_TOOL_MODE" ] && exit 0
-      ```
-
-      Effect: `npm test` (up to 110 s) stops running after every decision step. The script does not use `set -e`, so an empty variable falls through unchanged. `--bare` is not an option because it breaks keychain auth.
+- [x] **Stop hook guard.** `~/.claude/hooks/verify-on-stop.sh` exits 0 right after the payload drain when `CLAUDE_BRIDGE_TOOL_MODE` is set (backup `verify-on-stop.sh.bak-20260922-123852`). Verified 2026-09-22 in a dirty scratch repo whose test script fails: with the variable set the hook is silent, without it the hook reports the failing `npm test` exactly like the backup.
 - [x] **Disable dead MCP.** `TypeSafe` in `kilo.jsonc` has `enabled: false`.
 - [x] **Allow explore delegation.** Fable lead agent has `explore: allow` and the sentence sending read-heavy searches to the explore lane.
 - [x] **Mirror to repo.** Live `claude-cli-provider.mjs` copied to `examples/bridges/` (same sha1 `54b7fbfa`), and `docs/local-cli-bridge.md` describes tool-mode overhead, delta resumes and streaming.
@@ -35,7 +28,7 @@ Measured after Phase 1 (2026-09-22, `session_resumed` events, `deltaMessages` me
 | Compact prompt only | 47 | 28762 | 53599 | 86807 |
 | Plus catalog-once | 11 | **3504** | 9181 | 27696 |
 
-Median resumed-step prompt fell 88%, from 29371 to 3504 characters, and clears the 5K acceptance bar. The catalog-once change carried nearly all of it: the compact system prompt alone barely moved the median, because the 25-schema tool catalog resent on every step dominated. No `catalog_resent` events have appeared, so the hash reuse is holding. Bridge self-test green. The hook guard is still unverified because the edit is blocked.
+Median resumed-step prompt fell 88%, from 29371 to 3504 characters, and clears the 5K acceptance bar. The catalog-once change carried nearly all of it: the compact system prompt alone barely moved the median, because the 25-schema tool catalog resent on every step dominated. No `catalog_resent` events have appeared, so the hash reuse is holding. Bridge self-test green. The hook guard is applied and verified.
 
 The remaining tail is Phase 2 work: p90 is still 9181 and max 27696 on a 2-message delta.
 
@@ -51,6 +44,14 @@ Sharper evidence after Phase 1: the oversized prompts are a tail, not the norm. 
 - [x] Final answers run with `--output-format stream-json --verbose --include-partial-messages` and forward `content_block_delta` text as it arrives. Tool-call steps keep `--output-format json` and stay atomic. `--verbose` is required because the CLI rejects `stream-json` under `--print` without it. The self-test asserts the streaming and tool argument sets separately.
 - [x] Throughput still comes from the CLI's own result line, so the tokens-per-second footer is unchanged by streaming.
 - [ ] Not yet exercised by a real VS Code Fable run: the streaming build went live at 12:46 and the log since then holds only synthetic checks.
+
+## Tail check (2026-09-22)
+
+- [x] The p90 9181 and max 27696 figures came from builds before the `sessionDelta` fix. On the current build every `session_resumed` event logs `rewrittenMessages: 0`, so nothing is being replayed. The remaining large steps are real content: 11067 and 8765 characters follow `grep` tool outputs of 9779 and 7467 characters, and 18890 is a new user turn with an attached image (`deltaMessages: 3`, `imageFiles: 1`). No change made.
+
+## Subscription limit
+
+- [x] A hit limit, and every request while it is still active, returns HTTP 400 `subscription_limit_error` with "Claude subscription usage limit reached; resets at <local time>" plus the CLI's own text. 400 is not retried by Kilo, which records it as a visible APIError. The bridge self-test replays the CLI's limit result line through a stub binary.
 
 ## Later
 

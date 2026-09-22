@@ -37,7 +37,7 @@ for (const profile of Object.values(KILO_MODELS)) {
   const config = JSON.parse(spec.env.KILO_CONFIG_CONTENT);
   const task = config.agent[profile.agent].permission.task;
   assert.equal(config.agent['deepseek-workstream-lead'].permission.task['luna-utility'], 'deny');
-  if (profile.agent === 'codex-astra-lead') {
+  if (profile.lead) {
     assert.equal(task['deepseek-implementer'], 'allow');
     assert.equal(task['glm-investigator'], 'allow');
     assert.equal(task['*'], 'deny');
@@ -45,6 +45,15 @@ for (const profile of Object.values(KILO_MODELS)) {
   assert.ok(!spec.args.includes('--auto'));
   assert.equal(spec.args[spec.args.indexOf('--model') + 1], profile.model);
 }
+const fable = KILO_MODELS['fable-engineering-lead'];
+const fableHigh = await kiloInvocation(fable, '<cwd>/tmp</cwd>');
+assert.equal(fableHigh.args[fableHigh.args.indexOf('--model') + 1], 'claude-local-cli/fable-5-1-high');
+// The lead prompt must come from the installed fable-engineering-lead.md, which names its bound model.
+assert.match(JSON.parse(fableHigh.env.KILO_CONFIG_CONTENT).agent['codex-fable-lead'].prompt, /claude-local-cli\/fable-5-1-high/);
+const fableMax = await kiloInvocation(fable, '<cwd>/tmp</cwd>', 'max');
+assert.equal(fableMax.args[fableMax.args.indexOf('--model') + 1], 'claude-local-cli/fable-5-1-max');
+assert.equal(JSON.parse(fableMax.env.KILO_CONFIG_CONTENT).agent['codex-fable-lead'].model, 'claude-local-cli/fable-5-1-max');
+
 const event = value => JSON.stringify(value) + '\n';
 const output = event({type:'text',part:{text:'Done'}}) + event({type:'step_finish',part:{reason:'stop',tokens:{input:3,output:2}}});
 assert.equal(kiloResult(output).result, 'Done');

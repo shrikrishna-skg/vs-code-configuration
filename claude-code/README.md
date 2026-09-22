@@ -5,8 +5,9 @@ Code extension workflow used in VS Code. Claude runs through the authenticated
 local Claude CLI and the Claude subscription directly. Kilo Gateway and
 OpenRouter are not part of this path.
 
-The snapshot was exercised with Claude Code `2.1.274` on 2026-09-19. Model
-aliases and extension behavior can change, so rerun validation after upgrades.
+The snapshot was exercised with Claude Code `2.1.280` on 2026-09-22, the minimum
+version for Opus 5.5. Model aliases and extension behavior can change, so rerun
+validation after upgrades.
 
 ## Workflow
 

@@ -21,6 +21,8 @@ const SESSION_STATE_FILE = resolve(homedir(), ".local/state/kilo/claude-cli-prov
 const TOOL_SYSTEM_PROMPT_FILE = resolve(homedir(), ".config/kilo/bridges/fable-lead-system.md");
 const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\r\n]+)$/i;
 const EMBEDDED_DATA_URL = /data:([^;,]+);base64,[A-Za-z0-9+/=\r\n]+/g;
+// "You've hit your session limit · resets 9:30pm", "5-hour limit reached ∙ resets 3pm", "usage limit reached"
+const SUBSCRIPTION_LIMIT = /hit your (?:\w+ )?limit|limit reached/i;
 let claudeQueue = Promise.resolve();
 let stateWrite = Promise.resolve();
 let subscriptionLimit = null;
@@ -37,8 +39,8 @@ const toolSystemPrompt = await readFile(TOOL_SYSTEM_PROMPT_FILE, "utf8").catch((
 });
 
 const profiles = {
-  "opus-5-fast": { name: "Claude Opus 5 Fast (Local CLI)", model: "opus", effort: "low" },
-  "opus-5-high": { name: "Claude Opus 5 High (Local CLI)", model: "opus", effort: "high" },
+  "opus-5-5-fast": { name: "Claude Opus 5.5 Fast (Local CLI)", model: "claude-opus-5-5", effort: "low" },
+  "opus-5-5-high": { name: "Claude Opus 5.5 High (Local CLI)", model: "claude-opus-5-5", effort: "high" },
   "fable-5-1-high": { name: "Claude Fable 5.1 High (Local CLI)", model: "fable", effort: "high" },
   "fable-5-1-max": { name: "Claude Fable 5.1 Max (Local CLI)", model: "fable", effort: "max" }
 };
@@ -126,14 +128,25 @@ function sendJson(response, status, value, headers = {}) {
 }
 
 function nextLocalReset(message, now = new Date()) {
-  const match = message.match(/resets\s+(\d{1,2}):(\d{2})\s*(am|pm)/i);
+  const match = message.match(/resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
   if (!match) return new Date(now.getTime() + 5 * 60 * 1000);
   let hour = Number(match[1]) % 12;
   if (match[3].toLowerCase() === "pm") hour += 12;
   const reset = new Date(now);
-  reset.setHours(hour, Number(match[2]), 0, 0);
+  reset.setHours(hour, Number(match[2] || 0), 0, 0);
   if (reset <= now) reset.setDate(reset.getDate() + 1);
   return reset;
+}
+
+// Kilo retries 429 responses exponentially and shows a reply with no content
+// meanwhile. The bridge already knows the reset time, so a non-retryable 400
+// with a readable message is what actually reaches the chat.
+function subscriptionLimitError(limit) {
+  const resetsAt = limit.until.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+  const error = new Error(`Claude subscription usage limit reached; resets at ${resetsAt}. Claude CLI said: ${limit.message}`);
+  error.status = 400;
+  error.type = "subscription_limit_error";
+  return error;
 }
 
 function cachedSubscriptionError() {
@@ -149,6 +162,7 @@ function rememberSubscriptionLimit(message) {
   subscriptionLimit = { message, until: nextLocalReset(message) };
   process.stdout.write(`${JSON.stringify({ event: "subscription_limit", until: subscriptionLimit.until.toISOString() })}\n`);
   saveProviderState();
+  return subscriptionLimit;
 }
 
 function queueClaude(task) {
@@ -628,7 +642,7 @@ function runClaude(profile, prompt, cwd, signal, tools = [], session, imageDirec
       }
       if (code !== 0 || payload.is_error) {
         const error = new Error(payload.result || stderr.trim() || `Claude CLI exited with code ${code}`);
-        error.status = payload.api_error_status || (error.message.includes("session limit") ? 429 : 500);
+        error.status = payload.api_error_status || (SUBSCRIPTION_LIMIT.test(error.message) ? 429 : 500);
         return reject(error);
       }
       if (tools.length) {
@@ -782,15 +796,7 @@ const server = createServer(async (request, response) => {
         return matched.session.result;
       }
       const limited = cachedSubscriptionError();
-      if (limited) {
-        const error = new Error(limited.message);
-        // Kilo retries 429 responses exponentially. The bridge already knows the
-        // real reset time, so fail this request immediately instead of leaving a
-        // chat "Thinking" for hours or generating a retry storm.
-        error.status = 400;
-        error.type = "subscription_limit_error";
-        throw error;
-      }
+      if (limited) throw subscriptionLimitError(limited);
       const session = matched?.session || {
         id: randomUUID(),
         model: body.model,
@@ -855,10 +861,8 @@ const server = createServer(async (request, response) => {
         })}\n`);
         return output;
       } catch (error) {
-        if (error.status === 429 && /session limit/i.test(error.message)) {
-          rememberSubscriptionLimit(error.message);
-          error.status = 400;
-          error.type = "subscription_limit_error";
+        if (error.status === 429 && SUBSCRIPTION_LIMIT.test(error.message)) {
+          throw subscriptionLimitError(rememberSubscriptionLimit(error.message));
         }
         throw error;
       } finally {
@@ -952,6 +956,22 @@ if (process.argv.includes("--self-test")) {
   const reset = nextLocalReset("You've hit your session limit · resets 9:30pm (America/Chicago)", new Date(2026, 8, 19, 17, 30));
   if (reset.getHours() !== 21 || reset.getMinutes() !== 30 || reset.getDate() !== 19) {
     throw new Error("Claude subscription reset time was not parsed correctly");
+  }
+  // A stub CLI replays the real limit result line, so the whole path from CLI
+  // output to the error Kilo displays is exercised without spending quota.
+  const stubDirectory = await mkdtemp(join(tmpdir(), "claude-limit-stub-"));
+  try {
+    const limitLine = JSON.stringify({ type: "result", is_error: true, result: "You've hit your session limit · resets 9pm (America/Chicago)" });
+    await writeFile(join(stubDirectory, "claude"), `#!/bin/sh\ncat >/dev/null\ncat <<'EOF'\n${limitLine}\nEOF\nexit 1\n`, { mode: 0o755 });
+    claudeBinary = join(stubDirectory, "claude");
+    const limitError = await runClaude(profiles["fable-5-1-high"], "hi", DEFAULT_DIRECTORY, new AbortController().signal, [], { id: "test", resume: false }).catch((error) => error);
+    const shown = limitError.status === 429 && SUBSCRIPTION_LIMIT.test(limitError.message) && subscriptionLimitError({ message: limitError.message, until: nextLocalReset(limitError.message, new Date(2026, 8, 19, 17, 30)) });
+    if (!shown || shown.status !== 400 || shown.type !== "subscription_limit_error" || !/^Claude subscription usage limit reached; resets at Sep 19, 9:00\sPM /.test(shown.message)) {
+      throw new Error(`A Claude subscription limit is not surfaced to Kilo as a readable, non-retryable error: ${shown?.message || limitError.message}`);
+    }
+  } finally {
+    claudeBinary = null;
+    await rm(stubDirectory, { recursive: true, force: true });
   }
 
   const firstArgs = claudeArgs(profiles["fable-5-1-high"], [], { id: "11111111-1111-4111-8111-111111111111", resume: false });

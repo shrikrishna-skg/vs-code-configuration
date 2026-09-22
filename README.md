@@ -82,11 +82,13 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 
 ## Documentation
 
-- [Codex model picker: Astra lead, DeepSeek and GLM](docs/codex-model-picker.md)
+- [Astra + Jev Engineering Lead: installation, limits, and verified behavior](docs/astra-jev.md)
+- [Codex model picker: Astra and Fable leads, DeepSeek and GLM](docs/codex-model-picker.md)
 - [Architecture](docs/architecture.md)
 - [Task routing and operating process](docs/task-routing.md)
 - [Installation and recovery](docs/installation.md)
 - [Local Claude CLI bridge](docs/local-cli-bridge.md)
+- [Codex working-status patch](docs/codex-thinking-status-patch.md)
 - [Agent vision: browser and computer use](agent-vision/README.md)
 - [VS Code settings](docs/vscode-settings.md)
 - [Remember-last-agent patch](docs/remember-last-agent-patch.md)
@@ -114,6 +116,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
     ├── bridges/             # Local CLI MCP bridge
     ├── instructions/        # Coding and chat-output contracts
     ├── patches/             # Optional version-sensitive UI patch
+    ├── mockups/             # Static HTML previews of proposed UI changes
     └── vscode/              # Relevant VS Code user settings
 ```
 

@@ -6,7 +6,12 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 node --check examples/bridges/claude-cli-mcp.mjs
+node --check examples/bridges/typesafe-mcp.mjs
+node scripts/test-typesafe.mjs
 node --check examples/patches/remember-last-agent.mjs
+node --check examples/patches/codex-thinking-status.mjs
+node examples/patches/check-codex-thinking-status.mjs
+node examples/mockups/check-thinking-card.mjs
 node --check claude-code/scripts/validate.mjs
 node claude-code/scripts/validate.mjs
 python3 -m json.tool examples/kilo.jsonc >/dev/null

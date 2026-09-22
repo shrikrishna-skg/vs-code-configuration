@@ -13,15 +13,15 @@ if (!CLAUDE) {
 }
 
 const profiles = {
-  opus_5_fast: {
-    title: "Opus 5 Fast",
-    model: "opus",
+  opus_5_5_fast: {
+    title: "Opus 5.5 Fast",
+    model: "claude-opus-5-5",
     effort: "low",
     description: "Run a complete coding task through the local Claude CLI using Opus with low-latency reasoning."
   },
-  opus_5_high: {
-    title: "Opus 5 High",
-    model: "opus",
+  opus_5_5_high: {
+    title: "Opus 5.5 High",
+    model: "claude-opus-5-5",
     effort: "high",
     description: "Run a complete coding task through the local Claude CLI using Opus with high reasoning effort."
   },
