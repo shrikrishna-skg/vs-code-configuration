@@ -11,6 +11,7 @@ node scripts/test-typesafe.mjs
 node --check examples/patches/remember-last-agent.mjs
 node --check examples/patches/codex-thinking-status.mjs
 node examples/patches/check-codex-thinking-status.mjs
+node examples/patches/check-per-agent-model.mjs
 node examples/mockups/check-thinking-card.mjs
 node --check claude-code/scripts/validate.mjs
 node claude-code/scripts/validate.mjs
