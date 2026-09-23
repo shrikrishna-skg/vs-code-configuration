@@ -6,13 +6,30 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
 node --check examples/bridges/claude-cli-mcp.mjs
-node --check examples/patches/remember-last-agent.mjs
+node examples/bridges/claude-cli-provider.mjs --self-test
+node --check examples/bridges/typesafe-mcp.mjs
+node scripts/test-typesafe.mjs
+node scripts/test-reapply-kilo-patches.mjs
+node --check examples/patches/codex-thinking-status.mjs
+node examples/patches/check-codex-thinking-status.mjs
+node examples/patches/check-per-agent-model.mjs
+node examples/mockups/check-thinking-card.mjs
 node --check claude-code/scripts/validate.mjs
 node claude-code/scripts/validate.mjs
 python3 -m json.tool examples/kilo.jsonc >/dev/null
+# Sanitized examples only; the inline --claude file stands in for ~/.claude.json.
+node examples/patches/check-peekaboo-mcp.mjs examples/kilo.jsonc --vscode copilot-chat/config/mcp.json \
+  --claude-settings claude-code/config/settings.json --codex copilot-chat/config/config.peekaboo.toml \
+  --claude <(printf '%s' '{"mcpServers":{"peekaboo":{"command":"peekaboo","args":["mcp","serve","--no-remote","--transport","stdio"]}}}')
+python3 -m json.tool copilot-chat/config/mcp.json >/dev/null
+python3 -m json.tool copilot-chat/config/chatLanguageModels.json >/dev/null
+node copilot-chat/scripts/check-copilot-agents.mjs
+bash copilot-chat/scripts/test-install.sh
 python3 -m json.tool claude-code/config/settings.json >/dev/null
 python3 -m json.tool .vscode/extensions.json >/dev/null
-sed '/^[[:space:]]*\/\//d' examples/vscode/settings.jsonc | python3 -m json.tool >/dev/null
+for f in examples/vscode/settings.jsonc copilot-chat/config/settings.jsonc; do
+  sed '/^[[:space:]]*\/\//d' "$f" | python3 -m json.tool >/dev/null
+done
 xmllint --noout assets/hero.svg
 
 printf '%s\n' \

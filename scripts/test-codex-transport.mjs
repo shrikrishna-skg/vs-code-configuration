@@ -37,11 +37,12 @@ try {
   server.on('error',reject);server.on('exit',code=>reject(new Error('router exited '+code+' '+errors)));
  });
  const catalog=await (await fetch(address+'/v1/models')).json();
- for(const slug of ['astra-engineering-lead','deepseek-high','glm-high','claude-opus-5']) assert.equal(catalog.models.filter(m=>m.slug===slug).length,1);
- for(const slug of ['astra-engineering-lead','deepseek-high','glm-high']) assert.deepEqual(catalog.models.find(m=>m.slug===slug).input_modalities,['text','image']);
+ for(const slug of ['astra-engineering-lead','fable-engineering-lead','deepseek-high','glm-high','claude-opus-5-5']) assert.equal(catalog.models.filter(m=>m.slug===slug).length,1);
+ assert.ok(!catalog.models.some(m=>m.slug==='claude-opus-5'),'Renamed route lingered in the catalog');
+ for(const slug of ['astra-engineering-lead','fable-engineering-lead','deepseek-high','glm-high']) assert.deepEqual(catalog.models.find(m=>m.slug===slug).input_modalities,['text','image']);
  assert.ok(catalog.models.some(m=>m.slug.startsWith('gpt-')));
  const request=(model,text,extra={})=>fetch(address+'/v1/responses',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model,stream:true,input:[{type:'message',role:'user',content:[{type:'input_text',text}]}],...extra})});
- for(const slug of ['astra-engineering-lead','deepseek-high','glm-high']){
+ for(const slug of ['astra-engineering-lead','fable-engineering-lead','deepseek-high','glm-high']){
   const result=await request(slug,`<cwd>${root}</cwd> success`);
   const stream=await result.text();
   assert.equal(result.status,200);
@@ -50,7 +51,7 @@ try {
   const events=stream.split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
   assert.equal(events.at(-1).response.model,slug);
  }
- for(const slug of ['astra-engineering-lead','deepseek-high','glm-high']) assert.match(serverOutput,new RegExp(`route=${slug} output_tokens=2 elapsed=\\d+\\.\\ds tok/s=`));
+ for(const slug of ['astra-engineering-lead','fable-engineering-lead','deepseek-high','glm-high']) assert.match(serverOutput,new RegExp(`route=${slug} output_tokens=2 elapsed=\\d+\\.\\ds tok/s=`));
  const native=await request('gpt-5.6-sol','native success');
  const nativeStream=await native.text();
  assert.equal(native.status,200);assert.match(nativeStream,/⚡ \*\*\d+\.\d tok\/s\*\* · 20 output tokens · \d+\.\ds/);
@@ -62,9 +63,14 @@ try {
  assert.equal((await request('glm-high',`<cwd>${root}</cwd>`,{reasoning:{effort:'ultra'}})).status,500);
  const failure=await (await request('deepseek-high',`<cwd>${root}</cwd> FAIL_CLI`)).text();
  assert.match(failure,/response.failed/);assert.doesNotMatch(failure,/response.completed/);
- const image=await request('deepseek-high','',{input:[{type:'message',role:'user',content:[{type:'input_text',text:`<cwd>${root}</cwd> inspect image`},{type:'input_image',image_url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='}]}]});
- const imageStream=await image.text();
- assert.equal(image.status,200);assert.match(imageStream,/fixture image complete/);assert.match(imageStream,/response.completed/);
+ const failureEvents=failure.split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
+ assert.equal(failureEvents.find(event=>event.type==='response.failed').response.id,failureEvents.find(event=>event.type==='response.created').response.id);
+ assert.equal(failureEvents.find(event=>event.type==='response.failed').sequence_number,2);
+ for(const slug of ['astra-engineering-lead','fable-engineering-lead','deepseek-high','glm-high']){
+  const image=await request(slug,'',{input:[{type:'message',role:'user',content:[{type:'input_text',text:`<cwd>${root}</cwd> inspect image`},{type:'input_image',image_url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='}]}]});
+  const imageStream=await image.text();
+  assert.equal(image.status,200);assert.match(imageStream,/fixture image complete/);assert.match(imageStream,/response.completed/);
+ }
  const unsupported=await request('deepseek-high','',{input:[{type:'message',role:'user',content:[{type:'input_text',text:`<cwd>${root}</cwd>`},{type:'input_image',image_url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='},{type:'input_image',image_url:'data:image/svg+xml;base64,AA=='}]}]});
  assert.equal(unsupported.status,500);
  assert.deepEqual((await readdir(os.tmpdir())).filter(name=>name.startsWith('codex-router-images-')&&!attachmentDirsBefore.has(name)),[]);
@@ -73,5 +79,5 @@ try {
  await new Promise(resolve=>setTimeout(resolve,500));
  abort.abort();
  for(let attempt=0;attempt<30;attempt++){try{assert.equal(await readFile(path.join(root,'cancelled'),'utf8'),'yes');break;}catch(error){if(attempt===29)throw error;await new Promise(resolve=>setTimeout(resolve,100));}}
- console.log('Transport checks passed: catalog, native and local TPS, all three routes, SSE completion/failure, workspace, effort, image attachment, cancellation.');
+ console.log('Transport checks passed: catalog, native and local TPS, all four routes, SSE completion/failure, workspace, effort, image attachments on every Kilo route, cancellation.');
 } finally { server.kill('SIGTERM');upstream.close(); }

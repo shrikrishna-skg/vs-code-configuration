@@ -8,7 +8,7 @@ import { KILO_MODELS, kiloInvocation, kiloResult } from '../examples/codex-route
 
 const slug = process.argv[2];
 const profile = KILO_MODELS[slug];
-assert.ok(profile, 'Provide astra-engineering-lead, deepseek-high, or glm-high');
+assert.ok(profile, 'Provide astra-engineering-lead, fable-engineering-lead, deepseek-high, or glm-high');
 const cwd = await mkdtemp(path.join(os.tmpdir(), 'codex-route-accept-'));
 const source = 'export function uniqueNames(values) { return values; }\n';
 await writeFile(path.join(cwd, 'names.mjs'), source);
@@ -20,7 +20,7 @@ assert.deepEqual(uniqueNames([]), []);
 assert.throws(()=>uniqueNames(null), TypeError);
 assert.throws(()=>uniqueNames(['ok', 1]), TypeError);
 console.log('acceptance passed');\n`);
-const assignment = `Implement uniqueNames in names.mjs: accept an array of strings only (otherwise throw TypeError), trim and lowercase strings, remove empty strings, remove duplicates preserving first occurrence. Do not edit check.mjs or unrelated.txt. Run node check.mjs and report evidence. Stay inside this workspace. ` + (slug === 'astra-engineering-lead' ? 'For this delegation acceptance test, explicitly assign the implementation to deepseek-implementer, then ask glm-investigator to review read-only. Inspect the diff and verify the result yourself. Forward Ponytail and preserve the response format.' : 'Work independently without delegation.');
+const assignment = `Implement uniqueNames in names.mjs: accept an array of strings only (otherwise throw TypeError), trim and lowercase strings, remove empty strings, remove duplicates preserving first occurrence. Do not edit check.mjs or unrelated.txt. Run node check.mjs and report evidence. Stay inside this workspace. ` + (profile.lead ? 'For this delegation acceptance test, explicitly assign the implementation to deepseek-implementer, then ask glm-investigator to review read-only. Inspect the diff and verify the result yourself. Forward Ponytail and preserve the response format.' : 'Work independently without delegation.');
 const originalCheck = await readFile(path.join(cwd, 'check.mjs'), 'utf8');
 const prompt = `<environment_context><cwd>${cwd}</cwd></environment_context>\nUSER: ${assignment}`;
 const spec = await kiloInvocation(profile, prompt, process.argv[3] || profile.effort);
@@ -39,7 +39,7 @@ assert.equal(test.status,0,test.stderr);
 assert.equal(await readFile(path.join(cwd, 'check.mjs'), 'utf8'), originalCheck);
 assert.equal(await readFile(path.join(cwd,'unrelated.txt'),'utf8'),'Keep this file unchanged.\n');
 const delegates = stdout.split('\n').filter(Boolean).map(line=>JSON.parse(line)).filter(e=>e.type==='tool_use' && e.part?.tool==='task').map(e=>e.part.state?.input?.subagent_type);
-if (slug === 'astra-engineering-lead') {
+if (profile.lead) {
   assert.ok(delegates.includes('deepseek-implementer'), 'Missing DeepSeek delegation');
   assert.ok(delegates.includes('glm-investigator'), 'Missing GLM review');
 } else assert.equal(delegates.length,0,'Standalone model delegated');

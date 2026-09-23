@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { KILO_MODELS, kiloInvocation, kiloResult } from "./kilo-route.mjs";
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,14 +13,18 @@ import { randomUUID } from "node:crypto";
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.CODEX_CLAUDE_ROUTER_PORT || 43128);
-const CLAUDE = process.env.CODEX_CLAUDE_BINARY || path.join(os.homedir(), ".vscode/extensions/anthropic.claude-code-2.1.274-darwin-arm64/resources/native-binary/claude");
+const EXTENSIONS = path.join(os.homedir(), ".vscode/extensions");
+// Newest installed Claude Code extension CLI; claude-opus-5-5 needs 2.1.280 or newer.
+const CLAUDE = process.env.CODEX_CLAUDE_BINARY || path.join(EXTENSIONS, readdirSync(EXTENSIONS)
+  .filter((name) => name.startsWith("anthropic.claude-code-"))
+  .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))[0] || "", "resources/native-binary/claude");
 const OPENAI_RESPONSES_URL = process.env.CODEX_OPENAI_RESPONSES_URL || "https://chatgpt.com/backend-api/codex/responses";
 const MODELS_CACHE = path.join(os.homedir(), ".codex/models_cache.json");
 const ALLOWED_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Agent,Skill";
 
 const CLAUDE_MODELS = {
-  "claude-opus-5": { displayName: "Claude Opus 5", model: "opus", effort: "high", priority: 50 },
-  "claude-opus-5-fast": { displayName: "Claude Opus 5 Fast", model: "opus", effort: "high", priority: 51 },
+  "claude-opus-5-5": { displayName: "Claude Opus 5.5", model: "claude-opus-5-5", effort: "high", priority: 50 },
+  "claude-opus-5-5-fast": { displayName: "Claude Opus 5.5 Fast", model: "claude-opus-5-5", effort: "high", priority: 51 },
   "claude-fable-5-1": { displayName: "Fable 5.1", model: "fable", effort: "high", priority: 52 },
   "claude-fable-5-1-max": { displayName: "Fable 5.1 Max", model: "fable", effort: "high", priority: 53 },
 };
@@ -30,7 +34,7 @@ function catalogEntry(template, slug, profile) {
     ...structuredClone(template),
     slug,
     display_name: profile.displayName,
-    description: profile.agent ? `Runs through Kilo: ${profile.model}. ${profile.agent === "codex-astra-lead" ? "Scoped DeepSeek/GLM delegation." : "Independent coding; delegation disabled."}` : `Runs through the authenticated local Claude CLI (${profile.effort} effort).`,
+    description: profile.agent ? `Runs through Kilo: ${profile.model}. ${profile.lead ? "Scoped DeepSeek/GLM delegation." : "Independent coding; delegation disabled."}` : `Runs through the authenticated local Claude CLI (${profile.effort} effort).`,
     default_reasoning_level: profile.effort,
     supported_reasoning_levels: (profile.efforts || [profile.effort]).map(effort => ({ effort, description: `${effort} reasoning` })),
     shell_type: "unified_exec",
@@ -54,7 +58,8 @@ function catalogEntry(template, slug, profile) {
 
 async function modelCatalog() {
   const cache = JSON.parse(await readFile(MODELS_CACHE, "utf8"));
-  const nativeModels = cache.models.filter((model) => !CLAUDE_MODELS[model.slug] && !KILO_MODELS[model.slug]);
+  // Drop every entry this router generated earlier (Local CLI tier) so renamed or removed routes do not linger as "native".
+  const nativeModels = cache.models.filter((model) => !CLAUDE_MODELS[model.slug] && !KILO_MODELS[model.slug] && !model.service_tiers?.some((tier) => tier.name === "Local CLI"));
   const template = nativeModels.find((model) => model.slug === "gpt-5.6-sol") || nativeModels[0];
   assert.ok(template, "Codex model cache is empty");
   const claudeModels = Object.entries({ ...CLAUDE_MODELS, ...KILO_MODELS }).map(([slug, profile]) => catalogEntry(template, slug, profile));
@@ -75,6 +80,15 @@ function toolOutputText(output) {
   const text = contentText(output);
   if (text) return text;
   return output == null ? "" : JSON.stringify(output);
+}
+
+function imageAttachmentPrompt(files) {
+  if (!files.length) return "";
+  return [
+    "IMAGE ATTACHMENTS:",
+    "The user attached the image file(s) below. Use the Read tool to inspect every image relevant to the request before answering. Do not say an image is unavailable merely because it is a local path.",
+    ...files.map((file, index) => `${index + 1}. ${file}`),
+  ].join("\n");
 }
 
 async function promptFromRequest(body) {
@@ -117,7 +131,7 @@ async function promptFromRequest(body) {
     if (attachmentDirectory) await rm(attachmentDirectory, { recursive: true, force: true });
     throw error;
   }
-  const prompt = [body.instructions ? `CODEX INSTRUCTIONS:\n${body.instructions}` : "", ...messages].filter(Boolean).join("\n\n");
+  const prompt = [body.instructions ? `CODEX INSTRUCTIONS:\n${body.instructions}` : "", imageAttachmentPrompt(attachmentFiles), ...messages].filter(Boolean).join("\n\n");
   return { prompt, attachmentDirectory, attachmentFiles };
 }
 
@@ -172,6 +186,25 @@ function writeEvent(response, event) {
   response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
+function failedResponse(responseId, model, error) {
+  const failed = responseObject(responseId, model, "failed");
+  failed.error = {
+    code: "local_cli_bridge_error",
+    message: error instanceof Error ? error.message : String(error),
+  };
+  return failed;
+}
+
+function endFailedStream(response, responseId, model, sequence, error) {
+  if (response.destroyed || response.writableEnded) return;
+  writeEvent(response, {
+    type: "response.failed",
+    response: failedResponse(responseId, model, error),
+    sequence_number: sequence,
+  });
+  response.end();
+}
+
 function throughputEvents(completedEvent, model, elapsedMs) {
   const outputTokens = completedEvent.response?.usage?.output_tokens;
   if (!Number.isFinite(outputTokens)) return null;
@@ -222,69 +255,76 @@ async function runClaude(request, response, body, profile) {
   writeEvent(response, { type: "response.in_progress", response: responseObject(responseId, body.model, "in_progress"), sequence_number: sequence++ });
 
   const startedAt = Date.now();
-  const child = spawn(spec?.command || CLAUDE, spec?.args || [
-    "-p",
-    "--model", profile.model,
-    "--effort", profile.effort,
-    "--name", `Codex - ${profile.displayName}`,
-    "--output-format", "json",
-    "--no-session-persistence",
-    "--permission-mode", "acceptEdits",
-    `--allowedTools=${ALLOWED_TOOLS}`,
-  ], { cwd, env: spec?.env || process.env, detached: Boolean(spec), stdio: ["pipe", "pipe", "pipe"] });
-  child.stdin.on("error", () => {});
-  child.stdin.end(prompt);
-  const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 15000);
-  const cancelClaude = () => {
-    if (!response.writableEnded) {
-      try { if (spec) process.kill(-child.pid, "SIGTERM"); else child.kill("SIGTERM"); } catch {}
-    }
-  };
-  response.once("close", cancelClaude);
-  const executionTimeout = spec ? setTimeout(() => {
-    try { process.kill(-child.pid, "SIGTERM"); } catch {}
-  }, 600000) : null;
-
-  let stdout = "";
-  let stderr = "";
-  child.stdout.on("data", (chunk) => { stdout += chunk; });
-  child.stderr.on("data", (chunk) => { stderr += chunk; });
-  let exit;
+  let child;
+  let heartbeat;
+  let executionTimeout;
+  let cancelClaude = () => {};
   try {
-    exit = await new Promise((resolve, reject) => {
+    const args = spec?.args || [
+      "-p",
+      "--model", profile.model,
+      "--effort", profile.effort,
+      "--name", `Codex - ${profile.displayName}`,
+      "--output-format", "json",
+      "--no-session-persistence",
+      "--permission-mode", "acceptEdits",
+      `--allowedTools=${ALLOWED_TOOLS}`,
+    ];
+    if (!spec && attachmentDirectory) args.push("--add-dir", attachmentDirectory);
+    child = spawn(spec?.command || CLAUDE, args, { cwd, env: spec?.env || process.env, detached: Boolean(spec), stdio: ["pipe", "pipe", "pipe"] });
+    child.stdin.on("error", () => {});
+    child.stdin.end(prompt);
+    heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 15000);
+    cancelClaude = () => {
+      if (!response.writableEnded) {
+        try { if (spec) process.kill(-child.pid, "SIGTERM"); else child.kill("SIGTERM"); } catch {}
+      }
+    };
+    response.once("close", cancelClaude);
+    executionTimeout = spec ? setTimeout(() => {
+      try { process.kill(-child.pid, "SIGTERM"); } catch {}
+    }, 600000) : null;
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    const exit = await new Promise((resolve, reject) => {
       child.once("error", reject);
       child.once("close", (code, signal) => resolve({ code, signal }));
     });
+    if (exit.code !== 0 || exit.signal) throw new Error(stderr.trim() || `${spec ? "Kilo" : "Claude"} CLI exited with ${exit.signal || exit.code}`);
+    const payload = spec ? kiloResult(stdout) : JSON.parse(stdout);
+    if (payload.is_error) throw new Error(payload.result || "Claude CLI returned an error");
+    const elapsedMs = Date.now() - startedAt;
+    const usage = {
+      input_tokens: payload.usage?.input_tokens || 0,
+      input_tokens_details: { cached_tokens: payload.usage?.cache_read_input_tokens || 0 },
+      output_tokens: payload.usage?.output_tokens || 0,
+      output_tokens_details: { reasoning_tokens: 0 },
+      total_tokens: (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0),
+    };
+    const result = payload.result || "Claude completed the task without a text response.";
+    const text = `${result.trimEnd()}\n\n---\n${throughputFooter(usage.output_tokens, elapsedMs)}`;
+    const content = [{ type: "output_text", text, annotations: [], logprobs: [] }];
+    const item = { id: itemId, type: "message", status: "completed", role: "assistant", content };
+    writeEvent(response, { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] }, sequence_number: sequence++ });
+    writeEvent(response, { type: "response.content_part.added", item_id: itemId, output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [], logprobs: [] }, sequence_number: sequence++ });
+    writeEvent(response, { type: "response.output_text.delta", item_id: itemId, output_index: 0, content_index: 0, delta: text, logprobs: [], sequence_number: sequence++ });
+    writeEvent(response, { type: "response.output_text.done", item_id: itemId, output_index: 0, content_index: 0, text, logprobs: [], sequence_number: sequence++ });
+    writeEvent(response, { type: "response.content_part.done", item_id: itemId, output_index: 0, content_index: 0, part: content[0], sequence_number: sequence++ });
+    writeEvent(response, { type: "response.output_item.done", output_index: 0, item, sequence_number: sequence++ });
+    console.log(`${new Date().toISOString()} ${throughputLine(body.model, usage.output_tokens, elapsedMs)}`);
+    writeEvent(response, { type: "response.completed", response: responseObject(responseId, body.model, "completed", [item], usage), sequence_number: sequence++ });
+    response.end();
+  } catch (error) {
+    endFailedStream(response, responseId, body.model, sequence++, error);
   } finally {
     clearInterval(heartbeat);
     clearTimeout(executionTimeout);
     response.off("close", cancelClaude);
     if (attachmentDirectory) await rm(attachmentDirectory, { recursive: true, force: true });
   }
-  if (exit.code !== 0 || exit.signal) throw new Error(stderr.trim() || `${spec ? 'Kilo' : 'Claude'} CLI exited with ${exit.signal || exit.code}`);
-  const payload = spec ? kiloResult(stdout) : JSON.parse(stdout);
-  if (payload.is_error) throw new Error(payload.result || "Claude CLI returned an error");
-  const elapsedMs = Date.now() - startedAt;
-  const usage = {
-    input_tokens: payload.usage?.input_tokens || 0,
-    input_tokens_details: { cached_tokens: payload.usage?.cache_read_input_tokens || 0 },
-    output_tokens: payload.usage?.output_tokens || 0,
-    output_tokens_details: { reasoning_tokens: 0 },
-    total_tokens: (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0),
-  };
-  const result = payload.result || "Claude completed the task without a text response.";
-  const text = `${result.trimEnd()}\n\n---\n${throughputFooter(usage.output_tokens, elapsedMs)}`;
-  const content = [{ type: "output_text", text, annotations: [], logprobs: [] }];
-  const item = { id: itemId, type: "message", status: "completed", role: "assistant", content };
-  writeEvent(response, { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] }, sequence_number: sequence++ });
-  writeEvent(response, { type: "response.content_part.added", item_id: itemId, output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [], logprobs: [] }, sequence_number: sequence++ });
-  writeEvent(response, { type: "response.output_text.delta", item_id: itemId, output_index: 0, content_index: 0, delta: text, logprobs: [], sequence_number: sequence++ });
-  writeEvent(response, { type: "response.output_text.done", item_id: itemId, output_index: 0, content_index: 0, text, logprobs: [], sequence_number: sequence++ });
-  writeEvent(response, { type: "response.content_part.done", item_id: itemId, output_index: 0, content_index: 0, part: content[0], sequence_number: sequence++ });
-  writeEvent(response, { type: "response.output_item.done", output_index: 0, item, sequence_number: sequence++ });
-  console.log(`${new Date().toISOString()} ${throughputLine(body.model, usage.output_tokens, elapsedMs)}`);
-  writeEvent(response, { type: "response.completed", response: responseObject(responseId, body.model, "completed", [item], usage), sequence_number: sequence++ });
-  response.end();
 }
 
 async function forwardOpenAI(request, response, bodyBuffer, model) {
@@ -359,9 +399,7 @@ async function handler(request, response) {
   } catch (error) {
     console.error(`${new Date().toISOString()} ${error.stack || error.message}`);
     if (response.headersSent && !response.destroyed) {
-      const failed = responseObject(`resp_${randomUUID().replaceAll("-", "")}`, requestedModel, "failed");
-      failed.error = { code: "local_cli_bridge_error", message: error.message };
-      writeEvent(response, { type: "response.failed", response: failed, sequence_number: 999999 });
+      writeEvent(response, { type: "response.failed", response: failedResponse(`resp_${randomUUID().replaceAll("-", "")}`, requestedModel, error), sequence_number: 999999 });
       response.end();
     } else {
       response.writeHead(500, { "content-type": "application/json" });
@@ -383,6 +421,7 @@ if (process.argv.includes("--self-test")) {
   const testPrompt = await promptFromRequest({ input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }] });
   assert.match(testPrompt.prompt, /USER:\nhello/);
   assert.equal(testPrompt.attachmentDirectory, null);
+  assert.match(imageAttachmentPrompt(["/tmp/image.png"]), /Use the Read tool/);
   const toolPrompt = await promptFromRequest({ input: [{ type: "function_call_output", name: "create_thread", output: "delegated prompt" }] });
   assert.match(toolPrompt.prompt, /TOOL RESULT \(create_thread\):\ndelegated prompt/);
   assert.equal(workingDirectory("<cwd>/tmp</cwd>"), "/tmp");

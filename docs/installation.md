@@ -43,9 +43,17 @@ Open `~/.config/kilo/kilo.jsonc` and replace all placeholder paths. Model availa
 
 Open VS Code user settings as JSON and merge the keys from `examples/vscode/settings.jsonc`. Do not replace unrelated user settings. Review auto-approval before enabling it on another machine; see [VS Code settings](vscode-settings.md).
 
+The VS Code Chat (Copilot) keys, including the accessibility sound-off keys, are installed separately by `bash copilot-chat/scripts/install.sh`, together with the Chat custom agents, `mcp.json` and the Claude Local CLI models. Run it with `--dry-run` first; see [`copilot-chat/README.md`](../copilot-chat/README.md).
+
 ## Optional selected-agent persistence
 
-If you want new and cleared sessions to retain the selected agent, follow [Remember-last-agent patch](remember-last-agent-patch.md). This modifies the installed Kilo extension bundle and must be rechecked after every Kilo update.
+New chats open on the last selected agent and its own model via `examples/patches/global-last-agent.mjs` and `per-agent-model.mjs` (Kilo 7.7.x), which modify the installed Kilo bundle. Kilo auto-updates discard them, so copy the patches and `scripts/reapply-kilo-patches.sh` to `~/.config/kilo/patches/` and load `~/Library/LaunchAgents/ai.kilo.reapply-patches.plist` (WatchPaths `~/.vscode/extensions`, RunAtLoad) with `launchctl bootstrap gui/$(id -u) <plist>`. It applies only missing patches, logs to `~/.config/kilo/logs/kilo-patches.log`, and notifies you to run Developer: Reload Window.
+
+## Screen automation (Peekaboo)
+
+The lead agents screenshot and operate the VS Code window, including its signed-in integrated browser, through the `Peekaboo` MCP server in `kilo.jsonc` (`npm i -g @steipete/peekaboo`, then set its absolute path). Keep `--no-remote` right after `mcp serve`: without it Peekaboo routes through one shared bridge daemon, and every Kilo session in a second VS Code window fails to start it ("ScreenCaptureKit owner PID ... does not serve selected socket").
+
+With `--no-remote`, macOS grants come from Visual Studio Code itself. Enable Visual Studio Code under System Settings > Privacy & Security > Screen Recording and Accessibility, then run Developer: Reload Window. The global `permission` block allows `Peekaboo_*` for every agent and denies `Peekaboo_browser`, which needs a Chrome DevTools HTTP endpoint that `chrome://inspect` remote debugging does not provide. `node examples/patches/check-peekaboo-mcp.mjs [kilo.jsonc] --live` checks the entry and lists the server's tools; `reapply-kilo-patches.sh` runs the config check on every Kilo update and notifies on failure.
 
 ## Authentication
 

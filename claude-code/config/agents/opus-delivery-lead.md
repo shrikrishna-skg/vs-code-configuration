@@ -2,7 +2,7 @@
 name: opus-delivery-lead
 description: Coordinates large implementations with three or more independent workstreams after Fable approves a bounded plan.
 tools: Agent, Read, Grep, Glob, Bash, Edit, Write, NotebookEdit, TodoWrite, Skill, SendMessage
-model: opus
+model: claude-opus-5-5
 effort: high
 permissionMode: default
 maxTurns: 36

@@ -2,7 +2,7 @@
 name: opus-implementer-fast
 description: Implements a tiny mechanical unambiguous assignment with exclusive ownership. Use sparingly.
 tools: Read, Grep, Glob, Bash, Edit, Write, NotebookEdit, Skill, SendMessage
-model: opus
+model: claude-opus-5-5
 effort: low
 permissionMode: default
 maxTurns: 14
