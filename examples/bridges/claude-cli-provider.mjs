@@ -10,7 +10,10 @@ import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile 
 
 const HOST = "127.0.0.1";
 const PORT = 32123;
-const ALLOWED_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Agent,Skill";
+// Also the whole built-in tool list in conversation mode: other tools would
+// only be denied, yet their schemas cost ~24K prompt tokens per step. Skill is
+// absent because skills are disabled; Kilo supplies its own.
+const ALLOWED_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Agent";
 const DEFAULT_DIRECTORY = "/Users/shri/Documents/Codex";
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 24 * 1024 * 1024;
@@ -21,8 +24,12 @@ const SESSION_STATE_FILE = resolve(homedir(), ".local/state/kilo/claude-cli-prov
 const TOOL_SYSTEM_PROMPT_FILE = resolve(homedir(), ".config/kilo/bridges/fable-lead-system.md");
 const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\r\n]+)$/i;
 const EMBEDDED_DATA_URL = /data:([^;,]+);base64,[A-Za-z0-9+/=\r\n]+/g;
-// "You've hit your session limit · resets 9:30pm", "5-hour limit reached ∙ resets 3pm", "usage limit reached"
-const SUBSCRIPTION_LIMIT = /hit your (?:\w+ )?limit|limit reached/i;
+// "You've hit your session limit · resets 9:30pm", "hit your 5-hour limit", "5-hour limit reached ∙ resets 3pm",
+// "usage limit reached". Not "Output token limit reached" or "rate limit reached".
+const SUBSCRIPTION_LIMIT = /hit your (?:[\w-]+ ){0,3}limit|\b(?:usage|session|weekly|daily|\d+-hour|opus|sonnet|fable) limit reached/i;
+// "resets 9:30pm", "resets Sep 29 at 3pm", "resets Oct 3, 9pm"
+const RESET_TIME = /resets\s+(?:at\s+)?(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i;
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 let claudeQueue = Promise.resolve();
 let stateWrite = Promise.resolve();
 let subscriptionLimit = null;
@@ -51,6 +58,10 @@ function cleanClaudeEnvironment(toolMode = false) {
   delete environment.ANTHROPIC_API_KEY;
   delete environment.ANTHROPIC_AUTH_TOKEN;
   delete environment.ANTHROPIC_BASE_URL;
+  // Kilo sends its own instructions (project AGENTS.md/CLAUDE.md included) and
+  // memory, so the CLI's CLAUDE.md files and auto-memory are duplicate context.
+  environment.CLAUDE_CODE_DISABLE_CLAUDE_MDS = "1";
+  environment.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
   // Tool-mode runs decide, they never touch the workspace, so Stop hooks that
   // verify a workspace have nothing to check.
   if (toolMode) environment.CLAUDE_BRIDGE_TOOL_MODE = "1";
@@ -114,7 +125,7 @@ function readClaudeAuth(binary) {
         if (code !== 0 || !status.loggedIn || status.authMethod !== "claude.ai") {
           throw new Error("Claude CLI must be signed in with the Claude subscription (claude.ai), not an API key");
         }
-        resolveAuth({ authMethod: status.authMethod, subscriptionType: status.subscriptionType || "unknown" });
+        resolveAuth({ authMethod: status.authMethod, subscriptionType: status.subscriptionType || "unknown", email: status.email || null });
       } catch (error) {
         reject(new Error(stderr.trim() || error.message));
       }
@@ -127,15 +138,39 @@ function sendJson(response, status, value, headers = {}) {
   response.end(JSON.stringify(value));
 }
 
+// Wall-clock parts of date in zone (undefined = local zone).
+function wallParts(date, zone) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, Number(part.value)]));
+  return { year: value.year, month: value.month - 1, day: value.day, ms: Date.UTC(value.year, value.month - 1, value.day, value.hour, value.minute, value.second) };
+}
+
+// The instant a wall-clock time in zone happens. Date.UTC normalizes day and
+// month overflow; the second pass settles DST transitions.
+function zonedDate(zone, year, month, day, hour, minute) {
+  const wall = Date.UTC(year, month, day, hour, minute);
+  let instant = wall - (wallParts(new Date(wall), zone).ms - wall);
+  instant = wall - (wallParts(new Date(instant), zone).ms - instant);
+  return new Date(instant);
+}
+
 function nextLocalReset(message, now = new Date()) {
-  const match = message.match(/resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  const match = message.match(RESET_TIME);
   if (!match) return new Date(now.getTime() + 5 * 60 * 1000);
-  let hour = Number(match[1]) % 12;
-  if (match[3].toLowerCase() === "pm") hour += 12;
-  const reset = new Date(now);
-  reset.setHours(hour, Number(match[2] || 0), 0, 0);
-  if (reset <= now) reset.setDate(reset.getDate() + 1);
-  return reset;
+  const [, month, day, hourText, minute = "0", meridiem] = match;
+  let zone = message.match(/\(([A-Za-z]+(?:\/[\w+-]+)+)\)/)?.[1];
+  try { wallParts(now, zone); } catch { zone = undefined; }
+  const today = wallParts(now, zone);
+  const hour = Number(hourText) % 12 + (meridiem.toLowerCase() === "pm" ? 12 : 0);
+  const monthIndex = month ? MONTHS.indexOf(month.slice(0, 3).toLowerCase()) : today.month;
+  const date = month ? Number(day) : today.day;
+  const reset = zonedDate(zone, today.year, monthIndex, date, hour, Number(minute));
+  // Up to an hour late is the reset that just passed, so the limit is already
+  // over; rolling it to tomorrow would lock the bridge out for a day.
+  if (now - reset < 60 * 60 * 1000) return reset;
+  return month
+    ? zonedDate(zone, today.year + 1, monthIndex, date, hour, Number(minute))
+    : zonedDate(zone, today.year, monthIndex, date + 1, hour, Number(minute));
 }
 
 // Kilo retries 429 responses exponentially and shows a reply with no content
@@ -158,8 +193,15 @@ function cachedSubscriptionError() {
   return subscriptionLimit;
 }
 
+// A limit belongs to the account that hit it; after a CLI account switch a
+// persisted one no longer applies.
+function persistedLimit(saved, account, now = new Date()) {
+  const until = new Date(saved?.until);
+  return saved?.message && account && saved.account === account && until > now ? { message: saved.message, until, account } : null;
+}
+
 function rememberSubscriptionLimit(message) {
-  subscriptionLimit = { message, until: nextLocalReset(message) };
+  subscriptionLimit = { message, until: nextLocalReset(message), account: claudeAuth?.email || null };
   process.stdout.write(`${JSON.stringify({ event: "subscription_limit", until: subscriptionLimit.until.toISOString() })}\n`);
   saveProviderState();
   return subscriptionLimit;
@@ -246,7 +288,7 @@ function rememberClaudeSession(session) {
 
 function saveProviderState() {
   const state = {
-    subscriptionLimit: subscriptionLimit ? { message: subscriptionLimit.message, until: subscriptionLimit.until.toISOString() } : null,
+    subscriptionLimit: subscriptionLimit ? { message: subscriptionLimit.message, until: subscriptionLimit.until.toISOString(), account: subscriptionLimit.account } : null,
     sessions: claudeSessions.map(({ id, model, cwd, hashes, toolsHash, lastUsed }) => ({ id, model, cwd, hashes, toolsHash, lastUsed }))
   };
   stateWrite = stateWrite.catch(() => {}).then(async () => {
@@ -266,10 +308,7 @@ async function loadProviderState() {
       if (typeof session?.id !== "string" || typeof session?.model !== "string" || typeof session?.cwd !== "string" || !Array.isArray(session?.hashes)) continue;
       claudeSessions.push({ ...session, toolsHash: typeof session.toolsHash === "string" ? session.toolsHash : "", result: null, resultAt: 0 });
     }
-    const until = new Date(state.subscriptionLimit?.until);
-    if (state.subscriptionLimit?.message && until > new Date()) {
-      subscriptionLimit = { message: state.subscriptionLimit.message, until };
-    }
+    subscriptionLimit = persistedLimit(state.subscriptionLimit, claudeAuth?.email);
     process.stdout.write(`${JSON.stringify({ event: "state_loaded", sessions: claudeSessions.length, limitedUntil: subscriptionLimit?.until?.toISOString() || null })}\n`);
   } catch (error) {
     if (error.code !== "ENOENT") process.stderr.write(`Could not load Claude session state: ${error.message}\n`);
@@ -524,7 +563,12 @@ function claudeArgs(profile, tools, session, imageDirectory = null, streaming = 
       "--json-schema", JSON.stringify(toolDecisionSchema(tools))
     );
   } else {
+    // Tool mode gets the same trimming from --safe-mode, which would also drop
+    // the user's hooks (guard-secrets) that conversation mode's tools need.
     args.push(
+      "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+      "--disable-slash-commands",
+      "--tools", ALLOWED_TOOLS,
       "--permission-mode", "acceptEdits",
       `--allowedTools=${ALLOWED_TOOLS}`
     );
@@ -698,6 +742,19 @@ function createStreamWriter(response, id, model) {
   };
 }
 
+function sendError(response, error) {
+  if (response.destroyed || response.writableEnded) return;
+  const status = [400, 429, 499].includes(error.status) ? error.status : 500;
+  const type = error.type || (status === 429 ? "rate_limit_error" : status === 499 ? "cancelled" : "local_cli_error");
+  if (!response.headersSent) {
+    const headers = error.retryAfter ? { "Retry-After": String(error.retryAfter) } : {};
+    return sendJson(response, status, { error: { message: error.message, type } }, headers);
+  }
+  // SSE headers already went out, so an error event is the only way Kilo can
+  // still show why the stream stopped (e.g. a subscription limit mid-answer).
+  response.end(`data: ${JSON.stringify({ error: { message: error.message, type } })}\n\n`);
+}
+
 function streamCompletion(writer, result) {
   if (result.decision?.kind === "tool_call") {
     writer.chunk({
@@ -753,6 +810,8 @@ const server = createServer(async (request, response) => {
     return sendJson(response, 404, { error: { message: "Not found", type: "invalid_request_error" } });
   }
 
+  const startedAt = Date.now();
+  let firstOutputAt = 0;
   const controller = new AbortController();
   request.on("aborted", () => controller.abort());
   response.on("close", () => {
@@ -811,7 +870,10 @@ const server = createServer(async (request, response) => {
       const unseenMessages = matched ? Math.max(0, hashes.length - matched.start) : hashes.length;
       let attachments = { directory: null, files: [] };
       let prompt = "";
-      const onText = writer ? (text) => writer.content(text) : null;
+      const onText = writer ? (text) => {
+        firstOutputAt ||= Date.now();
+        writer.content(text);
+      } : null;
       const catalogHash = toolsCatalogHash(tools);
       let resumed = Boolean(matched);
       // The catalog only has to be described once per CLI session.
@@ -857,7 +919,9 @@ const server = createServer(async (request, response) => {
           deltaMessages: deltaMessages.length,
           rewrittenMessages: Math.max(0, deltaMessages.length - unseenMessages),
           imageFiles: attachments.files.length,
-          promptChars: prompt.length
+          promptChars: prompt.length,
+          // First streamed delta, else the finished result (sent right after this line).
+          ttftMs: (firstOutputAt || Date.now()) - startedAt
         })}\n`);
         return output;
       } catch (error) {
@@ -904,13 +968,7 @@ const server = createServer(async (request, response) => {
       usage: result.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
     });
   } catch (error) {
-    if (!response.headersSent && !response.destroyed) {
-      const status = [400, 429, 499].includes(error.status) ? error.status : 500;
-      const headers = error.retryAfter ? { "Retry-After": String(error.retryAfter) } : {};
-      const type = error.type || (status === 429 ? "rate_limit_error" : status === 499 ? "cancelled" : "local_cli_error");
-      return sendJson(response, status, { error: { message: error.message, type } }, headers);
-    }
-    if (!response.destroyed) response.end();
+    sendError(response, error);
   }
 });
 
@@ -953,9 +1011,42 @@ if (process.argv.includes("--self-test")) {
     throw new Error("Tool schemas were not compacted");
   }
 
-  const reset = nextLocalReset("You've hit your session limit · resets 9:30pm (America/Chicago)", new Date(2026, 8, 19, 17, 30));
-  if (reset.getHours() !== 21 || reset.getMinutes() !== 30 || reset.getDate() !== 19) {
-    throw new Error("Claude subscription reset time was not parsed correctly");
+  // [CLI text, is a subscription limit]
+  for (const [text, expected] of [
+    ["You've hit your 5-hour limit · resets 3pm", true],
+    ["You've hit your session limit · resets 9:30pm", true],
+    ["5-hour limit reached ∙ resets 3pm", true],
+    ["Claude usage limit reached. Your limit will reset at 3pm", true],
+    ["Output token limit reached", false],
+    ["API Error: rate limit reached", false]
+  ]) {
+    if (SUBSCRIPTION_LIMIT.test(text) !== expected) throw new Error(`Subscription limit misclassified: ${text}`);
+  }
+  // [CLI text, now, expected reset; null = the reset has already passed]
+  for (const [text, now, expected] of [
+    ["You've hit your session limit · resets 9:30pm (America/Chicago)", "2026-09-19T22:30:00Z", "2026-09-20T02:30:00.000Z"],
+    ["You've hit your session limit · resets 9:30pm (Asia/Kolkata)", "2026-09-19T12:00:00Z", "2026-09-19T16:00:00.000Z"],
+    ["You've hit your weekly limit · resets Sep 29 at 3pm (America/Chicago)", "2026-09-22T12:00:00Z", "2026-09-29T20:00:00.000Z"],
+    ["Weekly limit reached ∙ resets Oct 3, 9pm (America/Chicago)", "2026-09-22T12:00:00Z", "2026-10-04T02:00:00.000Z"],
+    ["You've hit your weekly limit · resets Jan 2 at 9am (America/Chicago)", "2026-12-30T12:00:00Z", "2027-01-02T15:00:00.000Z"],
+    ["You've hit your 5-hour limit · resets 3pm (America/Chicago)", "2026-09-22T20:00:10Z", null],
+    ["You've hit your 5-hour limit · resets 1pm (America/Chicago)", "2026-09-22T20:30:00Z", "2026-09-23T18:00:00.000Z"]
+  ]) {
+    const reset = nextLocalReset(text, new Date(now));
+    if (expected ? reset.toISOString() !== expected : reset > new Date(now)) {
+      throw new Error(`Claude subscription reset time was not parsed correctly: ${text} at ${now} gave ${reset.toISOString()}`);
+    }
+  }
+  const savedLimit = { message: "You've hit your session limit", until: "2026-09-19T23:00:00Z", account: "a@example.com" };
+  const beforeReset = new Date("2026-09-19T22:00:00Z");
+  if (!persistedLimit(savedLimit, "a@example.com", beforeReset) || persistedLimit(savedLimit, "b@example.com", beforeReset)
+    || persistedLimit({ ...savedLimit, account: undefined }, "a@example.com", beforeReset) || persistedLimit(savedLimit, "a@example.com", new Date("2026-09-19T23:30:00Z"))) {
+    throw new Error("A persisted subscription limit is not bound to its account and reset time");
+  }
+  const midStream = { headersSent: true, destroyed: false, writableEnded: false, end(body) { this.body = body; } };
+  sendError(midStream, subscriptionLimitError({ message: "You've hit your session limit", until: new Date() }));
+  if (JSON.parse(midStream.body?.replace(/^data: /, "") || "{}").error?.type !== "subscription_limit_error") {
+    throw new Error("A subscription limit after SSE headers is not sent as an SSE error event");
   }
   // A stub CLI replays the real limit result line, so the whole path from CLI
   // output to the error Kilo displays is exercised without spending quota.
@@ -965,8 +1056,8 @@ if (process.argv.includes("--self-test")) {
     await writeFile(join(stubDirectory, "claude"), `#!/bin/sh\ncat >/dev/null\ncat <<'EOF'\n${limitLine}\nEOF\nexit 1\n`, { mode: 0o755 });
     claudeBinary = join(stubDirectory, "claude");
     const limitError = await runClaude(profiles["fable-5-1-high"], "hi", DEFAULT_DIRECTORY, new AbortController().signal, [], { id: "test", resume: false }).catch((error) => error);
-    const shown = limitError.status === 429 && SUBSCRIPTION_LIMIT.test(limitError.message) && subscriptionLimitError({ message: limitError.message, until: nextLocalReset(limitError.message, new Date(2026, 8, 19, 17, 30)) });
-    if (!shown || shown.status !== 400 || shown.type !== "subscription_limit_error" || !/^Claude subscription usage limit reached; resets at Sep 19, 9:00\sPM /.test(shown.message)) {
+    const shown = limitError.status === 429 && SUBSCRIPTION_LIMIT.test(limitError.message) && subscriptionLimitError({ message: limitError.message, until: nextLocalReset(limitError.message, new Date("2026-09-19T22:30:00Z")) });
+    if (!shown || shown.status !== 400 || shown.type !== "subscription_limit_error" || !/^Claude subscription usage limit reached; resets at Sep \d+, \d+:00\s[AP]M .*You've hit your session limit/.test(shown.message)) {
       throw new Error(`A Claude subscription limit is not surfaced to Kilo as a readable, non-retryable error: ${shown?.message || limitError.message}`);
     }
   } finally {
@@ -997,6 +1088,10 @@ if (process.argv.includes("--self-test")) {
   const cleanEnvironment = cleanClaudeEnvironment();
   if (cleanEnvironment.ANTHROPIC_API_KEY || cleanEnvironment.ANTHROPIC_AUTH_TOKEN || cleanEnvironment.ANTHROPIC_BASE_URL) {
     throw new Error("Anthropic API/gateway credentials were not removed from the Claude CLI environment");
+  }
+  const chatArgs = resumeArgs.join(" ");
+  if (cleanEnvironment.CLAUDE_CODE_DISABLE_CLAUDE_MDS !== "1" || !chatArgs.includes("--strict-mcp-config --mcp-config {\"mcpServers\":{}}") || !chatArgs.includes("--disable-slash-commands") || resumeArgs[resumeArgs.indexOf("--tools") + 1] !== ALLOWED_TOOLS) {
+    throw new Error("Conversation mode still loads CLAUDE.md, MCP servers, skills or tools the bridge never allows");
   }
   if (cleanEnvironment.CLAUDE_BRIDGE_TOOL_MODE || cleanClaudeEnvironment(true).CLAUDE_BRIDGE_TOOL_MODE !== "1") {
     throw new Error("Tool-mode runs are not marked for the Claude Stop hook");

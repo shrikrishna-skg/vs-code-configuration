@@ -45,7 +45,7 @@ Open VS Code user settings as JSON and merge the keys from `examples/vscode/sett
 
 ## Optional selected-agent persistence
 
-If you want new and cleared sessions to retain the selected agent, follow [Remember-last-agent patch](remember-last-agent-patch.md). This modifies the installed Kilo extension bundle and must be rechecked after every Kilo update.
+New chats open on the last selected agent and its own model via `examples/patches/global-last-agent.mjs` and `per-agent-model.mjs` (Kilo 7.7.x), which modify the installed Kilo bundle. Kilo auto-updates discard them, so copy the patches and `scripts/reapply-kilo-patches.sh` to `~/.config/kilo/patches/` and load `~/Library/LaunchAgents/ai.kilo.reapply-patches.plist` (WatchPaths `~/.vscode/extensions`, RunAtLoad) with `launchctl bootstrap gui/$(id -u) <plist>`. It applies only missing patches, logs to `~/.config/kilo/logs/kilo-patches.log`, and notifies you to run Developer: Reload Window.
 
 ## Authentication
 

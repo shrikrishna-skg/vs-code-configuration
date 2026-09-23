@@ -26,7 +26,7 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 | Four local CLI profiles | `examples/agent/` and MCP bridge | Fable High/Max and Opus Fast/High |
 | Local Claude MCP bridge | `examples/bridges/claude-cli-mcp.mjs` | Machine paths converted to arguments |
 | VS Code behavior settings | `examples/vscode/settings.jsonc` | Relevant subset only |
-| Selected-agent persistence patch | `examples/patches/remember-last-agent.mjs` | Verified installed on Kilo 7.7.2 |
+| Kilo bundle patches and auto re-apply | `examples/patches/{jev-agent-order,per-agent-model,global-last-agent}.mjs`, `scripts/reapply-kilo-patches.sh` | Verified on Kilo 7.7.7; LaunchAgent `ai.kilo.reapply-patches` |
 
 ## Intentionally not reproduced
 

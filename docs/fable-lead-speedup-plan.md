@@ -53,6 +53,26 @@ Sharper evidence after Phase 1: the oversized prompts are a tail, not the norm. 
 
 - [x] A hit limit, and every request while it is still active, returns HTTP 400 `subscription_limit_error` with "Claude subscription usage limit reached; resets at <local time>" plus the CLI's own text. 400 is not retried by Kilo, which records it as a visible APIError. The bridge self-test replays the CLI's limit result line through a stub binary.
 
+## Phase 4: trim conversation-mode startup (2026-09-22)
+
+Conversation mode (no Kilo tools, the CLI runs its own tools) loaded the whole interactive harness: 10 plugins, 47 MCP servers (claude.ai connectors, playwright, peekaboo, plugin connectors), 73 skills, user CLAUDE.md with its imports, auto-memory, and 33 built-in tools. A trivial "Reply PONG" cost about 49K prompt tokens. Tool mode was already lean (about 2.4K) through `--safe-mode`, `--system-prompt` and `--tools ""`, so it is unchanged.
+
+- [x] Conversation mode now passes `--strict-mcp-config --mcp-config {"mcpServers":{}}`, `--disable-slash-commands` and `--tools <ALLOWED_TOOLS>`; `Skill` left `ALLOWED_TOOLS` because skills are off and Kilo sends its own. Tools outside the allow list could only be denied in `-p`, but their schemas were about 24K tokens.
+- [x] Both modes set `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1` and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`: Kilo already sends project instructions.
+- [x] User settings are still loaded, so the guard-secrets PreToolUse, prettier PostToolUse and Stop hooks keep running in conversation mode (`--safe-mode` and `--setting-sources project,local` would drop them). Verified: a scratch `.env` Read was blocked by guard-secrets while Bash worked.
+- [x] Subscription auth unchanged (keychain OAuth; `apiKeySource: none` in the CLI init event).
+
+Before/after, scratch copy of the bridge on its own port and state file, 3 runs each, medians (`curl`, TTFT = first byte; chat mode is not streamed so TTFT equals wall):
+
+| Model | Mode | Prompt tokens before → after | Wall s before → after | TTFT s before → after |
+|---|---|---|---|---|
+| fable-5-1-high | chat | 49396 → 12288 | 6.11 → 4.21 | 6.11 → 4.21 |
+| opus-5-5-fast | chat | 47539 → 10433 | 6.39 → 3.65 | 6.39 → 3.65 |
+| fable-5-1-high | tool (stream) | 2367 → 2368 | 2.81 → 2.79 | 2.30 → 2.29 |
+| opus-5-5-fast | tool (stream) | 2365 → 2370 | 3.05 → 3.21 | 1.96 → 1.99 |
+
+Also added: `ttftMs` on every `session_started`/`session_resumed` log line (first streamed delta, else the finished result), subscription-limit fixes (hyphenated names, no match on "rate/output token limit reached", dated and zoned resets, a just-passed reset is expired instead of tomorrow, an SSE error event when the limit lands mid-stream, persisted limits bound to the `auth status` email).
+
 ## Later
 
 - [ ] Re-measure the 564-request baseline after all phases and record the new median and p90 here.

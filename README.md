@@ -71,7 +71,7 @@ flowchart TD
 4. Copy the files under `examples/agent/` to `~/.config/kilo/agent/`.
 5. Merge the relevant keys from `examples/vscode/settings.jsonc` into VS Code user settings.
 6. Configure the local Claude CLI bridge and authenticate providers outside Git.
-7. Optionally apply the version-sensitive remember-last-agent patch.
+7. Optionally install the Kilo bundle patches under `examples/patches/`; LaunchAgent `ai.kilo.reapply-patches` runs `scripts/reapply-kilo-patches.sh` to re-apply them after each Kilo auto-update.
 8. Restart VS Code, select **Astra Engineering Lead**, and run the scenario checks.
 
 Run the repository's static and bridge-protocol checks at any time with `./scripts/verify.sh`.
@@ -91,7 +91,6 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 - [Codex working-status patch](docs/codex-thinking-status-patch.md)
 - [Agent vision: browser and computer use](agent-vision/README.md)
 - [VS Code settings](docs/vscode-settings.md)
-- [Remember-last-agent patch](docs/remember-last-agent-patch.md)
 - [Scenario checklist](docs/scenario-checklist.md)
 - [Configuration inventory](docs/configuration-inventory.md)
 - [Security and secret handling](SECURITY.md)
