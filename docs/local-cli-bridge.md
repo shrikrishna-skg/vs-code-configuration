@@ -34,6 +34,14 @@ The bridge:
 - Stops active child processes when the MCP server shuts down.
 - Returns bridge errors instead of silently changing models.
 
+## Tool-mode overhead
+
+A tool-mode step (Kilo owns the tools, the CLI only picks the next decision) replaces the full Claude Code harness prompt with the compact lead prompt in `examples/bridges/fable-lead-system.md`, copied live to `~/.config/kilo/bridges/fable-lead-system.md`, and describes the Kilo tool catalog only once per CLI session: later steps on the same session send a catalog marker and resend the full schemas only if a decision comes back invalid. Those runs also carry `CLAUDE_BRIDGE_TOOL_MODE=1` so workspace Stop hooks skip them. Conversation mode (Opus escalation, where the CLI runs tools itself) keeps the default harness prompt.
+
+A resumed step sends only the messages the CLI has not seen plus any earlier message Kilo rewrote in place (compacted tool outputs, regrown system `<env>` block), instead of replaying the transcript whenever one old message stops matching. Sessions are matched on the conversation's second message hash and the longest common prefix, and persist to `~/.local/state/kilo/claude-cli-provider-state.json` across bridge restarts.
+
+Final answers use `--output-format stream-json --verbose --include-partial-messages` so text arrives as deltas; tool-call steps keep plain JSON output and stay atomic. The live bridge is mirrored at `examples/bridges/claude-cli-provider.mjs`; `node claude-cli-provider.mjs --self-test` covers the prompt, catalog, session-delta and streaming-argument rules.
+
 ## Operational boundary
 
 The local CLI process does not join Kilo's native shared-agent board. The Kilo-side engineering lead/controller therefore remains responsible for inspecting the workspace diff and running a focused independent check before accepting it.

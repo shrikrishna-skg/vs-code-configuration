@@ -6,10 +6,10 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const expectedAgents = {
-  "opus-delivery-lead": { model: "opus", effort: "high", background: "true", canDelegate: true },
-  "opus-implementer-high": { model: "opus", effort: "high", background: "false" },
-  "opus-implementer-fast": { model: "opus", effort: "low", background: "false" },
-  "opus-test-integrator": { model: "opus", effort: "high", background: "false" },
+  "opus-delivery-lead": { model: "claude-opus-5-5", effort: "high", background: "true", canDelegate: true },
+  "opus-implementer-high": { model: "claude-opus-5-5", effort: "high", background: "false" },
+  "opus-implementer-fast": { model: "claude-opus-5-5", effort: "low", background: "false" },
+  "opus-test-integrator": { model: "claude-opus-5-5", effort: "high", background: "false" },
   "sonnet-investigator": { model: "sonnet", effort: "high", background: "false", readOnly: true }
 };
 

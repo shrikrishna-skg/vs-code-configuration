@@ -1,0 +1,70 @@
+[
+	{
+		"name": "Claude Local CLI",
+		"vendor": "customendpoint",
+		"models": [
+			{
+				"id": "fable-5-1-high",
+				"name": "Claude Fable 5.1 High (Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 200000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "fable-5-1-max",
+				"name": "Claude Fable 5.1 Max (Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 200000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "opus-5-5-fast",
+				"name": "Claude Opus 5.5 Fast (Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 200000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "opus-5-5-high",
+				"name": "Claude Opus 5.5 High (Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 200000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"multi-find-replace",
+					"find-replace"
+				]
+			}
+		]
+	}
+]

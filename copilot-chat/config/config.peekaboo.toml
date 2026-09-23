@@ -1,0 +1,16 @@
+# Append to ~/.codex/config.toml (Codex tab: CLI and VS Code extension).
+[mcp_servers.peekaboo]
+command = "<ABSOLUTE_PATH_TO_PEEKABOO>"
+# --no-remote right after "serve": otherwise a second window's server fails with
+# "ScreenCaptureKit owner PID ... does not serve selected socket".
+args = ["mcp", "serve", "--no-remote", "--transport", "stdio", "--allow-foreground"]
+# browser needs a Chrome DevTools HTTP endpoint that is not available here.
+disabled_tools = ["browser"]
+startup_timeout_sec = 120
+tool_timeout_sec = 600
+enabled = true
+
+# GUI-launched apps do not source ~/.zshrc, so PATH is set explicitly.
+[mcp_servers.peekaboo.env]
+PATH = "<ABSOLUTE_PATH_TO_NODE_BIN>:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+HOME = "<HOME>"

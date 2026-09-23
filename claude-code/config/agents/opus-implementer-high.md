@@ -2,7 +2,7 @@
 name: opus-implementer-high
 description: Implements a bounded complex assignment with exclusive ownership for medium work or a difficult workstream.
 tools: Read, Grep, Glob, Bash, Edit, Write, NotebookEdit, WebFetch, WebSearch, Skill, SendMessage
-model: opus
+model: claude-opus-5-5
 effort: high
 permissionMode: default
 maxTurns: 28

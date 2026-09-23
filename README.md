@@ -2,7 +2,7 @@
 
 ![Kilo Code multi-agent configuration](assets/hero.svg)
 
-A reproducible, security-conscious blueprint for the VS Code workflows used on this machine. It includes the Kilo Code Astra/Fable setup and a native Claude Code extension setup where Fable supervises bounded Opus and Sonnet agents.
+A reproducible, security-conscious blueprint for the VS Code workflows used on this machine. It includes the Kilo Code Astra/Fable setup, a native Claude Code extension setup where Fable supervises bounded Opus and Sonnet agents, and a VS Code Chat (Copilot) setup that mirrors the Kilo agents.
 
 > This repository contains sanitized examples only. API keys, OAuth tokens, account identifiers, logs, chat history, and machine-specific credentials are deliberately excluded.
 
@@ -71,25 +71,29 @@ flowchart TD
 4. Copy the files under `examples/agent/` to `~/.config/kilo/agent/`.
 5. Merge the relevant keys from `examples/vscode/settings.jsonc` into VS Code user settings.
 6. Configure the local Claude CLI bridge and authenticate providers outside Git.
-7. Optionally apply the version-sensitive remember-last-agent patch.
+7. Optionally install the Kilo bundle patches under `examples/patches/`; LaunchAgent `ai.kilo.reapply-patches` runs `scripts/reapply-kilo-patches.sh` to re-apply them after each Kilo auto-update.
 8. Restart VS Code, select **Astra Engineering Lead**, and run the scenario checks.
 
 Run the repository's static and bridge-protocol checks at any time with `./scripts/verify.sh`.
 
 The native Claude Code extension snapshot is under [`claude-code/`](claude-code/README.md).
 
+VS Code's built-in Chat view (Copilot Chat, plus Peekaboo for the Claude Code and Codex tabs) is under [`copilot-chat/`](copilot-chat/README.md): run `bash copilot-chat/scripts/install.sh --dry-run`, then without `--dry-run`, then finish its UI steps. For DeepSeek and GLM, add OpenRouter under Manage Models > Add Models with your own key and pin "DeepSeek: DeepSeek V4.1 Flash" (`deepseek/deepseek-v4.1-flash`) and "Z.ai: GLM 5.3 Flash" (`z-ai/glm-5.3-flash`). Its settings also turn off the chat and terminal accessibility sounds that `editor.accessibilitySupport: "on"` makes audible.
+
 Browser automation and macOS computer use are documented under [`agent-vision/`](agent-vision/README.md).
 
 ## Documentation
 
-- [Codex model picker: Astra lead, DeepSeek and GLM](docs/codex-model-picker.md)
+- [Astra + Jev Engineering Lead: installation, limits, and verified behavior](docs/astra-jev.md)
+- [Codex model picker: Astra and Fable leads, DeepSeek and GLM](docs/codex-model-picker.md)
 - [Architecture](docs/architecture.md)
 - [Task routing and operating process](docs/task-routing.md)
 - [Installation and recovery](docs/installation.md)
 - [Local Claude CLI bridge](docs/local-cli-bridge.md)
+- [Codex working-status patch](docs/codex-thinking-status-patch.md)
 - [Agent vision: browser and computer use](agent-vision/README.md)
+- [VS Code Chat (Copilot, Claude Code, Codex tabs) setup](copilot-chat/README.md)
 - [VS Code settings](docs/vscode-settings.md)
-- [Remember-last-agent patch](docs/remember-last-agent-patch.md)
 - [Scenario checklist](docs/scenario-checklist.md)
 - [Configuration inventory](docs/configuration-inventory.md)
 - [Security and secret handling](SECURITY.md)
@@ -105,6 +109,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 ├── diagrams/                # Editable Mermaid diagram sources
 ├── docs/                    # Architecture and operating guides
 ├── claude-code/             # Native Claude Code extension state and agents
+├── copilot-chat/            # VS Code Chat (Copilot) agents, models, MCP, settings, installer
 ├── agent-vision/            # Browser automation, computer use, guardrail hooks
 ├── scripts/                 # Runnable repository verification
 ├── third-party/             # Required third-party license notices
@@ -114,7 +119,8 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
     ├── bridges/             # Local CLI MCP bridge
     ├── instructions/        # Coding and chat-output contracts
     ├── patches/             # Optional version-sensitive UI patch
-    └── vscode/              # Relevant VS Code user settings
+    ├── mockups/             # Static HTML previews of proposed UI changes
+    └── vscode/              # VS Code user settings (Kilo and Claude Code keys)
 ```
 
 ## Versioning note
