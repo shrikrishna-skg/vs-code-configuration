@@ -5,22 +5,32 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export function orderAgents(agents) {
+  const fable = agents.find(a => a.name === 'Fable Engineering Lead');
+  const moved = ['Fable + Jev Engineering Lead', 'Astra + Jev Engineering Lead'].map(n => agents.find(a => a.name === n)).filter(Boolean);
+  if (!fable || !moved.length) return agents;
+  const result = agents.filter(a => !moved.includes(a));
+  result.splice(result.indexOf(fable) + 1, 0, ...moved);
+  return result;
+}
+
+// Exact earlier (Astra + Jev only) ordering function; --apply migrates it, --restore removes it.
+export const legacyOrder = `function orderAgents(agents) {
   const target = agents.find(a => a.name === 'Astra + Jev Engineering Lead');
   if (!target || !agents.some(a => a.name === 'Fable Engineering Lead')) return agents;
   const result = agents.filter(a => a !== target);
   result.splice(result.findIndex(a => a.name === 'Fable Engineering Lead') + 1, 0, target);
   return result;
-}
+}`;
 
-// Verified installed 7.7.2/7.7.5/7.7.6 anchors: display only, not default selection.
+// Verified installed 7.7.2/7.7.5/7.7.6/7.7.7 anchors: display only, not default selection.
 const anchors = [
   ['re','de','we'], ['ne','ae','Ne'], ['ne','et','He'],
-].map(([m,set,all])=>({
-  before:`if(${m}.type!=="agentsLoaded")return;${set}(${m}.agents),${all}(${m}.allAgents??${m}.agents)`,
-  after:`if(${m}.type!=="agentsLoaded")return;${set}((${orderAgents.toString()})(${m}.agents)),${all}(${m}.allAgents??${m}.agents)`,
-}));
+].map(([m,set,all])=>{
+  const wrap=fn=>`if(${m}.type!=="agentsLoaded")return;${set}((${fn})(${m}.agents)),${all}(${m}.allAgents??${m}.agents)`;
+  return { before:`if(${m}.type!=="agentsLoaded")return;${set}(${m}.agents),${all}(${m}.allAgents??${m}.agents)`, after:wrap(orderAgents.toString()), legacy:wrap(legacyOrder) };
+});
 export function patch(source, restore = false) {
-  const matches = anchors.flatMap(a => ['before', 'after'].flatMap(state =>
+  const matches = anchors.flatMap(a => ['before', 'after', 'legacy'].flatMap(state =>
     Array.from({ length: source.split(a[state]).length - 1 }, () => ({ a, state }))));
   if (matches.length !== 1) throw new Error('Unsupported or ambiguous Kilo bundle: expected exactly one known agent-list anchor; no changes made.');
   const { a, state } = matches[0];
