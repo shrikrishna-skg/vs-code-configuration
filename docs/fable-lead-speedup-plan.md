@@ -76,3 +76,23 @@ Also added: `ttftMs` on every `session_started`/`session_resumed` log line (firs
 ## Later
 
 - [ ] Re-measure the 564-request baseline after all phases and record the new median and p90 here.
+
+## Phase 5: fewer steps per task (2026-09-22)
+
+Reference session `ses_f34a21737ffeu2bjQVRDDX7K4v`: Fable 121 steps at 15.9 s (42 single `edit`, 46 bash, 0 task) vs Astra 54 steps at 7.4 s (4 multi-file `apply_patch`). The one-decision contract forced one tool per CLI round-trip.
+
+- [x] **apply_patch by config.** Kilo 7.7.7 `ToolRegistry.usePatch` offers `apply_patch` instead of `edit`/`write` when the model id contains `gpt-` or its `family` starts with `gpt`; every other gpt check reads `api.id`. `kilo.jsonc` sets `"family": "gpt-apply-patch"` on `fable-5-1-high` and `fable-5-1-max` only. No bundle patch.
+- [x] **Several tool calls per step.** Decision schema is `{kind, content, tool_calls: [{tool_name, arguments}]}`; `parseDecision` rejects an empty or unknown call, and `openAiToolCalls` emits one OpenAI `tool_calls` entry per call (stream and non-stream). `fable-lead-system.md` and the per-step prompt say to batch independent calls and wait on dependent ones; the "never claim a tool ran" rule is kept. Self-test covers a two-call decision end to end.
+- [x] **Delegate sooner.** Both Fable lead agent files hand work over about 5 edits or several files to one `deepseek-implementer` and batch independent reads.
+- [x] **Status during long steps.** A streamed tool-mode step still silent after 10 s gets one `reasoning_content` delta ("Claude Fable 5.1 High is working..."). Delay keeps quick failures as plain HTTP errors. Kilo echoes it back as `reasoning_content`, which the transcript ignores; the benchmark logged `rewrittenMessages: 0` on every resumed step.
+
+Benchmark: scratch repo, 6 source files plus a test, task renames `formatPrice` to `formatCurrency` across 6 files, adds a parameter and a test, forbids sed, runs `npm test`. One `kilo run --auto --agent "Fable Engineering Lead"` each, fresh copy.
+
+| Run | Steps | Wall s | edit | apply_patch | bash | read/grep/glob | task | Test |
+|---|---|---|---|---|---|---|---|---|
+| Before | 20 | 168 | 7 | 0 | 4 | 8 | 0 | pass |
+| After | 7 | 49 | 0 | 2 | 3 | 4 | 0 | pass |
+
+After: step 1 batched grep+glob+read, one `apply_patch` edited all 6 files, one step batched bash+grep.
+
+- [x] **Full apply_patch spec.** `compactTools` no longer cuts `apply_patch`'s top-level description (Kilo's is 1092 chars, previously cut to 320); its parameter descriptions and every other tool keep the cap. Self-test asserts both. Cost is on the full-catalog step only (resumed steps send the catalog marker): one fresh tool-mode request with Kilo's real 22-tool catalog went from 9287 to 9604 prompt tokens (+317) and 20523 to 21326 prompt chars.

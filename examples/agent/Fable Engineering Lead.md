@@ -37,6 +37,7 @@ For every user request, invoke the `fable_5_1_high` tool from the `Claude Code L
 - For ordinary questions, respond in the first turn. Use tools only when the answer depends on current workspace evidence; do not create a task list or use the shared board.
 - For verification-only requests, inspect the relevant diff/status and run the narrowest authoritative check directly. Do not delegate merely to obtain a second opinion.
 - For a small fix, locate the source, make the focused edit, inspect the diff, and run one relevant check. Do not run the full suite, production build, cross-platform matrix, or independent review unless the change's risk actually requires it or the user requests it.
+- Each Fable step costs about 15 seconds. Hand implementation expected to need more than about 5 edits or several files to one `deepseek-implementer`; keep small fixes direct. Batch independent reads, searches, and edits to different files into one step.
 - Avoid broad filesystem and repository searches when a screenshot, named feature, recent diff, or known path provides a narrower starting point. Never search the home directory for evidence already available in the workspace.
 - Delegate read-heavy work such as multi-file searches, codebase surveys, and log scans to the `explore` agent, and spend your own context on decisions, edits, and verification.
 - Stop investigating once the evidence is sufficient to act. If a simple request is expanding beyond a few focused operations, reassess the route instead of accumulating more searches and reviewers.

@@ -20,6 +20,7 @@ const MAX_IMAGE_BYTES = 24 * 1024 * 1024;
 const MAX_SCHEMA_DESCRIPTION_CHARS = 320;
 const MAX_CLAUDE_SESSIONS = 32;
 const REQUEST_CACHE_MS = 30 * 1000;
+const STATUS_DELAY_MS = 10 * 1000;
 const SESSION_STATE_FILE = resolve(homedir(), ".local/state/kilo/claude-cli-provider-state.json");
 const TOOL_SYSTEM_PROMPT_FILE = resolve(homedir(), ".config/kilo/bridges/fable-lead-system.md");
 const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\r\n]+)$/i;
@@ -436,7 +437,9 @@ function conversationPrompt(messages, imageFiles = []) {
 function compactTools(tools) {
   return tools.map((tool) => ({
     name: tool?.function?.name,
-    description: (tool?.function?.description || "").slice(0, MAX_SCHEMA_DESCRIPTION_CHARS),
+    // apply_patch's description is its patch-format spec (about 1.1K chars);
+    // cut, Fable writes malformed patches.
+    description: tool?.function?.name === "apply_patch" ? tool.function.description || "" : (tool?.function?.description || "").slice(0, MAX_SCHEMA_DESCRIPTION_CHARS),
     parameters: compactSchema(tool?.function?.parameters || { type: "object" })
   })).filter((tool) => tool.name);
 }
@@ -457,9 +460,9 @@ function kiloToolPrompt(messages, tools, imageFiles = [], knownCatalog = "") {
   return [
     "You are the model driving a Kilo Code agent through the authenticated local Claude CLI.",
     "Follow the complete conversation and its system instructions. Kilo, not this CLI process, owns all file, terminal, web, and subagent execution.",
-    "Return exactly one decision: either a final answer or one Kilo tool call. Never claim a tool ran until its result appears in a later TOOL message.",
-    "For a final answer, set kind to final, put the answer in content, set tool_name to an empty string, and arguments to an empty object.",
-    "For a tool call, set kind to tool_call, content to an empty string, tool_name to one available tool name, and arguments to a valid object matching that tool's parameters.",
+    "Return one decision: a final answer, or one or more Kilo tool calls. Batch independent calls (several reads or searches, edits to different files) into one decision; a call that needs another call's result waits for a later turn. Never claim a tool ran until its result appears in a later TOOL message.",
+    "For a final answer, set kind to final, put the answer in content, and set tool_calls to an empty array.",
+    "For tool calls, set kind to tool_call, content to an empty string, and tool_calls to a list of { tool_name, arguments } where tool_name is an available tool and arguments is a valid object matching its parameters.",
     "Use Kilo's task tool when the engineering-lead policy calls for delegation; do not substitute Claude CLI background agents.",
     imageAttachmentPrompt(imageFiles),
     "",
@@ -508,12 +511,48 @@ function toolDecisionSchema(tools) {
     properties: {
       kind: { type: "string", enum: ["final", "tool_call"] },
       content: { type: "string" },
-      tool_name: { type: "string", enum: ["", ...names] },
-      arguments: { type: "object", additionalProperties: true }
+      tool_calls: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            tool_name: { type: "string", enum: names },
+            arguments: { type: "object", additionalProperties: true }
+          },
+          required: ["tool_name", "arguments"],
+          additionalProperties: false
+        }
+      }
     },
-    required: ["kind", "content", "tool_name", "arguments"],
+    required: ["kind", "content", "tool_calls"],
     additionalProperties: false
   };
+}
+
+// The CLI's decision for a tool-mode step: a final answer, or one or more
+// Kilo tool calls that Kilo runs and answers together.
+function parseDecision(payload, tools) {
+  let decision = payload.structured_output;
+  if (!decision && payload.result) {
+    try { decision = JSON.parse(payload.result); } catch {}
+  }
+  const calls = decision?.kind === "tool_call" && Array.isArray(decision.tool_calls) ? decision.tool_calls : [];
+  if (!decision || !["final", "tool_call"].includes(decision.kind) || (decision.kind === "tool_call" && !calls.length)) {
+    throw new Error("Claude CLI did not return a valid Kilo decision");
+  }
+  const unavailable = calls.find((call) => !tools.some((tool) => tool?.function?.name === call?.tool_name));
+  if (unavailable) throw new Error(`Claude CLI requested an unavailable Kilo tool: ${unavailable?.tool_name}`);
+  return decision;
+}
+
+// OpenAI tool_calls entries; index is required in stream deltas and ignored elsewhere.
+function openAiToolCalls(decision) {
+  return decision.tool_calls.map((call, index) => ({
+    index,
+    id: `call_${randomUUID().replaceAll("-", "")}`,
+    type: "function",
+    function: { name: call.tool_name, arguments: JSON.stringify(call.arguments || {}) }
+  }));
 }
 
 function candidateDirectories(text) {
@@ -690,17 +729,11 @@ function runClaude(profile, prompt, cwd, signal, tools = [], session, imageDirec
         return reject(error);
       }
       if (tools.length) {
-        let decision = payload.structured_output;
-        if (!decision && payload.result) {
-          try { decision = JSON.parse(payload.result); } catch {}
+        try {
+          return resolveResult({ decision: parseDecision(payload, tools), usage: normalizeUsage(payload.usage) });
+        } catch (error) {
+          return reject(error);
         }
-        if (!decision || !["final", "tool_call"].includes(decision.kind)) {
-          return reject(new Error("Claude CLI did not return a valid Kilo decision"));
-        }
-        if (decision.kind === "tool_call" && !tools.some((tool) => tool?.function?.name === decision.tool_name)) {
-          return reject(new Error(`Claude CLI requested an unavailable Kilo tool: ${decision.tool_name}`));
-        }
-        return resolveResult({ decision, usage: normalizeUsage(payload.usage) });
       }
       resolveResult({ text: payload.result || "Claude completed the task without a text response.", usage: normalizeUsage(payload.usage) });
     });
@@ -757,17 +790,7 @@ function sendError(response, error) {
 
 function streamCompletion(writer, result) {
   if (result.decision?.kind === "tool_call") {
-    writer.chunk({
-      tool_calls: [{
-        index: 0,
-        id: `call_${randomUUID().replaceAll("-", "")}`,
-        type: "function",
-        function: {
-          name: result.decision.tool_name,
-          arguments: JSON.stringify(result.decision.arguments || {})
-        }
-      }]
-    });
+    writer.chunk({ tool_calls: openAiToolCalls(result.decision) });
     writer.chunk({}, "tool_calls", result.usage);
     return writer.finish();
   }
@@ -874,6 +897,12 @@ const server = createServer(async (request, response) => {
         firstOutputAt ||= Date.now();
         writer.content(text);
       } : null;
+      // One reasoning delta so a long step is not a silent spinner. Delayed so
+      // quick failures (subscription limit) still get a plain HTTP error; Kilo
+      // keeps it as reasoning_content, which the transcript never forwards.
+      const status = writer && setTimeout(() => {
+        if (!firstOutputAt) writer.chunk({ reasoning_content: `${profile.name.replace(/ \(.*/, "")} is working...` });
+      }, STATUS_DELAY_MS);
       const catalogHash = toolsCatalogHash(tools);
       let resumed = Boolean(matched);
       // The catalog only has to be described once per CLI session.
@@ -930,6 +959,7 @@ const server = createServer(async (request, response) => {
         }
         throw error;
       } finally {
+        clearTimeout(status);
         await removeImageAttachments(attachments);
       }
     });
@@ -945,14 +975,7 @@ const server = createServer(async (request, response) => {
           message: {
             role: "assistant",
             content: null,
-            tool_calls: [{
-              id: `call_${randomUUID().replaceAll("-", "")}`,
-              type: "function",
-              function: {
-                name: result.decision.tool_name,
-                arguments: JSON.stringify(result.decision.arguments || {})
-              }
-            }]
+            tool_calls: openAiToolCalls(result.decision)
           },
           finish_reason: "tool_calls"
         }],
@@ -1105,6 +1128,11 @@ if (process.argv.includes("--self-test")) {
   if (resumeArgs.includes("--system-prompt")) {
     throw new Error("Conversation mode must keep the default Claude system prompt");
   }
+  const patchSpec = "*** Begin Patch ".repeat(80);
+  const [keptPatch, cutRead] = compactTools([{ function: { name: "apply_patch", description: patchSpec, parameters: { type: "object", properties: { patchText: { type: "string", description: "p".repeat(600) } } } } }, ...decisionTools]);
+  if (keptPatch.description !== patchSpec || keptPatch.parameters.properties.patchText.description.length !== MAX_SCHEMA_DESCRIPTION_CHARS || cutRead.description.length !== MAX_SCHEMA_DESCRIPTION_CHARS) {
+    throw new Error("Only apply_patch's top-level description may bypass the tool description cap");
+  }
   const catalogHash = toolsCatalogHash(decisionTools);
   const fullCatalogPrompt = kiloToolPrompt([{ role: "user", content: "hi" }], decisionTools);
   const knownCatalogPrompt = kiloToolPrompt([{ role: "user", content: "hi" }], decisionTools, [], catalogHash);
@@ -1126,7 +1154,7 @@ if (process.argv.includes("--self-test")) {
   // The CLI hands the decision over in arbitrary fragments, so a delta can end
   // inside a \" or a \uXXXX escape. Three-character slices force both.
   const answer = "Line one\nLine \"two\" é \\  done";
-  const finalDecision = JSON.stringify({ kind: "final", content: answer, tool_name: "", arguments: {} });
+  const finalDecision = JSON.stringify({ kind: "final", content: answer, tool_calls: [] });
   const finalStream = createDecisionStream();
   let streamedAnswer = "";
   for (let index = 0; index < finalDecision.length; index += 3) {
@@ -1139,12 +1167,38 @@ if (process.argv.includes("--self-test")) {
   if (partialStream.push(`{"kind": "fin`) !== "" || partialStream.push(`al", "content": "half`) !== "half") {
     throw new Error("Streaming started before the decision was known to be a final answer");
   }
-  const callDecision = JSON.stringify({ kind: "tool_call", content: "this must never reach Kilo early", tool_name: "read", arguments: { filePath: "a.txt" } });
+  const callDecision = JSON.stringify({ kind: "tool_call", content: "this must never reach Kilo early", tool_calls: [{ tool_name: "read", arguments: { filePath: "a.txt" } }] });
   const callStream = createDecisionStream();
   for (let index = 0; index < callDecision.length; index += 3) {
     if (callStream.push(callDecision.slice(index, index + 3)) !== "") {
       throw new Error("A Kilo tool call leaked text before the decision was complete");
     }
+  }
+
+  // Several independent Kilo tool calls in one decision become one OpenAI
+  // assistant turn with one tool_calls entry each, so Kilo runs them together.
+  const multiTools = [...decisionTools, { type: "function", function: { name: "grep", parameters: { type: "object" } } }];
+  const multiDecision = parseDecision({ result: JSON.stringify({ kind: "tool_call", content: "", tool_calls: [{ tool_name: "read", arguments: { filePath: "a.js" } }, { tool_name: "grep", arguments: { pattern: "x" } }] }) }, multiTools);
+  const streamed = { headersSent: false, writeHead() { this.headersSent = true; }, write(body) { this.body = (this.body || "") + body; }, end(body) { this.body += body; } };
+  streamCompletion(createStreamWriter(streamed, "id", "fable-5-1-high"), { decision: multiDecision });
+  const emitted = streamed.body.split("\n\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)).choices[0]);
+  const emittedCalls = emitted.flatMap((choice) => choice.delta.tool_calls || []);
+  if (emittedCalls.map((call) => `${call.index}:${call.function.name}:${call.function.arguments}`).join() !== `0:read:{"filePath":"a.js"},1:grep:{"pattern":"x"}` || new Set(emittedCalls.map((call) => call.id)).size !== 2 || emitted.at(-1).finish_reason !== "tool_calls") {
+    throw new Error("A multi-call Kilo decision was not emitted as separate OpenAI tool_calls");
+  }
+  if (toolDecisionSchema(multiTools).properties.tool_calls.items.properties.tool_name.enum.join() !== "read,grep") {
+    throw new Error("The decision schema does not pin tool_calls to the Kilo catalog");
+  }
+  for (const [decision, pattern] of [
+    [{ kind: "tool_call", content: "", tool_calls: [] }, /valid Kilo decision/],
+    [{ kind: "tool_call", content: "", tool_calls: [{ tool_name: "read", arguments: {} }, { tool_name: "bash", arguments: {} }] }, /unavailable Kilo tool: bash/]
+  ]) {
+    let failure = null;
+    try { parseDecision({ structured_output: decision }, multiTools); } catch (error) { failure = error; }
+    if (!pattern.test(failure?.message || "")) throw new Error(`An invalid multi-call decision was accepted: ${JSON.stringify(decision)}`);
+  }
+  if (parseDecision({ structured_output: { kind: "final", content: "done", tool_calls: [] } }, multiTools).content !== "done") {
+    throw new Error("A final answer is no longer accepted as a Kilo decision");
   }
 
   const cancelled = new AbortController();

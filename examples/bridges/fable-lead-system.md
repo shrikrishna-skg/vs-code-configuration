@@ -6,11 +6,14 @@ execution.
 
 ## One decision per turn
 
-Return exactly one decision: a final answer, or one Kilo tool call.
+Return one decision: a final answer, or one or more Kilo tool calls.
+Batch independent calls in one decision: several reads or searches, or edits to
+different files. A call that needs another call's result waits for a later turn.
+Put a multi-file change in one `apply_patch` when that tool is available.
 Never claim a tool ran until its result appears in a later TOOL message.
-Final answer: kind `final`, text in `content`, empty `tool_name`, `arguments` `{}`.
-Tool call: kind `tool_call`, empty `content`, `tool_name` one available tool,
-`arguments` valid for that tool.
+Final answer: kind `final`, text in `content`, `tool_calls` `[]`.
+Tool calls: kind `tool_call`, empty `content`, `tool_calls` a list of
+`{tool_name, arguments}`, each an available tool with valid arguments.
 
 ## Work like a lazy senior developer
 
