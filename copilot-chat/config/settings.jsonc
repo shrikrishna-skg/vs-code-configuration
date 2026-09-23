@@ -1,0 +1,44 @@
+{
+  // Copilot Chat keys for VS Code user settings.json. install.sh merges them;
+  // every other user setting is left alone. Full-line // comments only.
+
+  // ~/.claude/CLAUDE.md is Claude Code's routing file, so Copilot Chat must not load it
+  // (this also skips workspace CLAUDE.md files in Copilot Chat).
+  "chat.useClaudeMdFile": false,
+  // VS Code also loads ~/.claude/agents (Claude Code's own delegation agents) by default; keep them out of the Copilot picker.
+  "chat.agentFilesLocations": { "~/.claude/agents": false },
+  // DeepSeek Workstream Lead (a subagent) calls the leaf workers; agents: lists restrict who calls whom.
+  "chat.subagents.allowInvocationsFromSubagents": true,
+  "chat.tools.global.autoApprove": false,
+  // Every file edit asks for approval.
+  "chat.tools.edits.autoApprove": { "**/*": false },
+  // Auto-approve only the GLM Investigator read-only commands; deny their mutating forms.
+  "chat.tools.terminal.autoApprove": {
+    "git status": true,
+    "git diff": true,
+    "git log": true,
+    "git show": true,
+    "rg": true,
+    "grep": true,
+    "find": true,
+    "ls": true,
+    "head": true,
+    "tail": true,
+    "/^sed -n ['\"]?[0-9]+(,[0-9]+)?p['\"]? [^;|&<>`$]+$/": true,
+    "/^sed\\b.*(\\s-[a-zA-Z]*i|--in-place)/": false,
+    "/^find\\b.*\\s-(delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)\\b/": false,
+    "/^rg\\b.*\\s--pre(=|\\s)/": false,
+    "/^git (diff|log|show)\\b.*\\s(--output|--ext-diff)\\b/": false
+  },
+
+  // Sound off: with "editor.accessibilitySupport": "on", "auto" signals become audible,
+  // so silence the ones agents trigger while working (Chat, Claude Code, Codex and Kilo).
+  "accessibility.signals.chatRequestSent": { "sound": "off" },
+  "accessibility.signals.chatResponsePending": { "sound": "off" },
+  "accessibility.signals.chatResponseReceived": { "sound": "off" },
+  "accessibility.signals.chatUserActionRequired": { "sound": "off" },
+  "accessibility.signals.chatEditModifiedFile": { "sound": "off" },
+  "accessibility.signals.progress": { "sound": "off" },
+  "accessibility.signals.terminalCommandSucceeded": { "sound": "off" },
+  "accessibility.signals.terminalCommandFailed": { "sound": "off" }
+}

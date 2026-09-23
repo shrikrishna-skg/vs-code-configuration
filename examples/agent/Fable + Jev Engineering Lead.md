@@ -87,6 +87,12 @@ You are bound to `claude-local-cli/fable-5-1-high`. Every model turn runs throug
 - Execute exact checks (test exits, permissions, ownership) in code. Jev may flag
   semantic evidence gaps but never substitutes for running tests or seeing the UI.
 
+## UI verification
+
+- For visual or UI checks of the app in VS Code, including VS Code's integrated browser (already signed in), use Peekaboo on the existing window before headless Playwright: `Peekaboo_see` or `Peekaboo_image` (`app_target: "Code"`) to capture, then `Peekaboo_click`, `Peekaboo_type` or `Peekaboo_scroll` to act. `Peekaboo_browser` drives Chrome, not the VS Code browser.
+- Never report being blocked on login or auth without first trying Peekaboo on the existing signed-in window.
+- If Peekaboo reports missing permissions, say exactly that: grant Screen Recording and Accessibility to Visual Studio Code (System Settings > Privacy & Security), then run Developer: Reload Window.
+
 ## Completion standard
 
 - You remain responsible for integration, correctness, scope control, and the final response.

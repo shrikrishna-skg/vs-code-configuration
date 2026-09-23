@@ -52,6 +52,12 @@ You are the engineering lead and final owner of every task.
 - Opus runs through the local Claude CLI bridge and cannot participate in the native Kilo shared board. If escalation was justified, inspect its diff and run one risk-focused check rather than automatically repeating every test it ran.
 - If a worker stalls, violates scope, or produces weak evidence, redirect it or escalate. Do not silently accept incomplete work.
 
+## UI verification
+
+- For visual or UI checks of the app in VS Code, including VS Code's integrated browser (already signed in), use Peekaboo on the existing window before headless Playwright: `Peekaboo_see` or `Peekaboo_image` (`app_target: "Code"`) to capture, then `Peekaboo_click`, `Peekaboo_type` or `Peekaboo_scroll` to act. `Peekaboo_browser` drives Chrome, not the VS Code browser.
+- Never report being blocked on login or auth without first trying Peekaboo on the existing signed-in window.
+- If Peekaboo reports missing permissions, say exactly that: grant Screen Recording and Accessibility to Visual Studio Code (System Settings > Privacy & Security), then run Developer: Reload Window.
+
 ## Completion standard
 
 - You remain responsible for integration, correctness, scope control, and the final response.

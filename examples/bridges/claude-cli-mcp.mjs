@@ -1,41 +1,42 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
-const CLAUDE = process.argv[2];
+const EXTENSIONS = path.join(os.homedir(), ".vscode/extensions");
+// Newest installed Claude Code extension CLI; claude-opus-5-5 needs 2.1.280 or newer.
+const CLAUDE = process.env.KILO_CLAUDE_BIN || path.join(EXTENSIONS, readdirSync(EXTENSIONS)
+  .filter((name) => name.startsWith("anthropic.claude-code-"))
+  .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))[0] || "", "resources/native-binary/claude");
 const ALLOWED_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Agent,Skill";
-
-if (!CLAUDE) {
-  process.stderr.write("Usage: node claude-cli-mcp.mjs /absolute/path/to/claude\n");
-  process.exit(2);
-}
 
 const profiles = {
   opus_5_5_fast: {
     title: "Opus 5.5 Fast",
     model: "claude-opus-5-5",
     effort: "low",
-    description: "Run a complete coding task through the local Claude CLI using Opus with low-latency reasoning."
+    description: "Run a complete coding task through the authenticated local Claude CLI using Opus 5.5 with low-latency reasoning."
   },
   opus_5_5_high: {
     title: "Opus 5.5 High",
     model: "claude-opus-5-5",
     effort: "high",
-    description: "Run a complete coding task through the local Claude CLI using Opus with high reasoning effort."
+    description: "Run a complete coding task through the authenticated local Claude CLI using Opus 5.5 with high reasoning effort."
   },
   fable_5_1_high: {
     title: "Fable 5.1 High",
     model: "fable",
     effort: "high",
-    description: "Run a complete coding task through the local Claude CLI using Fable with high reasoning effort."
+    description: "Run a complete coding task through the authenticated local Claude CLI using Fable 5.1 with high reasoning effort."
   },
   fable_5_1_max: {
     title: "Fable 5.1 Max",
     model: "fable",
     effort: "max",
-    description: "Run a complete coding task through the local Claude CLI using Fable with maximum reasoning effort."
+    description: "Run a complete coding task through the authenticated local Claude CLI using Fable 5.1 with maximum reasoning effort."
   }
 };
 
@@ -46,8 +47,12 @@ function reply(id, result) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
 }
 
-function fail(id, code, message) {
-  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n`);
+function fail(id, code, message, data) {
+  process.stdout.write(`${JSON.stringify({
+    jsonrpc: "2.0",
+    id,
+    error: { code, message, ...(data === undefined ? {} : { data }) }
+  })}\n`);
 }
 
 async function validDirectory(requested) {
@@ -67,28 +72,36 @@ function runClaude(requestId, profile, prompt, cwd) {
       "--output-format", "json",
       "--no-session-persistence",
       "--permission-mode", "acceptEdits",
-      `--allowedTools=${ALLOWED_TOOLS}`,
-      prompt
+      `--allowedTools=${ALLOWED_TOOLS}`
     ];
-    const child = spawn(CLAUDE, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(CLAUDE, args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
     activeCalls.set(requestId, child);
     let stdout = "";
     let stderr = "";
 
+    child.stdin.on("error", (error) => {
+      if (error.code !== "EPIPE") reject(error);
+    });
+    child.stdin.end(prompt);
     child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
     child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
     child.on("error", reject);
     child.on("close", (code, signal) => {
       activeCalls.delete(requestId);
-      if (signal) return reject(new Error(`Claude CLI was stopped by ${signal}`));
+      if (signal) {
+        reject(new Error(`Claude CLI was stopped by ${signal}`));
+        return;
+      }
       let payload;
       try {
         payload = JSON.parse(stdout);
       } catch {
-        return reject(new Error(stderr.trim() || stdout.trim() || `Claude CLI exited with code ${code}`));
+        reject(new Error(stderr.trim() || stdout.trim() || `Claude CLI exited with code ${code}`));
+        return;
       }
       if (code !== 0 || payload.is_error) {
-        return reject(new Error(payload.result || stderr.trim() || `Claude CLI exited with code ${code}`));
+        reject(new Error(payload.result || stderr.trim() || `Claude CLI exited with code ${code}`));
+        return;
       }
       resolve({
         text: payload.result || "Claude completed the task without a text response.",
@@ -107,8 +120,14 @@ function toolDefinitions() {
     inputSchema: {
       type: "object",
       properties: {
-        prompt: { type: "string", description: "Complete task, context, constraints, and verification expectations." },
-        working_directory: { type: "string", description: "Absolute workspace directory for the task." }
+        prompt: {
+          type: "string",
+          description: "The complete task, including relevant context, requirements, and verification expectations."
+        },
+        working_directory: {
+          type: "string",
+          description: "Absolute workspace directory in which Claude should perform the task. Defaults to the MCP server's current directory."
+        }
       },
       required: ["prompt"],
       additionalProperties: false
@@ -131,14 +150,25 @@ async function handle(message) {
     });
     return;
   }
-  if (message.method === "ping") return reply(message.id, {});
-  if (message.method === "tools/list") return reply(message.id, { tools: toolDefinitions() });
-
+  if (message.method === "ping") {
+    reply(message.id, {});
+    return;
+  }
+  if (message.method === "tools/list") {
+    reply(message.id, { tools: toolDefinitions() });
+    return;
+  }
   if (message.method === "tools/call") {
     const profile = profiles[message.params?.name];
     const prompt = message.params?.arguments?.prompt;
-    if (!profile) return fail(message.id, -32602, `Unknown tool: ${message.params?.name || "(missing)"}`);
-    if (typeof prompt !== "string" || !prompt.trim()) return fail(message.id, -32602, "A non-empty prompt is required.");
+    if (!profile) {
+      fail(message.id, -32602, `Unknown tool: ${message.params?.name || "(missing)"}`);
+      return;
+    }
+    if (typeof prompt !== "string" || !prompt.trim()) {
+      fail(message.id, -32602, "A non-empty prompt is required.");
+      return;
+    }
     try {
       const cwd = await validDirectory(message.params.arguments.working_directory);
       const result = await runClaude(message.id, profile, prompt, cwd);
@@ -155,7 +185,6 @@ async function handle(message) {
     }
     return;
   }
-
   fail(message.id, -32601, `Method not found: ${message.method}`);
 }
 
@@ -167,11 +196,13 @@ process.stdin.on("data", (chunk) => {
     const line = input.slice(0, index).trim();
     input = input.slice(index + 1);
     if (!line) continue;
+    let message;
     try {
-      void handle(JSON.parse(line));
+      message = JSON.parse(line);
     } catch {
-      // Ignore malformed transport lines; valid MCP clients send JSON-RPC.
+      continue;
     }
+    void handle(message);
   }
 });
 

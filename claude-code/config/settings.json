@@ -9,5 +9,10 @@
     "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "2",
     "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "6",
     "CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY": "6"
+  },
+  "permissions": {
+    "deny": [
+      "mcp__peekaboo__browser"
+    ]
   }
 }

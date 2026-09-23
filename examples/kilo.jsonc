@@ -11,6 +11,8 @@
   "subagent_depth": 2,
   "permission": {
     "TypeSafe_*": "deny",
+    "Peekaboo_*": "allow",
+    "Peekaboo_browser": "deny",
     "external_directory": {
       "~/.claude/file-history/*": "allow",
       "~/.config/ponytail/*": "allow",
@@ -42,6 +44,20 @@
         "<ABSOLUTE_PATH_TO_NODE>",
         "<ABSOLUTE_PATH_TO_BRIDGE_MJS>",
         "<ABSOLUTE_PATH_TO_CLAUDE_EXECUTABLE>"
+      ],
+      "enabled": true,
+      "timeout": 600000
+    },
+    "Peekaboo": {
+      "type": "local",
+      "command": [
+        "<ABSOLUTE_PATH_TO_PEEKABOO>",
+        "mcp",
+        "serve",
+        "--no-remote",
+        "--transport",
+        "stdio",
+        "--allow-foreground"
       ],
       "enabled": true,
       "timeout": 600000

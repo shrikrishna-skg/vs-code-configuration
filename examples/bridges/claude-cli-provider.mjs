@@ -18,7 +18,7 @@ const DEFAULT_DIRECTORY = "/Users/shri/Documents/Codex";
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 24 * 1024 * 1024;
 const MAX_SCHEMA_DESCRIPTION_CHARS = 320;
-const MAX_CLAUDE_SESSIONS = 32;
+const MAX_CLAUDE_SESSIONS = 128;
 const REQUEST_CACHE_MS = 30 * 1000;
 const STATUS_DELAY_MS = 10 * 1000;
 const SESSION_STATE_FILE = resolve(homedir(), ".local/state/kilo/claude-cli-provider-state.json");
@@ -31,7 +31,13 @@ const SUBSCRIPTION_LIMIT = /hit your (?:[\w-]+ ){0,3}limit|\b(?:usage|session|we
 // "resets 9:30pm", "resets Sep 29 at 3pm", "resets Oct 3, 9pm"
 const RESET_TIME = /resets\s+(?:at\s+)?(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i;
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-let claudeQueue = Promise.resolve();
+// ponytail: a fixed cap on parallel CLI runs across all chats, not an adaptive
+// one; parallel runs share one subscription's rate limit. Upgrade path is
+// backing off the cap when the CLI reports rate limiting.
+const CLAUDE_CONCURRENCY = Math.min(8, Math.max(1, Number.parseInt(process.env.CLAUDE_BRIDGE_CONCURRENCY, 10) || 3));
+const conversationLocks = new Map();
+const claudeSlotWaiters = [];
+let activeClaude = 0;
 let stateWrite = Promise.resolve();
 let subscriptionLimit = null;
 let claudeBinary = null;
@@ -208,10 +214,33 @@ function rememberSubscriptionLimit(message) {
   return subscriptionLimit;
 }
 
-function queueClaude(task) {
-  const queued = claudeQueue.catch(() => {}).then(task);
-  claudeQueue = queued.catch(() => {});
+// One conversation runs one CLI job at a time, in arrival order, so a CLI
+// session is never resumed twice at once. matchingClaudeSession only continues
+// sessions with the same model, cwd and anchor, i.e. the same lock key.
+function withConversationLock(key, task) {
+  const queued = (conversationLocks.get(key) || Promise.resolve()).then(task);
+  const tail = queued.catch(() => {});
+  conversationLocks.set(key, tail);
+  tail.then(() => { if (conversationLocks.get(key) === tail) conversationLocks.delete(key); });
   return queued;
+}
+
+// Different conversations share CLAUDE_CONCURRENCY CLI slots, first come first served.
+async function withClaudeSlot(task) {
+  if (activeClaude < CLAUDE_CONCURRENCY) activeClaude += 1;
+  else await new Promise((resolveSlot) => claudeSlotWaiters.push(resolveSlot));
+  try {
+    return await task();
+  } finally {
+    // Hand the slot straight to the next waiter so a newcomer cannot jump the line.
+    const next = claudeSlotWaiters.shift();
+    if (next) next();
+    else activeClaude -= 1;
+  }
+}
+
+function conversationLockKey(model, cwd, anchor) {
+  return JSON.stringify([model, cwd, anchor]);
 }
 
 function cancellationError() {
@@ -248,22 +277,29 @@ function commonPrefixLength(left, right) {
 }
 
 // Kilo rewrites message 0 mid-task: its system <env> block grows. The first
-// user turn is what actually identifies a conversation.
+// user turn is what actually identifies a conversation. VS Code opens with a
+// user message of workspace context (<environment_info>/<workspace_info>) that
+// every chat in a workspace shares, so only then does the next user message
+// join the anchor. Kilo's first user turn anchors alone, as before.
+// Without roles (sessions saved before anchors were stored) it is message 1.
 // ponytail: two tasks in one directory opening with byte-identical first user
-// turns would share a CLI session. Upgrade path is a Kilo-supplied task id.
-function conversationAnchor(hashes) {
-  return hashes.length > 1 ? hashes[1] : "";
+// turns would share a CLI session. Upgrade path is a client-supplied task id.
+function conversationAnchor(hashes, messages = null) {
+  if (!messages) return hashes.length > 1 ? hashes[1] : "";
+  const first = messages.findIndex((message) => !["system", "developer"].includes(message?.role));
+  if (first < 0) return "";
+  const vscodeContext = messages[first].role === "user" && /<(?:environment|workspace)_info>/.test(contentText(messages[first].content));
+  return vscodeContext && messages[first + 1]?.role === "user" ? `${hashes[first]}:${hashes[first + 1]}` : hashes[first];
 }
 
-function matchingClaudeSession(model, cwd, hashes) {
+function matchingClaudeSession(model, cwd, hashes, anchor = conversationAnchor(hashes)) {
   const candidates = claudeSessions.filter((session) => session.model === model && session.cwd === cwd);
   const exact = candidates.find((session) => sameHashes(session.hashes, hashes));
   if (exact?.result && Date.now() - exact.resultAt <= REQUEST_CACHE_MS) {
     return { session: exact, cached: true, start: hashes.length };
   }
-  const anchor = conversationAnchor(hashes);
   const continued = anchor ? candidates
-    .filter((session) => conversationAnchor(session.hashes) === anchor)
+    .filter((session) => (session.anchor ?? conversationAnchor(session.hashes)) === anchor)
     .sort((left, right) =>
       commonPrefixLength(right.hashes, hashes) - commonPrefixLength(left.hashes, hashes) || right.lastUsed - left.lastUsed
     )[0] : null;
@@ -290,7 +326,7 @@ function rememberClaudeSession(session) {
 function saveProviderState() {
   const state = {
     subscriptionLimit: subscriptionLimit ? { message: subscriptionLimit.message, until: subscriptionLimit.until.toISOString(), account: subscriptionLimit.account } : null,
-    sessions: claudeSessions.map(({ id, model, cwd, hashes, toolsHash, lastUsed }) => ({ id, model, cwd, hashes, toolsHash, lastUsed }))
+    sessions: claudeSessions.map(({ id, model, cwd, hashes, anchor, toolsHash, lastUsed }) => ({ id, model, cwd, hashes, anchor, toolsHash, lastUsed }))
   };
   stateWrite = stateWrite.catch(() => {}).then(async () => {
     await mkdir(dirname(SESSION_STATE_FILE), { recursive: true });
@@ -307,7 +343,7 @@ async function loadProviderState() {
     const loaded = Array.isArray(state.sessions) ? state.sessions : [];
     for (const session of loaded.slice(0, MAX_CLAUDE_SESSIONS)) {
       if (typeof session?.id !== "string" || typeof session?.model !== "string" || typeof session?.cwd !== "string" || !Array.isArray(session?.hashes)) continue;
-      claudeSessions.push({ ...session, toolsHash: typeof session.toolsHash === "string" ? session.toolsHash : "", result: null, resultAt: 0 });
+      claudeSessions.push({ ...session, anchor: typeof session.anchor === "string" ? session.anchor : undefined, toolsHash: typeof session.toolsHash === "string" ? session.toolsHash : "", result: null, resultAt: 0 });
     }
     subscriptionLimit = persistedLimit(state.subscriptionLimit, claudeAuth?.email);
     process.stdout.write(`${JSON.stringify({ event: "state_loaded", sessions: claudeSessions.length, limitedUntil: subscriptionLimit?.until?.toISOString() || null })}\n`);
@@ -373,7 +409,7 @@ function imageAttachmentPrompt(files) {
   if (!files.length) return "";
   return [
     "IMAGE ATTACHMENTS",
-    "The user supplied the image files below. Use the Read tool to inspect every image relevant to this request before answering or making a Kilo decision. Do not say an image is unavailable merely because it is a local path.",
+    "The user supplied the image files below. Use the Read tool to inspect every image relevant to this request before answering or making a tool-call decision. Do not say an image is unavailable merely because it is a local path.",
     ...files.map((file, index) => `${index + 1}. ${file}`)
   ].join("\n");
 }
@@ -425,9 +461,9 @@ function conversationPrompt(messages, imageFiles = []) {
   const transcript = conversationTranscript(messages);
 
   return [
-    "Complete the Kilo Code request below using your own Claude Code tools.",
+    "Complete the coding-agent request below (from Kilo Code or VS Code) using your own Claude Code tools.",
     "You are running through the authenticated local Claude CLI. Perform required file and terminal work directly, verify it, and return a concise final result.",
-    "Do not ask Kilo to execute tool calls and do not claim to have used an external Claude API or gateway.",
+    "Do not ask the client to execute tool calls and do not claim to have used an external Claude API or gateway.",
     imageAttachmentPrompt(imageFiles),
     "",
     transcript
@@ -454,16 +490,16 @@ function kiloToolPrompt(messages, tools, imageFiles = [], knownCatalog = "") {
   // summarized away. Ceiling accepted because --json-schema still pins the
   // legal tool names; upgrade path is the resend-on-invalid-decision retry.
   const catalog = knownCatalog
-    ? `AVAILABLE KILO TOOLS: unchanged since earlier in this session (catalog #${knownCatalog.slice(0, 8)})`
-    : `AVAILABLE KILO TOOLS\n${JSON.stringify(compactTools(tools))}`;
+    ? `AVAILABLE CLIENT TOOLS: unchanged since earlier in this session (catalog #${knownCatalog.slice(0, 8)})`
+    : `AVAILABLE CLIENT TOOLS\n${JSON.stringify(compactTools(tools))}`;
 
   return [
-    "You are the model driving a Kilo Code agent through the authenticated local Claude CLI.",
-    "Follow the complete conversation and its system instructions. Kilo, not this CLI process, owns all file, terminal, web, and subagent execution.",
-    "Return one decision: a final answer, or one or more Kilo tool calls. Batch independent calls (several reads or searches, edits to different files) into one decision; a call that needs another call's result waits for a later turn. Never claim a tool ran until its result appears in a later TOOL message.",
+    "You are the model driving a coding agent (Kilo Code or VS Code) through the authenticated local Claude CLI.",
+    "Follow the complete conversation and its system instructions. The agent client, not this CLI process, owns all file, terminal, web, and subagent execution.",
+    "Return one decision: a final answer, or one or more client tool calls. Batch independent calls (several reads or searches, edits to different files) into one decision; a call that needs another call's result waits for a later turn. Never claim a tool ran until its result appears in a later TOOL message.",
     "For a final answer, set kind to final, put the answer in content, and set tool_calls to an empty array.",
     "For tool calls, set kind to tool_call, content to an empty string, and tool_calls to a list of { tool_name, arguments } where tool_name is an available tool and arguments is a valid object matching its parameters.",
-    "Use Kilo's task tool when the engineering-lead policy calls for delegation; do not substitute Claude CLI background agents.",
+    "Use the client's own subagent tool (Kilo's task tool) when the engineering-lead policy calls for delegation; do not substitute Claude CLI background agents.",
     imageAttachmentPrompt(imageFiles),
     "",
     catalog,
@@ -559,7 +595,9 @@ function candidateDirectories(text) {
   const matches = [];
   const patterns = [
     /<cwd>\s*([^<\n]+?)\s*<\/cwd>/gi,
-    /(?:current working directory|working directory|workspace directory|workspace root|cwd)\s*(?:is|:|=)\s*[`"']?([^\n<`"']+)/gi
+    /(?:current working directory|working directory|workspace directory|workspace root|cwd)\s*(?:is|:|=)\s*[`"']?([^\n<`"']+)/gi,
+    // VS Code's <workspace_info>; last, so Kilo's own markers still win.
+    /workspace with the following folders:\s*\n-\s*([^\n]+)/gi
   ];
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) matches.push(match[1].trim());
@@ -817,7 +855,7 @@ const server = createServer(async (request, response) => {
       transport: "authenticated-local-claude-cli",
       authMethod: claudeAuth?.authMethod || null,
       subscriptionType: claudeAuth?.subscriptionType || null,
-      serialized: true,
+      concurrency: { limit: CLAUDE_CONCURRENCY, active: activeClaude, queued: claudeSlotWaiters.length, conversations: conversationLocks.size },
       sessionReuse: true,
       sessions: claudeSessions.length,
       limitedUntil: cachedSubscriptionError()?.until?.toISOString() || null
@@ -868,15 +906,21 @@ const server = createServer(async (request, response) => {
     // so its deltas include narration between tool calls, not just the answer
     // Kilo currently receives from the result line.
     const writer = body.stream && tools.length ? createStreamWriter(response, id, body.model) : null;
-    const result = await queueClaude(async () => {
+    const hashes = messageHashes(body.messages);
+    const anchor = conversationAnchor(hashes, body.messages);
+    const result = await withConversationLock(conversationLockKey(body.model, cwd, anchor), async () => {
       if (controller.signal.aborted) throw cancellationError();
-      const hashes = messageHashes(body.messages);
-      const matched = matchingClaudeSession(body.model, cwd, hashes);
+      const matched = matchingClaudeSession(body.model, cwd, hashes, anchor);
+      // A repeat of a just-finished request never waits behind other chats.
       if (matched?.cached) {
         matched.session.lastUsed = Date.now();
         process.stdout.write(`${JSON.stringify({ event: "session_cache_hit", session: matched.session.id })}\n`);
         return matched.session.result;
       }
+      return withClaudeSlot(() => runConversationStep(matched));
+    });
+    async function runConversationStep(matched) {
+      if (controller.signal.aborted) throw cancellationError();
       const limited = cachedSubscriptionError();
       if (limited) throw subscriptionLimitError(limited);
       const session = matched?.session || {
@@ -938,6 +982,7 @@ const server = createServer(async (request, response) => {
         }
         session.toolsHash = catalogHash;
         session.hashes = hashes;
+        session.anchor = anchor;
         session.result = output;
         session.resultAt = Date.now();
         rememberClaudeSession(session);
@@ -962,7 +1007,7 @@ const server = createServer(async (request, response) => {
         clearTimeout(status);
         await removeImageAttachments(attachments);
       }
-    });
+    }
     if (body.stream) return streamCompletion(writer || createStreamWriter(response, id, body.model), result);
     if (result.decision?.kind === "tool_call") {
       return sendJson(response, 200, {
@@ -1018,6 +1063,24 @@ if (process.argv.includes("--self-test")) {
     }
   } finally {
     await removeImageAttachments(attachments);
+  }
+  // Kilo (openai-compatible) never inlines MCP images such as a Peekaboo
+  // see/image capture in the role "tool" message: it appends a user message
+  // "Attached media from tool result:" with an image_url part. That capture
+  // must reach Claude as a Read-able file, and its base64 must stay out of the prompt.
+  const peekabooStep = [
+    { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "Peekaboo_see", arguments: "{\"app_target\":\"Code\"}" } }] },
+    { role: "tool", tool_call_id: "call_1", content: "UI State Captured\nSnapshot: s1" },
+    { role: "user", content: [{ type: "text", text: "Attached media from tool result:" }, { type: "image_url", image_url: { url: image } }] }
+  ];
+  const captured = await materializeImageAttachments(peekabooStep);
+  try {
+    const capturePrompt = kiloToolPrompt(peekabooStep, [{ type: "function", function: { name: "Peekaboo_see" } }], captured.files);
+    if (captured.files.length !== 1 || !capturePrompt.includes(captured.files[0]) || capturePrompt.includes("iVBORw0KGgo")) {
+      throw new Error("A Peekaboo tool-result screenshot does not reach Claude as a Read-able file");
+    }
+  } finally {
+    await removeImageAttachments(captured);
   }
   if (messageHashes([{ content: [{ type: "input_image", image_url: "data:image/png;base64,AAAA" }] }])[0] === messageHashes([{ content: [{ type: "input_image", image_url: "data:image/png;base64,BBBB" }] }])[0]) {
     throw new Error("Distinct embedded images share a Claude session hash");
@@ -1251,6 +1314,115 @@ if (process.argv.includes("--self-test")) {
   }
   claudeSessions.pop();
   claudeSessions.pop();
+
+  // VS Code (Copilot Chat Custom Endpoint) shape: snake_case tools plus MCP
+  // tools, a workspace-context user message before the request, and tool-result
+  // images inlined as image_url parts of the role "tool" message.
+  const vscodeTools = ["read_file", "replace_string_in_file", "run_in_terminal", "mcp_peekaboo_see"]
+    .map((name) => ({ type: "function", function: { name, description: `${name} tool`, parameters: { type: "object", properties: { filePath: { type: "string" } } } } }));
+  const vscodeContext = { role: "user", content: "<environment_info>macOS</environment_info>\n<workspace_info>\nI am working in a workspace with the following folders:\n- /tmp \n</workspace_info>" };
+  const vscodeChat = [
+    { role: "system", content: "You are an expert AI programming assistant." },
+    vscodeContext,
+    { role: "user", content: "<userRequest>\nTake a screenshot of VS Code\n</userRequest>" },
+    { role: "assistant", content: "", tool_calls: [{ id: "call_v1", type: "function", function: { name: "mcp_peekaboo_see", arguments: "{}" } }] },
+    { role: "tool", tool_call_id: "call_v1", content: [{ type: "text", text: "UI State Captured" }, { type: "image_url", image_url: { url: image, media_type: "image/png" } }] }
+  ];
+  if (toolDecisionSchema(vscodeTools).properties.tool_calls.items.properties.tool_name.enum.join() !== "read_file,replace_string_in_file,run_in_terminal,mcp_peekaboo_see"
+    || parseDecision({ structured_output: { kind: "tool_call", content: "", tool_calls: [{ tool_name: "replace_string_in_file", arguments: { filePath: "a" } }] } }, vscodeTools).tool_calls[0].tool_name !== "replace_string_in_file") {
+    throw new Error("VS Code tool names are not accepted as client tool calls");
+  }
+  const vscodeImage = await materializeImageAttachments(vscodeChat);
+  try {
+    const vscodePrompt = kiloToolPrompt(vscodeChat, vscodeTools, vscodeImage.files);
+    if (vscodeImage.files.length !== 1 || !vscodePrompt.includes(vscodeImage.files[0]) || vscodePrompt.includes("iVBORw0KGgo") || !vscodePrompt.includes("\"mcp_peekaboo_see\"") || /Kilo/.test(vscodePrompt.replace("Kilo Code or VS Code", "").replace("Kilo's task tool", ""))) {
+      throw new Error("A VS Code tool-result image does not reach Claude as a Read-able file, or the prompt is Kilo-only");
+    }
+  } finally {
+    await removeImageAttachments(vscodeImage);
+  }
+  if (await workingDirectory(contentText(vscodeContext.content)) !== "/tmp") {
+    throw new Error("The VS Code workspace folder is not used as the CLI working directory");
+  }
+  // One bridge serves Kilo and VS Code: each conversation keeps its own CLI
+  // session and lock, and different conversations run in parallel. Two VS Code chats in one
+  // workspace share the context message, so it cannot be the anchor alone.
+  const kiloChat = [{ role: "system", content: "<env>kilo</env>" }, { role: "user", content: "Fix the bug" }, { role: "assistant", content: "", tool_calls: [{ id: "call_k1", type: "function", function: { name: "read", arguments: "{}" } }] }];
+  const otherVscodeChat = [vscodeChat[0], vscodeContext, { role: "user", content: "<userRequest>\nExplain this repo\n</userRequest>" }];
+  const shapes = [kiloChat, vscodeChat, otherVscodeChat].map((messages) => {
+    const hashes = messageHashes(messages);
+    return { hashes, anchor: conversationAnchor(hashes, messages) };
+  });
+  // A Kilo turn can follow an aborted one with no assistant reply in between.
+  const kiloRetry = [...kiloChat.slice(0, 2), { role: "user", content: "Try again" }];
+  if (shapes[0].anchor !== conversationAnchor(shapes[0].hashes) || conversationAnchor(messageHashes(kiloChat.slice(0, 2)), kiloChat.slice(0, 2)) !== shapes[0].anchor
+    || conversationAnchor(messageHashes(kiloRetry), kiloRetry) !== shapes[0].anchor) {
+    throw new Error("The Kilo conversation anchor changed");
+  }
+  const parallel = shapes.slice(0, 2).map(({ hashes, anchor }, index) => ({ id: `parallel-${index}`, model: "opus-5-5-fast", cwd: DEFAULT_DIRECTORY, hashes, anchor, result: null, resultAt: 0, lastUsed: Date.now() }));
+  claudeSessions.push(...parallel);
+  try {
+    const nextStep = (messages, extra) => {
+      const hashes = messageHashes([...messages, extra]);
+      return matchingClaudeSession("opus-5-5-fast", DEFAULT_DIRECTORY, hashes, conversationAnchor(hashes, [...messages, extra]))?.session.id;
+    };
+    const toolResult = { role: "tool", tool_call_id: "call_x", content: "ok" };
+    if (nextStep(kiloChat, toolResult) !== "parallel-0" || nextStep(vscodeChat, toolResult) !== "parallel-1" || nextStep(otherVscodeChat, toolResult)) {
+      throw new Error("Concurrent Kilo and VS Code conversations do not map to distinct Claude sessions");
+    }
+  } finally {
+    claudeSessions.splice(claudeSessions.indexOf(parallel[0]), 2);
+  }
+
+  // The request handler's scheduling: conversation lock, then a CLI slot.
+  // Fake 40 ms jobs stand in for runClaude and record when they ran.
+  const runs = [];
+  let running = 0;
+  let peak = 0;
+  const fakeJob = (key, label, fail = false) => withConversationLock(key, () => withClaudeSlot(async () => {
+    const run = { label, start: performance.now() };
+    running += 1;
+    peak = Math.max(peak, running);
+    await new Promise((resolveJob) => setTimeout(resolveJob, 40));
+    running -= 1;
+    run.end = performance.now();
+    runs.push(run);
+    if (fail) throw new Error("fake failure");
+  }));
+  const keyFor = (messages) => {
+    const hashes = messageHashes(messages);
+    return conversationLockKey("opus-5-5-fast", DEFAULT_DIRECTORY, conversationAnchor(hashes, messages));
+  };
+  const toolStep = { role: "tool", tool_call_id: "call_k1", content: "ok" };
+  if (keyFor(kiloChat) !== keyFor([...kiloChat, toolStep]) || keyFor(kiloChat) === keyFor(vscodeChat) || keyFor(vscodeChat) === keyFor(otherVscodeChat)) {
+    throw new Error("Conversation lock keys do not follow the conversation anchor");
+  }
+  const overlaps = (left, right) => left.start < right.end && right.start < left.end;
+  const byLabel = (label) => runs.find((run) => run.label === label);
+  await Promise.all([fakeJob(keyFor(kiloChat), "kilo"), fakeJob(keyFor(vscodeChat), "vscode")]);
+  if (CLAUDE_CONCURRENCY > 1 && !overlaps(byLabel("kilo"), byLabel("vscode"))) {
+    throw new Error("Independent Kilo and VS Code conversations still run one after another");
+  }
+  runs.length = 0;
+  await Promise.all([
+    fakeJob(keyFor(kiloChat), "step-1", true).catch(() => {}),
+    fakeJob(keyFor([...kiloChat, toolStep]), "step-2"),
+    fakeJob(keyFor([...kiloChat, toolStep, { role: "user", content: "next" }]), "step-3")
+  ]);
+  if (runs.map((run) => run.label).join() !== "step-1,step-2,step-3" || overlaps(byLabel("step-1"), byLabel("step-2")) || overlaps(byLabel("step-2"), byLabel("step-3"))) {
+    throw new Error("Two steps of one conversation overlapped, ran out of order, or a failure jammed its lock");
+  }
+  runs.length = 0;
+  peak = 0;
+  const capped = Array.from({ length: CLAUDE_CONCURRENCY + 2 }, (unused, index) => `chat-${index}`);
+  await Promise.all(capped.map((label) => fakeJob(label, label)));
+  const starts = [...runs].sort((left, right) => left.start - right.start).map((run) => run.label);
+  if (peak !== CLAUDE_CONCURRENCY || runs.length !== capped.length || starts.join() !== capped.join()) {
+    throw new Error(`The CLI concurrency cap was not respected in order: peak ${peak} of ${CLAUDE_CONCURRENCY}, starts ${starts.join()}`);
+  }
+  if (activeClaude !== 0 || claudeSlotWaiters.length || conversationLocks.size) {
+    throw new Error("CLI slots or conversation locks leaked after the jobs finished");
+  }
   process.stdout.write("Claude prompt compaction self-test passed.\n");
 } else {
   claudeBinary = await resolveClaudeBinary();

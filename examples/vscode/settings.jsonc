@@ -11,6 +11,7 @@
   "claudeCode.preferredLocation": "panel",
   "claudeCode.hideOnboarding": true,
   "editor.accessibilitySupport": "on",
+  // Copilot Chat keys (chat.*) and the accessibility.signals.* sound-off keys: copilot-chat/config/settings.jsonc.
 
   "kilo-code.new.agentWorkStyle": "autonomous",
   "kilo-code.new.model.providerID": "openai",

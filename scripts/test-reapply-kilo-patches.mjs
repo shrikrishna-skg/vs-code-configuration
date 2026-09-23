@@ -30,15 +30,28 @@ const bin = path.join(tmp, "bin"), notes = path.join(tmp, "notes")
 fs.mkdirSync(bin)
 fs.writeFileSync(path.join(bin, "osascript"), `#!/bin/sh\necho "$2" >> "${notes}"\n`, { mode: 0o755 })
 
+// Fake HOME with the sanitized examples, so the Peekaboo guard never reads live
+// ~/.claude.json, ~/.codex or the VS Code user dir (a failing guard would add a notification).
+const home = path.join(tmp, "home")
+for (const [from, to] of [["copilot-chat/config/mcp.json", "Library/Application Support/Code/User/mcp.json"],
+  ["claude-code/config/settings.json", ".claude/settings.json"], ["copilot-chat/config/config.peekaboo.toml", ".codex/config.toml"]]) {
+  fs.mkdirSync(path.dirname(path.join(home, to)), { recursive: true })
+  fs.copyFileSync(path.join(root, from), path.join(home, to))
+}
+fs.writeFileSync(path.join(home, ".claude.json"), JSON.stringify({ mcpServers: { peekaboo: { type: "stdio", command: "peekaboo",
+  args: ["mcp", "serve", "--no-remote", "--transport", "stdio", "--allow-foreground"] } } }))
+
 const run = () => execFileSync("bash", [path.join(root, "scripts/reapply-kilo-patches.sh")], {
-  env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, KILO_EXTENSIONS_DIR: path.join(tmp, "ext"),
-    KILO_PATCH_DIR: path.join(root, "examples/patches"), KILO_PATCH_LOG: path.join(tmp, "log"), KILO_PATCH_SETTLE: "0" },
+  env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, KILO_EXTENSIONS_DIR: path.join(tmp, "ext"),
+    KILO_PATCH_DIR: path.join(root, "examples/patches"), KILO_PATCH_LOG: path.join(tmp, "log"), KILO_PATCH_SETTLE: "0",
+    KILO_CONFIG: path.join(root, "examples/kilo.jsonc") },
 })
 const read = (f) => fs.existsSync(f) ? fs.readFileSync(f, "utf8") : ""
 
 run()
 assert.match(read(path.join(tmp, "log")), /re-applied patches to kilocode\.kilo-code-9\.9\.9/)
 assert.match(read(notes), /Kilo patches re-applied/)
+assert.match(read(path.join(tmp, "log")), /Peekaboo MCP config OK: .*\.codex\/config\.toml/)
 for (const marker of ["orderAgents", "Xi.forget", "persistLastSelectedAgent"]) assert.ok(read(path.join(dist, "webview.js")).includes(marker), marker)
 assert.match(read(path.join(dist, "extension.js")), /persistLastSelectedAgent/)
 const before = ["webview.js", "agent-manager.js", "extension.js"].map((f) => read(path.join(dist, f)))

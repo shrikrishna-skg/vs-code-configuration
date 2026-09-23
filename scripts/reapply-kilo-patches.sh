@@ -44,6 +44,10 @@ attempt() {
 }
 
 sleep "$settle"
+# Screen automation guard: Kilo, VS Code Chat (mcp.json), Claude Code (~/.claude.json, settings.json)
+# and Codex (~/.codex/config.toml) need Peekaboo started with "mcp serve --no-remote", browser off.
+node "$patches/check-peekaboo-mcp.mjs" "${KILO_CONFIG:-$HOME/.config/kilo/kilo.jsonc}" ||
+  notify "Peekaboo MCP config check FAILED — see ~/.config/kilo/logs/kilo-patches.log"
 if attempt || { say "retrying in ${settle}s"; sleep "$settle"; attempt; }; then
   [ "$applied" = 1 ] && notify "Kilo patches re-applied — run Developer: Reload Window"
   exit 0

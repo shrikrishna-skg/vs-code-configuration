@@ -2,7 +2,7 @@
 
 ![Kilo Code multi-agent configuration](assets/hero.svg)
 
-A reproducible, security-conscious blueprint for the VS Code workflows used on this machine. It includes the Kilo Code Astra/Fable setup and a native Claude Code extension setup where Fable supervises bounded Opus and Sonnet agents.
+A reproducible, security-conscious blueprint for the VS Code workflows used on this machine. It includes the Kilo Code Astra/Fable setup, a native Claude Code extension setup where Fable supervises bounded Opus and Sonnet agents, and a VS Code Chat (Copilot) setup that mirrors the Kilo agents.
 
 > This repository contains sanitized examples only. API keys, OAuth tokens, account identifiers, logs, chat history, and machine-specific credentials are deliberately excluded.
 
@@ -78,6 +78,8 @@ Run the repository's static and bridge-protocol checks at any time with `./scrip
 
 The native Claude Code extension snapshot is under [`claude-code/`](claude-code/README.md).
 
+VS Code's built-in Chat view (Copilot Chat, plus Peekaboo for the Claude Code and Codex tabs) is under [`copilot-chat/`](copilot-chat/README.md): run `bash copilot-chat/scripts/install.sh --dry-run`, then without `--dry-run`, then finish its UI steps. For DeepSeek and GLM, add OpenRouter under Manage Models > Add Models with your own key and pin "DeepSeek: DeepSeek V4.1 Flash" (`deepseek/deepseek-v4.1-flash`) and "Z.ai: GLM 5.3 Flash" (`z-ai/glm-5.3-flash`). Its settings also turn off the chat and terminal accessibility sounds that `editor.accessibilitySupport: "on"` makes audible.
+
 Browser automation and macOS computer use are documented under [`agent-vision/`](agent-vision/README.md).
 
 ## Documentation
@@ -90,6 +92,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 - [Local Claude CLI bridge](docs/local-cli-bridge.md)
 - [Codex working-status patch](docs/codex-thinking-status-patch.md)
 - [Agent vision: browser and computer use](agent-vision/README.md)
+- [VS Code Chat (Copilot, Claude Code, Codex tabs) setup](copilot-chat/README.md)
 - [VS Code settings](docs/vscode-settings.md)
 - [Scenario checklist](docs/scenario-checklist.md)
 - [Configuration inventory](docs/configuration-inventory.md)
@@ -106,6 +109,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 ├── diagrams/                # Editable Mermaid diagram sources
 ├── docs/                    # Architecture and operating guides
 ├── claude-code/             # Native Claude Code extension state and agents
+├── copilot-chat/            # VS Code Chat (Copilot) agents, models, MCP, settings, installer
 ├── agent-vision/            # Browser automation, computer use, guardrail hooks
 ├── scripts/                 # Runnable repository verification
 ├── third-party/             # Required third-party license notices
@@ -116,7 +120,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
     ├── instructions/        # Coding and chat-output contracts
     ├── patches/             # Optional version-sensitive UI patch
     ├── mockups/             # Static HTML previews of proposed UI changes
-    └── vscode/              # Relevant VS Code user settings
+    └── vscode/              # VS Code user settings (Kilo and Claude Code keys)
 ```
 
 ## Versioning note
