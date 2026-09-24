@@ -69,10 +69,12 @@ The Chat tab reaches Fable and Opus through the local Claude CLI bridge (`ai.kil
 
 - **Claude models:** `chatLanguageModels.json` defines one Custom Endpoint group with `fable-5-1-high`, `fable-5-1-max`, `opus-5-5-fast` and `opus-5-5-high`. Tool calling, vision and thinking are on. Custom Endpoint needs no API key; the bridge ignores the empty `Authorization` header.
 - **Astra, Sol, Luna:** Copilot's own models ("GPT-6 Astra", "GPT-5.6 Sol", "GPT-5.6 Luna"). Custom Endpoint also accepts `apiType: "responses"`, so the Codex router (`http://127.0.0.1:43128/v1`) is a possible alternative. It is untested.
-- **DeepSeek and GLM through OpenRouter:** both are confirmed on OpenRouter as "DeepSeek: DeepSeek V4.1 Flash" (`deepseek/deepseek-v4.1-flash`) and "Z.ai: GLM 5.3 Flash" (`z-ai/glm-5.3-flash`). Add them under Manage Models > Add Models > OpenRouter and pin both.
-  - You enter your own key in the VS Code form. VS Code keeps it in secret storage; `chatLanguageModels.json` then holds only an `${input:...}` reference in an "OpenRouter" group, which this folder leaves out and `install.sh` preserves.
-  - The agents expect the picker names `DeepSeek: DeepSeek V4.1 Flash (openrouter)` and `Z.ai: GLM 5.3 Flash (openrouter)`, falling back to `GPT-5.6 Sol` and `GPT-5.6 Luna`.
-  - Kilo runs DeepSeek at `high` reasoning effort; set the same in the model's settings.
+- **DeepSeek through the DeepSeek API, GLM through OpenRouter:** both run through the "Speed Proxy" Custom Endpoint group and [`openrouter-speed-proxy.mjs`](../examples/bridges/openrouter-speed-proxy.mjs) (LaunchAgent `ai.kilo.openrouter-speed-proxy` from [`ai.kilo.openrouter-speed-proxy.plist`](../examples/bridges/ai.kilo.openrouter-speed-proxy.plist), `http://127.0.0.1:32126/v1`).
+  - **DeepSeek direct:** the proxy sends every `deepseek/*` model to `https://api.deepseek.com`: `DeepSeek V4.1 Flash API` (`deepseek/deepseek-v4.1-flash`) as `deepseek-flash`, DeepSeek's always-latest Flash alias, and `DeepSeek V4 Pro API` (`deepseek/deepseek-v4-pro`, text-only input) as `deepseek-v4-pro` (both confirmed with `GET /models`), with the key Kilo already stores in `~/.local/share/kilo/auth.json`, the same account Kilo and Codex use. It drops OpenRouter-only request fields (`reasoning`, `provider`, `usage`) and never sends VS Code's OpenRouter key there. The built-in OpenRouter group no longer carries a DeepSeek entry.
+  - **GLM:** `z-ai/glm-5.3-flash` goes to OpenRouter with VS Code's own `Authorization` header.
+  - **Picker names:** the DeepSeek agents ask for `DeepSeek V4.1 Flash API (customendpoint)`, then `GPT-5.6 Sol`. The GLM agents ask for `GLM 5.3 Flash (OpenRouter Speed) (customendpoint)`, then `Z.ai: GLM 5.3 Flash (openrouter)`, then `GPT-5.6 Luna`. DeepSeek runs at `high` reasoning effort, as in Kilo. No agent uses Pro by default; pick it manually.
+  - **Speed footer:** the proxy streams the reply through unchanged and adds the same footer as the Claude bridge, with tokens per second from the upstream usage over first-to-last token. Tool-call turns get no footer, and earlier footers are stripped from history.
+  - **Key:** add OpenRouter under Manage Models > Add Models > OpenRouter with your own key (VS Code secret storage). `install.sh` gives "Speed Proxy" that group's `${input:...}` reference. Both groups share one secret, so deleting either group in Manage Models deletes the key for both.
 
 Bridge behaviour for VS Code ([`../examples/bridges/claude-cli-provider.mjs`](../examples/bridges/claude-cli-provider.mjs)):
 
@@ -81,6 +83,7 @@ Bridge behaviour for VS Code ([`../examples/bridges/claude-cli-provider.mjs`](..
 - **Screenshots:** a screenshot inside a `tool` message (`image_url` data URL) becomes a file that Claude reads, the same way Kilo's images do.
 - **Workspace folder:** the working directory comes from VS Code's `<workspace_info>` when Kilo's own markers are absent.
 - **Sessions:** every VS Code chat in a workspace opens with the same context message. The session key therefore joins that message with the request only when the first user message contains `<environment_info>` or `<workspace_info>`. Kilo's key is unchanged.
+- **Speed footer:** a final answer ends with Kilo's line, for example `203.9 t/s · 3:44 PM · 48s` (tokens per second, completion time, elapsed), as its own plain paragraph; Copilot Chat escapes inline HTML such as `<sub>`. The rate is the CLI's reported output tokens over the whole request time. Only requests carrying VS Code's `X-VSCode-User-Agent-Library-Version` header or a `GitHubCopilotChat/` user agent get it, so Kilo output is unchanged. Tool-call turns never get it, and the bridge strips it (and the older `⚡ **X tok/s**` form) from earlier answers before they reach the CLI.
 - **`--self-test`** covers each of these points.
 
 ## Rules and agents
@@ -99,16 +102,16 @@ Bridge behaviour for VS Code ([`../examples/bridges/claude-cli-provider.mjs`](..
 | Astra Engineering Lead, Astra + Jev | `GPT-6 Astra` (Copilot) | yes | the four workers |
 | Fable Engineering Lead, Fable + Jev | `Claude Fable 5.1 High (Local CLI) (customendpoint)` | yes | the four workers |
 | Opus 5.5 High | `Claude Opus 5.5 High (Local CLI) (customendpoint)` | yes | none |
-| deepseek-workstream-lead | OpenRouter DeepSeek, then `GPT-5.6 Sol` | no (subagent only) | implementer, GLM, Luna |
+| deepseek-workstream-lead | DeepSeek API, then `GPT-5.6 Sol` | no (subagent only) | implementer, GLM, Luna |
 | deepseek-implementer, luna-utility | DeepSeek / `GPT-5.6 Luna` | no (subagent only) | none |
-| glm-investigator | OpenRouter GLM, then `GPT-5.6 Luna` | no (subagent only) | none; read-only tools only |
+| glm-investigator | GLM via OpenRouter, then `GPT-5.6 Luna` | no (subagent only) | none; read-only tools only |
 | Fable 5.1 High/Max, Opus 5.5 Fast, Sol, Luna, DeepSeek and GLM profiles | own model | hidden, as in Kilo | none (Sol: implementer) |
 
 - **Leads cannot be called as subagents:** they set `disable-model-invocation: true`.
 - **Nested delegation:** `chat.subagents.allowInvocationsFromSubagents: true` lets the workstream lead call its workers. VS Code caps nesting at depth 5 and has no setting for Kilo's depth of 2; the `agents:` lists still limit who can call whom.
 - **No `browser` tool:** `tools:` lists name each Peekaboo tool individually and leave `browser` out. Only the leads get `claude-code-local/opus_5_5_high`.
 - **Step limits:** VS Code has no per-agent field, only the global `chat.agent.maxRequests`. Each agent body states its Kilo limit (leads 50, DeepSeek 45, GLM 14, Luna 8).
-- **Jev:** TypeSafe tools are left out (they are disabled in Kilo); the Jev agent names and bodies are kept.
+- **Jev:** the two Jev leads call `typesafe/evaluate_work` (server `typesafe` in `mcp.json`); no other agent lists it.
 
 ## Approvals
 
@@ -142,8 +145,8 @@ node ~/.config/kilo/patches/check-peekaboo-mcp.mjs --live   # plus Peekaboo tool
 2. **MCP view:** start `peekaboo` and `claude-code-local` and confirm both show Running, with Peekaboo listing 26 tools. In the default Agent mode's tool picker, untick `peekaboo > browser`.
 3. **Manage Models:**
    - Confirm "Custom Endpoint" is offered (a Copilot plan or org policy can hide it) and the four "Claude ... (Local CLI)" models are enabled. Leave the API key empty; if the form insists on one, enter any placeholder.
-   - **Add Models > OpenRouter:** enter your own key, then add and pin "DeepSeek: DeepSeek V4.1 Flash" and "Z.ai: GLM 5.3 Flash". Set DeepSeek's reasoning effort to High.
-   - Check that the names match the agent `model:` values: `DeepSeek: DeepSeek V4.1 Flash (openrouter)` and `Z.ai: GLM 5.3 Flash (openrouter)`. If they differ, tell the lead the exact names.
+   - **Add Models > OpenRouter:** enter your own key, then add and pin "Z.ai: GLM 5.3 Flash" (GLM fallback). Rerun `install.sh` so "Speed Proxy" picks up the key.
+   - Enable and pin the "Speed Proxy" models, `DeepSeek V4.1 Flash API`, `DeepSeek V4 Pro API` and `GLM 5.3 Flash (OpenRouter Speed)`. If the picker names differ, tell the lead the exact names.
 4. **Agent picker:** confirm it shows Astra Engineering Lead, Astra + Jev, Fable Engineering Lead, Fable + Jev and Opus 5.5 High, and no workers or Claude Code agents.
 5. **Chat tab:** have Peekaboo `see` capture the VS Code window (`app_target: "Code"`), then click one element and type in one field. Click **Always allow** on the read-only Peekaboo tools.
 6. **Claude Code tab:** add `--no-remote` after `serve` in `mcpServers.peekaboo.args` of `~/.claude.json`, merge the browser deny from `../claude-code/config/settings.json`, start a new session, and confirm `peekaboo` connects (no `CONNECTION_CLOSED`) and one `see` capture works.

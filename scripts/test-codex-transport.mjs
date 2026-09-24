@@ -47,17 +47,17 @@ try {
   const stream=await result.text();
   assert.equal(result.status,200);
   assert.match(stream,/response.completed/);assert.match(stream,/fixture complete/);
-  assert.match(stream,/⚡ \*\*\d+\.\d tok\/s\*\* · 2 output tokens · \d+\.\ds/);
+  assert.match(stream,/\\n\\n\d+(?:\.\d)? t\/s\u00a0{3}\d{1,2}:\d{2} [AP]M · \d+s/);
   const events=stream.split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
   assert.equal(events.at(-1).response.model,slug);
  }
  for(const slug of ['astra-engineering-lead','fable-engineering-lead','deepseek-high','glm-high']) assert.match(serverOutput,new RegExp(`route=${slug} output_tokens=2 elapsed=\\d+\\.\\ds tok/s=`));
  const native=await request('gpt-5.6-sol','native success');
  const nativeStream=await native.text();
- assert.equal(native.status,200);assert.match(nativeStream,/⚡ \*\*\d+\.\d tok\/s\*\* · 20 output tokens · \d+\.\ds/);
+ assert.equal(native.status,200);assert.match(nativeStream,/\d+(?:\.\d)? t\/s\u00a0{3}\d{1,2}:\d{2} [AP]M · \d+s/);
  const nativeEvents=nativeStream.split('\n').filter(line=>line.startsWith('data: ')).map(line=>JSON.parse(line.slice(6)));
  assert.equal(nativeEvents.at(-1).type,'response.completed');
- assert.equal(nativeEvents.at(-1).response.output.at(-1).content[0].text.includes('tok/s'),true);
+ assert.equal(nativeEvents.at(-1).response.output.at(-1).content[0].text.includes(' t/s\u00a0\u00a0\u00a0'),true);
  assert.match(serverOutput,/route=gpt-5\.6-sol output_tokens=20 elapsed=\d+\.\ds tok\/s=/);
  assert.equal((await request('deepseek-high','no workspace')).status,500);
  assert.equal((await request('glm-high',`<cwd>${root}</cwd>`,{reasoning:{effort:'ultra'}})).status,500);

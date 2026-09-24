@@ -31,11 +31,19 @@
       "model": "openrouter/z-ai/glm-5.3-flash"
     }
   },
+  "provider": {
+    "deepseek": {
+      "models": {
+        "deepseek-flash": { "name": "DeepSeek V4.1 Flash API" },
+        "deepseek-v4-pro": { "name": "DeepSeek V4 Pro API" }
+      }
+    }
+  },
   "mcp": {
     "TypeSafe": {
       "type": "local",
       "command": ["<ABSOLUTE_PATH_TO_NODE>", "<ABSOLUTE_PATH_TO_TYPESAFE_BRIDGE_MJS>"],
-      "enabled": false,
+      "enabled": true,
       "timeout": 5000
     },
     "Claude Code Local": {

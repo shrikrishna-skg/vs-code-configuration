@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- ~/Library/LaunchAgents/ai.kilo.openrouter-speed-proxy.plist: keeps openrouter-speed-proxy.mjs
+     on 127.0.0.1:32126. Fill __HOME__ and __NODE__, then
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.kilo.openrouter-speed-proxy.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.kilo.openrouter-speed-proxy</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>__HOME__/.config/kilo/bridges/openrouter-speed-proxy.mjs</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__HOME__/.config/kilo/logs/openrouter-speed-proxy.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/.config/kilo/logs/openrouter-speed-proxy.error.log</string>
+</dict>
+</plist>
