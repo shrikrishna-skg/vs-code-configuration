@@ -54,8 +54,10 @@ const toolSystemPrompt = await readFile(TOOL_SYSTEM_PROMPT_FILE, "utf8").catch((
 
 const profiles = {
   "opus-5-5-fast": { name: "Claude Opus 5.5 Fast (Local CLI)", model: "claude-opus-5-5", effort: "low" },
+  "opus-5-5-medium": { name: "Claude Opus 5.5 Medium (Local CLI)", model: "claude-opus-5-5", effort: "medium" },
   "opus-5-5-high": { name: "Claude Opus 5.5 High (Local CLI)", model: "claude-opus-5-5", effort: "high" },
   "fable-5-1-high": { name: "Claude Fable 5.1 High (Local CLI)", model: "fable", effort: "high" },
+  "fable-5-1-medium": { name: "Claude Fable 5.1 Medium (Local CLI)", model: "fable", effort: "medium" },
   "fable-5-1-max": { name: "Claude Fable 5.1 Max (Local CLI)", model: "fable", effort: "max" }
 };
 
@@ -447,10 +449,34 @@ function contentText(content) {
   }).join("\n");
 }
 
+// VS Code's Copilot Chat fetcher always sends X-VSCode-User-Agent-Library-Version
+// and, unless overridden, a GitHubCopilotChat/<version> user agent. Kilo sends
+// neither and shows tok/s itself, so only VS Code gets the footer.
+function wantsThroughputFooter(headers) {
+  return Boolean(headers["x-vscode-user-agent-library-version"]) || /^GitHubCopilotChat\//.test(headers["user-agent"] || "");
+}
+
+// Kilo's footer ("203.9 t/s   3:44 PM · 48s"; "112 t/s" drops ".0"; the gap is three U+00A0), same as openrouter-speed-proxy.mjs.
+// The CLI hands over its answer in one piece, so callers pass the end-to-end time
+// as generationMs too: an average, not a live rate.
+function throughputFooter(outputTokens, generationMs, elapsedMs, doneAt = new Date()) {
+  const rate = generationMs > 0 ? outputTokens / (generationMs / 1000) : 0;
+  const hours = doneAt.getHours();
+  const clock = `${hours % 12 || 12}:${String(doneAt.getMinutes()).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
+  const seconds = Math.round(elapsedMs / 1000);
+  const elapsed = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${rate.toFixed(1).replace(/\.0$/, "")} t/s\u00a0\u00a0\u00a0${clock} · ${elapsed}`;
+}
+
+// VS Code sends earlier answers back verbatim; the CLI must not see (and start
+// imitating) the footer. Matches the new format and the old "⚡ **x tok/s**" one.
+const THROUGHPUT_FOOTER = /\n\n(?:---\n⚡ \*\*[\d.]+ tok\/s\*\* · \d+ output tokens · [\d.]+s|[\d.]+ t\/s(?: · |\u00a0{3})\d{1,2}:\d{2} [AP]M · (?:\d+m )?\d+s)\s*$/;
+
 function conversationTranscript(messages) {
   return (Array.isArray(messages) ? messages : []).map((message) => {
     const role = typeof message?.role === "string" ? message.role.toUpperCase() : "MESSAGE";
-    const parts = [contentText(message?.content)];
+    const text = contentText(message?.content);
+    const parts = [message?.role === "assistant" ? text.replace(THROUGHPUT_FOOTER, "") : text];
     if (message?.tool_calls) parts.push(`Tool calls: ${jsonForPrompt(message.tool_calls)}`);
     if (message?.tool_call_id) parts.push(`Tool call ID: ${message.tool_call_id}`);
     return `[${role}]\n${parts.filter(Boolean).join("\n")}`;
@@ -826,7 +852,8 @@ function sendError(response, error) {
   response.end(`data: ${JSON.stringify({ error: { message: error.message, type } })}\n\n`);
 }
 
-function streamCompletion(writer, result) {
+// footer is "" (Kilo) or a text suffix for final answers; tool calls never get one.
+function streamCompletion(writer, result, footer = "") {
   if (result.decision?.kind === "tool_call") {
     writer.chunk({ tool_calls: openAiToolCalls(result.decision) });
     writer.chunk({}, "tool_calls", result.usage);
@@ -843,6 +870,7 @@ function streamCompletion(writer, result) {
   } else {
     writer.content(answer.slice(writer.text.length));
   }
+  writer.content(footer);
   writer.chunk({}, "stop", result.usage);
   writer.finish();
 }
@@ -894,6 +922,7 @@ const server = createServer(async (request, response) => {
       })),
       tools: Array.isArray(body.tools) ? body.tools.length : 0,
       stream: Boolean(body.stream),
+      userAgent: request.headers["user-agent"] || null,
       metadataKeys: body.metadata && typeof body.metadata === "object" ? Object.keys(body.metadata).sort() : []
     })}\n`);
     const profile = profiles[body.model];
@@ -980,6 +1009,8 @@ const server = createServer(async (request, response) => {
             output = await runClaude(profile, prompt, cwd, controller.signal, tools, { id: session.id, resume: false }, attachments.directory, onText);
           }
         }
+        // Stored with the result, so a cached repeat reports the real run time.
+        output.elapsedMs = Date.now() - startedAt;
         session.toolsHash = catalogHash;
         session.hashes = hashes;
         session.anchor = anchor;
@@ -1008,7 +1039,9 @@ const server = createServer(async (request, response) => {
         await removeImageAttachments(attachments);
       }
     }
-    if (body.stream) return streamCompletion(writer || createStreamWriter(response, id, body.model), result);
+    const elapsedMs = result.elapsedMs ?? Date.now() - startedAt;
+    const footer = wantsThroughputFooter(request.headers) ? `\n\n${throughputFooter(result.usage?.completion_tokens ?? 0, elapsedMs, elapsedMs)}` : "";
+    if (body.stream) return streamCompletion(writer || createStreamWriter(response, id, body.model), result, footer);
     if (result.decision?.kind === "tool_call") {
       return sendJson(response, 200, {
         id,
@@ -1032,7 +1065,7 @@ const server = createServer(async (request, response) => {
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model: body.model,
-      choices: [{ index: 0, message: { role: "assistant", content: result.decision?.content ?? result.text }, finish_reason: "stop" }],
+      choices: [{ index: 0, message: { role: "assistant", content: footer ? `${result.decision?.content ?? result.text ?? ""}${footer}` : result.decision?.content ?? result.text }, finish_reason: "stop" }],
       usage: result.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
     });
   } catch (error) {
@@ -1248,6 +1281,33 @@ if (process.argv.includes("--self-test")) {
   const emittedCalls = emitted.flatMap((choice) => choice.delta.tool_calls || []);
   if (emittedCalls.map((call) => `${call.index}:${call.function.name}:${call.function.arguments}`).join() !== `0:read:{"filePath":"a.js"},1:grep:{"pattern":"x"}` || new Set(emittedCalls.map((call) => call.id)).size !== 2 || emitted.at(-1).finish_reason !== "tool_calls") {
     throw new Error("A multi-call Kilo decision was not emitted as separate OpenAI tool_calls");
+  }
+  // The tok/s footer: VS Code only, final answers only, never fed back to the CLI.
+  const footer = `\n\n${throughputFooter(300, 10000, 10000)}`;
+  if (throughputFooter(9786, 48000, 48000, new Date(2026, 8, 23, 15, 44)) !== "203.9 t/s\u00a0\u00a0\u00a03:44 PM · 48s" || throughputFooter(5, 0, 72400, new Date(2026, 0, 1, 0, 5)) !== "0 t/s\u00a0\u00a0\u00a012:05 AM · 1m 12s") {
+    throw new Error("The throughput footer no longer matches Kilo's format");
+  }
+  if (!wantsThroughputFooter({ "user-agent": "GitHubCopilotChat/0.67.0", "x-vscode-user-agent-library-version": "electron-fetch" }) || !wantsThroughputFooter({ "x-vscode-user-agent-library-version": "node-http" })
+    || wantsThroughputFooter({ "user-agent": "ai-sdk/openai-compatible/1.0.0 runtime/bun/1.3.0" }) || wantsThroughputFooter({ "user-agent": "Kilo-Code/7.7.7" }) || wantsThroughputFooter({})) {
+    throw new Error("The VS Code / Kilo client discriminator is wrong");
+  }
+  const sse = () => ({ headersSent: false, writeHead() { this.headersSent = true; }, write(body) { this.body = (this.body || "") + body; }, end(body) { this.body += body; } });
+  const deltas = (stream) => stream.body.split("\n\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)).choices[0]);
+  const withFooter = sse();
+  streamCompletion(createStreamWriter(withFooter, "id", "opus-5-5-fast"), { text: "Hi.", usage: {} }, footer);
+  const footerDeltas = deltas(withFooter);
+  if (footerDeltas.map((choice) => choice.delta.content || "").join("") !== `Hi.${footer}` || footerDeltas.at(-2).delta.content !== footer || footerDeltas.at(-1).finish_reason !== "stop") {
+    throw new Error("The VS Code footer is not the last text chunk of a final answer");
+  }
+  const withoutFooter = sse();
+  streamCompletion(createStreamWriter(withoutFooter, "id", "opus-5-5-fast"), { text: "Hi.", usage: {} });
+  const callsWithFooter = sse();
+  streamCompletion(createStreamWriter(callsWithFooter, "id", "fable-5-1-high"), { decision: multiDecision }, footer);
+  if (deltas(withoutFooter).map((choice) => choice.delta.content || "").join("") !== "Hi." || deltas(callsWithFooter).some((choice) => choice.delta.content)) {
+    throw new Error("A Kilo answer or a tool-call turn received the throughput footer");
+  }
+  if (conversationTranscript([{ role: "assistant", content: `Done.${footer}` }, { role: "assistant", content: "Old.\n\n---\n⚡ **30.0 tok/s** · 300 output tokens · 10.0s" }, { role: "user", content: `Quote:${footer}` }]) !== `[ASSISTANT]\nDone.\n\n[ASSISTANT]\nOld.\n\n[USER]\nQuote:${footer}`) {
+    throw new Error("An earlier VS Code answer's footer still reaches the CLI");
   }
   if (toolDecisionSchema(multiTools).properties.tool_calls.items.properties.tool_name.enum.join() !== "read,grep") {
     throw new Error("The decision schema does not pin tool_calls to the Kilo catalog");

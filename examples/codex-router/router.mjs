@@ -27,6 +27,8 @@ const CLAUDE_MODELS = {
   "claude-opus-5-5-fast": { displayName: "Claude Opus 5.5 Fast", model: "claude-opus-5-5", effort: "high", priority: 51 },
   "claude-fable-5-1": { displayName: "Fable 5.1", model: "fable", effort: "high", priority: 52 },
   "claude-fable-5-1-max": { displayName: "Fable 5.1 Max", model: "fable", effort: "high", priority: 53 },
+  "claude-opus-5-5-medium": { displayName: "Claude Opus 5.5 Medium", model: "claude-opus-5-5", effort: "medium", priority: 58 },
+  "claude-fable-5-1-medium": { displayName: "Fable 5.1 Medium", model: "fable", effort: "medium", priority: 59 },
 };
 
 function catalogEntry(template, slug, profile) {
@@ -147,10 +149,15 @@ function throughputLine(model, outputTokens, elapsedMs) {
   return `route=${model} output_tokens=${outputTokens} elapsed=${seconds.toFixed(1)}s tok/s=${(seconds > 0 ? outputTokens / seconds : 0).toFixed(1)}`;
 }
 
-function throughputFooter(outputTokens, elapsedMs) {
-  const seconds = elapsedMs / 1000;
-  const tokensPerSecond = seconds > 0 ? outputTokens / seconds : 0;
-  return `⚡ **${tokensPerSecond.toFixed(1)} tok/s** · ${outputTokens} output tokens · ${seconds.toFixed(1)}s`;
+// Kilo's footer ("203.9 t/s   3:44 PM · 48s"; "112 t/s" drops ".0"). The gap is three U+00A0 so
+// Markdown keeps it. The router only sees end-to-end time, so callers pass it as generationMs too.
+function throughputFooter(outputTokens, generationMs, elapsedMs, doneAt = new Date()) {
+  const rate = generationMs > 0 ? outputTokens / (generationMs / 1000) : 0;
+  const hours = doneAt.getHours();
+  const clock = `${hours % 12 || 12}:${String(doneAt.getMinutes()).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
+  const seconds = Math.round(elapsedMs / 1000);
+  const elapsed = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${rate.toFixed(1).replace(/\.0$/, "")} t/s\u00a0\u00a0\u00a0${clock} · ${elapsed}`;
 }
 
 function responseObject(id, model, status, output = [], usage = null) {
@@ -211,7 +218,7 @@ function throughputEvents(completedEvent, model, elapsedMs) {
   const output = Array.isArray(completedEvent.response.output) ? completedEvent.response.output : [];
   const outputIndex = output.length;
   const itemId = `msg_${randomUUID().replaceAll("-", "")}`;
-  const text = throughputFooter(outputTokens, elapsedMs);
+  const text = throughputFooter(outputTokens, elapsedMs, elapsedMs);
   const content = [{ type: "output_text", text, annotations: [], logprobs: [] }];
   const item = { id: itemId, type: "message", status: "completed", role: "assistant", content };
   let sequence = Number.isInteger(completedEvent.sequence_number) ? completedEvent.sequence_number : 0;
@@ -305,7 +312,7 @@ async function runClaude(request, response, body, profile) {
       total_tokens: (payload.usage?.input_tokens || 0) + (payload.usage?.output_tokens || 0),
     };
     const result = payload.result || "Claude completed the task without a text response.";
-    const text = `${result.trimEnd()}\n\n---\n${throughputFooter(usage.output_tokens, elapsedMs)}`;
+    const text = `${result.trimEnd()}\n\n${throughputFooter(usage.output_tokens, elapsedMs, elapsedMs)}`;
     const content = [{ type: "output_text", text, annotations: [], logprobs: [] }];
     const item = { id: itemId, type: "message", status: "completed", role: "assistant", content };
     writeEvent(response, { type: "response.output_item.added", output_index: 0, item: { ...item, status: "in_progress", content: [] }, sequence_number: sequence++ });
@@ -409,14 +416,18 @@ async function handler(request, response) {
 }
 
 if (process.argv.includes("--self-test")) {
-  assert.ok(Object.values(CLAUDE_MODELS).every(({ effort }) => effort === "high"));
+  assert.deepEqual(Object.entries(CLAUDE_MODELS).filter(([, { effort }]) => effort !== "high").map(([slug]) => slug), ["claude-opus-5-5-medium", "claude-fable-5-1-medium"]);
+  assert.equal(new Set(Object.values({ ...CLAUDE_MODELS, ...KILO_MODELS }).map(({ priority }) => priority)).size, Object.keys({ ...CLAUDE_MODELS, ...KILO_MODELS }).length);
   assert.equal(throughputLine("deepseek-high", 300, 10000), "route=deepseek-high output_tokens=300 elapsed=10.0s tok/s=30.0");
   assert.match(throughputLine("glm-high", 5, 0), /elapsed=0\.0s tok\/s=0\.0$/);
-  assert.equal(throughputFooter(300, 10000), "⚡ **30.0 tok/s** · 300 output tokens · 10.0s");
+  assert.equal(throughputFooter(9786, 48000, 48000, new Date(2026, 0, 1, 15, 44)), "203.9 t/s\u00a0\u00a0\u00a03:44 PM · 48s");
+  assert.equal(throughputFooter(224, 2000, 2000, new Date(2026, 0, 1, 21, 20)), "112 t/s\u00a0\u00a0\u00a09:20 PM · 2s");
+  assert.equal(throughputFooter(10, 0, 72400, new Date(2026, 0, 1, 0, 5)), "0 t/s\u00a0\u00a0\u00a012:05 AM · 1m 12s");
+  assert.equal(throughputFooter(1, 1000, 59600, new Date(2026, 0, 1, 12, 0)), "1 t/s\u00a0\u00a0\u00a012:00 PM · 1m 0s");
   const nativeEvents = throughputEvents({ type: "response.completed", response: { model: "gpt-5.6-sol", output: [], usage: { output_tokens: 300 } }, sequence_number: 7 }, "gpt-5.6-sol", 10000);
   assert.equal(nativeEvents.length, 7);
   assert.equal(nativeEvents.at(-1).sequence_number, 13);
-  assert.match(nativeEvents.at(-1).response.output[0].content[0].text, /30\.0 tok\/s/);
+  assert.match(nativeEvents.at(-1).response.output[0].content[0].text, /^30 t\/s\u00a0{3}\d{1,2}:\d{2} [AP]M · 10s$/);
   assert.equal(eventFromFrame('event: response.completed\ndata: {"type":"response.completed"}').type, "response.completed");
   const testPrompt = await promptFromRequest({ input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] }] });
   assert.match(testPrompt.prompt, /USER:\nhello/);

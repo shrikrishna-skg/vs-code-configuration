@@ -7,7 +7,8 @@
 //   other files default to the live paths under $HOME; a missing default is skipped with a
 //   log line, a missing file passed explicitly fails.
 //   --live also starts the Kilo server and asserts tools/list has see, image, click, and
-//   asserts the Claude bridge at 127.0.0.1:32123 lists the four Fable/Opus models.
+//   asserts the Claude bridge at 127.0.0.1:32123 lists the four Fable/Opus models and the
+//   OpenRouter speed proxy at 127.0.0.1:32126 is healthy.
 // Why --no-remote: without it every session in a second VS Code window fails to start
 // Peekaboo ("ScreenCaptureKit owner PID ... does not serve selected socket").
 import assert from "node:assert/strict"
@@ -143,4 +144,10 @@ if (live) {
   for (const id of ["fable-5-1-high", "fable-5-1-max", "opus-5-5-fast", "opus-5-5-high"])
     assert.ok(ids.includes(id), `Claude bridge ${url} is missing ${id}: ${ids.join(", ")}`)
   console.log(`Claude bridge live check passed: ${ids.length} models`)
+
+  const proxy = "http://127.0.0.1:32126/health"
+  const health = await fetch(proxy, { signal: AbortSignal.timeout(10000) }).then((res) => res.json())
+    .catch((error) => assert.fail(`OpenRouter speed proxy ${proxy} is not answering: ${error.message}`))
+  assert.equal(health.status, "ok", `OpenRouter speed proxy ${proxy}: ${JSON.stringify(health)}`)
+  console.log("OpenRouter speed proxy live check passed")
 }

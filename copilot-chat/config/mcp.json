@@ -9,6 +9,11 @@
       "type": "stdio",
       "command": "<ABSOLUTE_PATH_TO_NODE>",
       "args": ["<ABSOLUTE_PATH_TO_KILO_CONFIG>/bridges/claude-cli-mcp.mjs"]
+    },
+    "typesafe": {
+      "type": "stdio",
+      "command": "<ABSOLUTE_PATH_TO_NODE>",
+      "args": ["<ABSOLUTE_PATH_TO_KILO_CONFIG>/bridges/typesafe-mcp.mjs"]
     }
   }
 }

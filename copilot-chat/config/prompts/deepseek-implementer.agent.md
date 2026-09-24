@@ -1,7 +1,7 @@
 ---
 name: "deepseek-implementer"
 description: "Leaf implementation worker using DeepSeek V4.1 Flash for substantial, well-scoped coding tasks with exclusive file ownership."
-model: ["DeepSeek: DeepSeek V4.1 Flash (openrouter)", "GPT-5.6 Sol"]
+model: ["DeepSeek V4.1 Flash API (customendpoint)", "GPT-5.6 Sol"]
 tools: ['read', 'search', 'edit', 'execute', 'todo', 'peekaboo/see', 'peekaboo/image', 'peekaboo/capture', 'peekaboo/inspect_ui', 'peekaboo/analyze', 'peekaboo/permissions', 'peekaboo/verify_state', 'peekaboo/sleep', 'peekaboo/click', 'peekaboo/type', 'peekaboo/press', 'peekaboo/scroll', 'peekaboo/move', 'peekaboo/drag', 'peekaboo/set_value', 'peekaboo/menu', 'peekaboo/action', 'peekaboo/clipboard', 'peekaboo/paste', 'peekaboo/dialog', 'peekaboo/app', 'peekaboo/dock', 'peekaboo/window', 'peekaboo/space', 'peekaboo/agent']
 agents: []
 user-invocable: false
