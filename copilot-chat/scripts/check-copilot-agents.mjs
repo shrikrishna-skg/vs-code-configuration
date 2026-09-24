@@ -16,6 +16,7 @@ const KEYS = new Set(['name', 'description', 'model', 'reasoning-effort', 'tools
   'argument-hint', 'target', 'agents', 'hooks', 'user-invocable', 'disable-model-invocation', 'github']);
 const LEADS = ['Astra Engineering Lead', 'Astra + Jev Engineering Lead', 'Fable Engineering Lead',
   'Fable + Jev Engineering Lead'];
+const JEV = ['Astra + Jev Engineering Lead', 'Fable + Jev Engineering Lead'];
 const WORKERS = ['deepseek-workstream-lead', 'deepseek-implementer', 'glm-investigator', 'luna-utility'];
 const AGENTS = {
   ...Object.fromEntries(LEADS.map((n) => [n, WORKERS])),
@@ -23,6 +24,9 @@ const AGENTS = {
   'deepseek-implementer': [], 'glm-investigator': [], 'luna-utility': [],
 };
 const MARK = '<!-- Exact copy of ~/.config/kilo/chat-response-style.md';
+// Custom Endpoint picker names ("<name> (customendpoint)") the agents may ask for.
+const ENDPOINT_MODELS = new Set(JSON.parse(fs.readFileSync(path.join(repo, '..', 'chatLanguageModels.json'), 'utf8'))
+  .flatMap((g) => g.vendor === 'customendpoint' ? g.models.map((m) => `${m.name} (customendpoint)`) : []));
 
 const list = (v) => (v ?? '').replace(/^\[|\]$/g, '').split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
 
@@ -43,11 +47,15 @@ function checkDir(dir) {
     names.add(name);
     for (const k of Object.keys(fm)) assert.ok(KEYS.has(k), `${f}: unsupported key ${k}`);
     assert.ok(fm.description && fm.model && fm.tools, `${f}: description, model and tools are required`);
+    for (const m of list(fm.model).filter((m) => m.endsWith(' (customendpoint)'))) {
+      assert.ok(ENDPOINT_MODELS.has(m), `${f}: model ${m} is not a Custom Endpoint model in chatLanguageModels.json`);
+    }
     const tools = list(fm.tools);
     const text = fs.readFileSync(file, 'utf8');
     assert.ok(!/peekaboo\/(browser|\*)/.test(text), `${f}: peekaboo browser or wildcard`);
     assert.equal(tools.some((t) => t.startsWith('claude-code-local/')), LEADS.includes(name), `${f}: claude-code-local is lead-only`);
     assert.ok(!/claude-code-local|Claude_Code_Local/.test(text) || LEADS.includes(name), `${f}: mentions claude-code-local`);
+    assert.deepEqual(tools.filter((t) => t.startsWith('typesafe/')), JEV.includes(name) ? ['typesafe/evaluate_work'] : [], `${f}: Jev (typesafe/evaluate_work) is for the two Jev leads only`);
     if (name in AGENTS) assert.deepEqual(list(fm.agents), AGENTS[name], `${f}: subagent allow-list`);
     else assert.ok(!list(fm.agents).some((a) => !WORKERS.includes(a)), `${f}: may only call workers`);
     if (!list(fm.agents).length) assert.ok(!tools.includes('agent') && !tools.includes('agent/runSubagent'), `${f}: has agent tool without allow-list`);

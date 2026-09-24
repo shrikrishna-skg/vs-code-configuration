@@ -87,6 +87,20 @@ You are bound to `claude-local-cli/fable-5-1-high`. Every model turn runs throug
 - Execute exact checks (test exits, permissions, ownership) in code. Jev may flag
   semantic evidence gaps but never substitutes for running tests or seeing the UI.
 
+## Screen decisions with Jev
+
+- Peekaboo is the only tool that sees or acts on the screen; Jev never observes it.
+- Skip Jev for trivial single clicks and obvious one-step UI actions.
+- For multi-step or ambiguous UI tasks, after `Peekaboo_see` pass a concise text
+  summary of the observed element map and state as `evidence` to
+  `TypeSafe_evaluate_work`.
+- Use `next_step` before a risky UI action and `evidence_check` before claiming a
+  UI task done.
+- Send text only: never screenshots, secrets, credentials or personal data read
+  from the screen.
+- Jev never approves send, pay, delete or submit actions; those still require the
+  user's explicit confirmation.
+
 ## UI verification
 
 - For visual or UI checks of the app in VS Code, including VS Code's integrated browser (already signed in), use Peekaboo on the existing window before headless Playwright: `Peekaboo_see` or `Peekaboo_image` (`app_target: "Code"`) to capture, then `Peekaboo_click`, `Peekaboo_type` or `Peekaboo_scroll` to act. `Peekaboo_browser` drives Chrome, not the VS Code browser.

@@ -7,9 +7,10 @@
 #
 # Idempotent: a file is written only when its content changes, after a copy to
 # <file>.bak-<timestamp>. JSON files are merged, never replaced: only the Copilot Chat
-# keys, the two MCP servers and the "Claude Local CLI" model group are set; other
-# settings, servers and model groups (for example an OpenRouter group) are kept.
-# Never writes secrets, and never touches Kilo, ~/.claude.json, ~/.claude or ~/.codex.
+# keys, the three MCP servers and the "Claude Local CLI" and "Speed Proxy" model groups
+# are set (replacing the former "OpenRouter (Speed)" group); other settings, servers and model groups (for example an OpenRouter group) are kept.
+# Never writes secrets: "Speed Proxy" reuses the OpenRouter group's secret-storage
+# reference. Never touches Kilo, ~/.claude.json, ~/.claude or ~/.codex.
 # Overrides: VSCODE_USER_DIR, PEEKABOO_BIN, NODE_BIN, KILO_CONFIG_DIR.
 
 set -euo pipefail
@@ -60,7 +61,10 @@ catch { console.error(`${target} is not plain JSON (comments or trailing commas?
 const out = structuredClone(have);
 if (mode === "servers") out.servers = { ...out.servers, ...want.servers };
 if (mode === "groups") for (const g of want) {
-  const i = out.findIndex((x) => x.name === g.name);
+  const i = out.findIndex((x) => x.name === g.name || (g.name === "Speed Proxy" && x.name === "OpenRouter (Speed)"));
+  // Templates carry no keys: keep the existing key, else reuse the OpenRouter group key reference.
+  const apiKey = out[i]?.apiKey ?? (g.name === "Speed Proxy" ? out.find((x) => x.vendor === "openrouter")?.apiKey : undefined);
+  if (apiKey && !g.apiKey) g.apiKey = apiKey;
   i < 0 ? out.push(g) : (out[i] = g);
 }
 if (mode === "keys") Object.assign(out, want);
@@ -108,8 +112,10 @@ apply "$user/chatLanguageModels.json" "$tmp/chatLanguageModels.json"
 render keys "$user/settings.json" "$cfg/settings.jsonc" > "$tmp/settings.json"
 apply "$user/settings.json" "$tmp/settings.json"
 
-[ -f "$KILO_CONFIG_DIR/bridges/claude-cli-mcp.mjs" ] ||
-  echo "warning: $KILO_CONFIG_DIR/bridges/claude-cli-mcp.mjs is missing, so claude-code-local will not start (docs/installation.md)" >&2
+for b in claude-cli-mcp:claude-code-local typesafe-mcp:typesafe; do
+  [ -f "$KILO_CONFIG_DIR/bridges/${b%%:*}.mjs" ] ||
+    echo "warning: $KILO_CONFIG_DIR/bridges/${b%%:*}.mjs is missing, so ${b#*:} will not start (docs/installation.md)" >&2
+done
 
 if [ "$dry" = 1 ]; then echo; echo "Dry run: $changes file(s) would change. Nothing was written."
 else echo; echo "$changes file(s) changed."; fi
@@ -118,10 +124,13 @@ cat <<'EOF'
 
 Manual steps (see copilot-chat/README.md#user-steps):
   1. Run "Developer: Reload Window" in every VS Code window.
-  2. MCP view: start peekaboo and claude-code-local; untick peekaboo > browser in the Agent mode tool picker.
+  2. MCP view: start peekaboo, claude-code-local and typesafe; in the built-in Agent mode tool picker untick
+     peekaboo > browser and typesafe (only the two Jev leads should call Jev).
   3. Manage Models: enable the four "Claude ... (Local CLI)" Custom Endpoint models (API key empty).
   4. Manage Models > Add Models > OpenRouter: enter your own key in the VS Code form, then add and pin
-     "DeepSeek: DeepSeek V4.1 Flash" (deepseek/deepseek-v4.1-flash) and "Z.ai: GLM 5.3 Flash" (z-ai/glm-5.3-flash).
+     "Z.ai: GLM 5.3 Flash" (z-ai/glm-5.3-flash). Rerun this script so "Speed Proxy" picks up that key.
+     Its "DeepSeek V4.1 Flash API", "DeepSeek V4 Pro API" and "GLM 5.3 Flash (OpenRouter Speed)" models run through
+     ai.kilo.openrouter-speed-proxy (port 32126); DeepSeek uses Kilo's DeepSeek API key, not OpenRouter.
   5. In Chat, click "Always allow" once for the read-only Peekaboo tools: see, image, capture, inspect_ui,
      analyze, permissions, verify_state, sleep.
   6. Codex tab: bash copilot-chat/scripts/install.sh --codex-snippet, then append it to ~/.codex/config.toml.
