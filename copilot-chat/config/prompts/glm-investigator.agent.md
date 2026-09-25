@@ -1,7 +1,7 @@
 ---
 name: "glm-investigator"
 description: "Read-only investigator and independent reviewer using GLM 5.3 Flash for exploration, diagnosis, and verification."
-model: ["Z.ai: GLM 5.3 Flash (openrouter)", "GPT-5.6 Luna"]
+model: ["GLM 5.3 Flash (OpenRouter Speed) (customendpoint)", "Z.ai: GLM 5.3 Flash (openrouter)", "GPT-5.6 Luna"]
 tools: ['read', 'search', 'execute/runInTerminal', 'peekaboo/see', 'peekaboo/image', 'peekaboo/capture', 'peekaboo/inspect_ui', 'peekaboo/analyze', 'peekaboo/permissions', 'peekaboo/verify_state', 'peekaboo/sleep']
 agents: []
 user-invocable: false

@@ -9,7 +9,7 @@ The existing local OpenAI/Claude Responses router now also exposes four Kilo-bac
 | DeepSeek High | `deepseek/deepseek-flash` through Kilo | Default high; max available | Task tool denied; standalone coding; image input |
 | GLM High | `openrouter/z-ai/glm-5.3-flash` through Kilo | Default high; max available | Task tool denied; standalone coding; image input |
 
-Ordinary OpenAI models continue through the existing OpenAI forwarding function. Existing Claude selections keep their CLI route. No new globally available delegation tools are installed in Codex. Selecting either lead activates the Kilo delegation configuration for that request only.
+Ordinary OpenAI models continue through the existing OpenAI forwarding function. Existing Claude selections keep their CLI route; Claude Opus 5.5 Medium and Fable 5.1 Medium run the same CLI models at medium effort. No new globally available delegation tools are installed in Codex. Selecting either lead activates the Kilo delegation configuration for that request only.
 
 ## Architecture
 
@@ -38,7 +38,7 @@ The four new agents are supplied through per-process `KILO_CONFIG_CONTENT`; inst
 
 After deployment, refresh/restart the Codex app if necessary to reload its model catalog. Existing tasks may retain their prior selection. Test a new task in a valid project workspace.
 
-Each completed request shows a compact footer at the end of the answer, for example `⚡ 29.6 tok/s · 812 output tokens · 27.4s`, and appends the same measurement to the router's `stdout.log`. This covers native OpenAI models plus the custom DeepSeek, GLM, Astra, Claude, and Fable routes. The router derives native-model output counts from the official `response.completed` usage and inserts a separate final text item without delaying the preceding streamed answer. Local CLI rates are end-to-end averages because their output is buffered until the run finishes. The Codex app does not expose a native custom tokens-per-second status slot.
+Each completed request ends with Kilo's speed footer as its own plain paragraph, for example `203.9 t/s   3:44 PM · 48s` (rate without a trailing `.0`, three non-breaking spaces, local completion time, elapsed; `1m 12s` past a minute), and appends the same measurement to the router's `stdout.log`. This covers native OpenAI models plus the custom DeepSeek, GLM, Astra, Claude, and Fable routes. The router derives native-model output counts from the official `response.completed` usage and inserts a separate final text item without delaying the preceding streamed answer. Local CLI rates are end-to-end averages because their output is buffered until the run finishes. The Codex app does not expose a native custom tokens-per-second status slot.
 
 ### Misleading “high demand” errors
 

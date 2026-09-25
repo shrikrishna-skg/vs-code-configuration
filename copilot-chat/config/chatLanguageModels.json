@@ -20,6 +20,22 @@
 				]
 			},
 			{
+				"id": "fable-5-1-medium",
+				"name": "Claude Fable 5.1 Medium (Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 200000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
 				"id": "fable-5-1-max",
 				"name": "Claude Fable 5.1 Max (Local CLI)",
 				"url": "http://127.0.0.1:32123/v1",
@@ -51,6 +67,21 @@
 				]
 			},
 			{
+				"id": "opus-5-5-medium",
+				"name": "Claude Opus 5.5 Medium (Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 200000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
 				"id": "opus-5-5-high",
 				"name": "Claude Opus 5.5 High (Local CLI)",
 				"url": "http://127.0.0.1:32123/v1",
@@ -66,5 +97,182 @@
 				]
 			}
 		]
+	},
+	{
+		"name": "Codex Local CLI",
+		"vendor": "customendpoint",
+		"models": [
+			{
+				"id": "codex-gpt-6-astra-high",
+				"name": "GPT-6 Astra High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-6-astra-xhigh",
+				"name": "GPT-6 Astra Extra High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-6-sol-high",
+				"name": "GPT-6 Sol High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-6-luna-medium",
+				"name": "GPT-6 Luna Medium (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-5.6-sol-high",
+				"name": "GPT-5.6 Sol High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-5.6-terra-high",
+				"name": "GPT-5.6 Terra High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-5.6-luna-medium",
+				"name": "GPT-5.6 Luna Medium (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			}
+		]
+	},
+	{
+		"name": "Speed Proxy",
+		"vendor": "customendpoint",
+		"models": [
+			{
+				"id": "deepseek/deepseek-v4.1-flash",
+				"name": "DeepSeek V4.1 Flash API",
+				"url": "http://127.0.0.1:32126/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 1048576,
+				"maxOutputTokens": 393216,
+				"supportsReasoningEffort": [
+					"low",
+					"medium",
+					"high"
+				]
+			},
+			{
+				"id": "deepseek/deepseek-v4-pro",
+				"name": "DeepSeek V4 Pro API",
+				"url": "http://127.0.0.1:32126/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": false,
+				"thinking": true,
+				"contextWindow": 1048576,
+				"maxOutputTokens": 393216,
+				"supportsReasoningEffort": [
+					"low",
+					"medium",
+					"high"
+				]
+			},
+			{
+				"id": "z-ai/glm-5.3-flash",
+				"name": "GLM 5.3 Flash (OpenRouter Speed)",
+				"url": "http://127.0.0.1:32126/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 1310720,
+				"maxOutputTokens": 131072,
+				"supportsReasoningEffort": [
+					"low",
+					"medium",
+					"high"
+				]
+			}
+		],
+		"settings": {
+			"deepseek/deepseek-v4.1-flash": {
+				"reasoningEffort": "high"
+			}
+		}
 	}
 ]

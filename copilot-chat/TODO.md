@@ -130,7 +130,7 @@ Delegation rules:
 - [x] Map each lead's Kilo `task` allow-list to its subagent allow-list. Leads may call the four workers; nothing may call another lead.
 - [x] Keep the Opus escalation tool (`claude-code-local`) available to the leads only.
 - [x] Carry over step limits where VS Code supports them (leads 50, DeepSeek 45, GLM 14, Luna 8); otherwise note them in the agent body.
-- [x] Jev: TypeSafe is disabled in Kilo. Leave it out unless you decide to re-enable it.
+- [x] Jev: TypeSafe re-enabled in Kilo and added to VS Code `mcp.json` for the two Jev leads only (2026-09-23).
 - [ ] Test: ask the Fable lead for a two-file change and confirm it delegates to DeepSeek Implementer, inspects the diff and runs a check. **User step.**
 
 Acceptance: all four leads appear in the agent picker on their own models, workers are callable only as subagents, and GLM cannot edit files.
