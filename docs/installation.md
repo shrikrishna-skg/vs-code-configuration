@@ -37,6 +37,8 @@ cp examples/agent/*.md ~/.config/kilo/agent/
 cp examples/bridges/claude-cli-mcp.mjs ~/.config/kilo/bridges/
 ```
 
+The OpenAI-compatible bridge `examples/bridges/claude-cli-provider.mjs` (LaunchAgent `ai.kilo.claude-local-cli-provider`, `http://127.0.0.1:32123/v1`) serves the Claude Local CLI models and, when the ChatGPT VS Code extension's Codex CLI is signed in with ChatGPT, the `codex-*` Codex Local CLI models. To update it, copy the file to `~/.config/kilo/bridges/` (after a backup) and restart it with `launchctl kickstart -k gui/$(id -u)/ai.kilo.claude-local-cli-provider`. `CLAUDE_BRIDGE_PORT` and `CLAUDE_BRIDGE_STATE_FILE` let a test copy run beside the live one; `node examples/bridges/claude-cli-provider.mjs --self-test` needs no network.
+
 Open `~/.config/kilo/kilo.jsonc` and replace all placeholder paths. Model availability can differ by account, so confirm every model ID in Kilo before restarting VS Code.
 
 ## Merge the VS Code settings
