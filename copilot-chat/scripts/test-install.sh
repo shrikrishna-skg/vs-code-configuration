@@ -30,8 +30,8 @@ assert m["other"] == {"command": "x"} and m["peekaboo"]["command"] == "/opt/peek
 assert m["claude-code-local"]["args"] == ["/opt/kilo/bridges/claude-cli-mcp.mjs"]
 assert m["typesafe"]["args"] == ["/opt/kilo/bridges/typesafe-mcp.mjs"]
 g = json.load(open(f"{u}/chatLanguageModels.json"))
-assert [x["name"] for x in g] == ["OpenRouter", "Speed Proxy", "Claude Local CLI"]  # replaces "OpenRouter (Speed)"
-assert g[1]["apiKey"] == "${input:x}" and "apiKey" not in g[2]
+assert [x["name"] for x in g] == ["OpenRouter", "Speed Proxy", "Claude Local CLI", "Codex Local CLI"]  # replaces "OpenRouter (Speed)"
+assert g[1]["apiKey"] == "${input:x}" and "apiKey" not in g[2] and "apiKey" not in g[3]
 PY
 ! grep -rq '<[A-Z_]*>' "$u"/*.json
 expect '^0 file(s) changed'

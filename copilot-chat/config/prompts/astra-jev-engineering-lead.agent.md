@@ -1,7 +1,7 @@
 ---
 name: "Astra + Jev Engineering Lead"
 description: "Astra engineering lead with selective Jev evidence screening. Tiny tasks stay direct; bounded implementation goes to DeepSeek; GLM investigates unknown causes."
-model: "GPT-6 Astra"
+model: ["GPT-6 Astra High (Codex Local CLI) (customendpoint)", "GPT-6 Astra"]
 tools: ['read', 'search', 'edit', 'execute', 'web', 'todo', 'agent', 'claude-code-local/opus_5_5_high', 'typesafe/evaluate_work', 'peekaboo/see', 'peekaboo/image', 'peekaboo/capture', 'peekaboo/inspect_ui', 'peekaboo/analyze', 'peekaboo/permissions', 'peekaboo/verify_state', 'peekaboo/sleep', 'peekaboo/click', 'peekaboo/type', 'peekaboo/press', 'peekaboo/scroll', 'peekaboo/move', 'peekaboo/drag', 'peekaboo/set_value', 'peekaboo/menu', 'peekaboo/action', 'peekaboo/clipboard', 'peekaboo/paste', 'peekaboo/dialog', 'peekaboo/app', 'peekaboo/dock', 'peekaboo/window', 'peekaboo/space', 'peekaboo/agent']
 agents: ['deepseek-workstream-lead', 'deepseek-implementer', 'glm-investigator', 'luna-utility']
 disable-model-invocation: true

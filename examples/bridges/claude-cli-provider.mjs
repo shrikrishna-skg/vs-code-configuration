@@ -9,7 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 
 const HOST = "127.0.0.1";
-const PORT = 32123;
+const PORT = Number.parseInt(process.env.CLAUDE_BRIDGE_PORT, 10) || 32123;
 // Also the whole built-in tool list in conversation mode: other tools would
 // only be denied, yet their schemas cost ~24K prompt tokens per step. Skill is
 // absent because skills are disabled; Kilo supplies its own.
@@ -18,10 +18,11 @@ const DEFAULT_DIRECTORY = "/Users/shri/Documents/Codex";
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 24 * 1024 * 1024;
 const MAX_SCHEMA_DESCRIPTION_CHARS = 320;
-const MAX_CLAUDE_SESSIONS = 128;
+// Per backend, so Codex churn never evicts Claude sessions (and vice versa).
+const MAX_SESSIONS_PER_BACKEND = 128;
 const REQUEST_CACHE_MS = 30 * 1000;
 const STATUS_DELAY_MS = 10 * 1000;
-const SESSION_STATE_FILE = resolve(homedir(), ".local/state/kilo/claude-cli-provider-state.json");
+const SESSION_STATE_FILE = process.env.CLAUDE_BRIDGE_STATE_FILE || resolve(homedir(), ".local/state/kilo/claude-cli-provider-state.json");
 const TOOL_SYSTEM_PROMPT_FILE = resolve(homedir(), ".config/kilo/bridges/fable-lead-system.md");
 const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\r\n]+)$/i;
 const EMBEDDED_DATA_URL = /data:([^;,]+);base64,[A-Za-z0-9+/=\r\n]+/g;
@@ -30,16 +31,26 @@ const EMBEDDED_DATA_URL = /data:([^;,]+);base64,[A-Za-z0-9+/=\r\n]+/g;
 const SUBSCRIPTION_LIMIT = /hit your (?:[\w-]+ ){0,3}limit|\b(?:usage|session|weekly|daily|\d+-hour|opus|sonnet|fable) limit reached/i;
 // "resets 9:30pm", "resets Sep 29 at 3pm", "resets Oct 3, 9pm"
 const RESET_TIME = /resets\s+(?:at\s+)?(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i;
+// Codex CLI: "You've hit your usage limit. ... or try again at 3:04 PM.", "Usage limit reached.",
+// "You're out of credits.", "You hit your spend cap". Not "Output token limit reached".
+const CODEX_LIMIT = /hit your (?:[\w-]+ ){0,3}limit|usage limit|out of credits|spend cap|rate limit reached for plan|try again at \d/i;
+// "try again at 3:04 PM", "try again at Sep 25th, 2026 3:04 PM" (Codex prints its local time, no zone).
+const CODEX_RESET_TIME = /try again at\s+(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(?:\d{4}\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i;
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 // ponytail: a fixed cap on parallel CLI runs across all chats, not an adaptive
 // one; parallel runs share one subscription's rate limit. Upgrade path is
 // backing off the cap when the CLI reports rate limiting.
 const CLAUDE_CONCURRENCY = Math.min(8, Math.max(1, Number.parseInt(process.env.CLAUDE_BRIDGE_CONCURRENCY, 10) || 3));
+// A separate pool, so Codex load never starves Claude.
+const CODEX_CONCURRENCY = Math.min(8, Math.max(1, Number.parseInt(process.env.CODEX_BRIDGE_CONCURRENCY, 10) || 3));
+// Codex tools a tool-mode step turns off: VS Code or Kilo runs every action.
+// apply_patch has no switch; the read-only sandbox blocks its writes.
+const CODEX_DISABLED_FEATURES = ["shell_tool", "unified_exec", "multi_agent", "apps", "plugins", "browser_use", "computer_use", "image_generation", "view_image"];
 const conversationLocks = new Map();
-const claudeSlotWaiters = [];
-let activeClaude = 0;
 let stateWrite = Promise.resolve();
-let subscriptionLimit = null;
+// Codex's limit is kept in memory only: the bridge cannot tell ChatGPT accounts apart without
+// reading ~/.codex/auth.json, and a fresh Codex run re-detects a limit within seconds.
+const subscriptionLimits = { claude: null, codex: null };
 let claudeBinary = null;
 let claudeAuth = null;
 const claudeSessions = [];
@@ -58,8 +69,29 @@ const profiles = {
   "opus-5-5-high": { name: "Claude Opus 5.5 High (Local CLI)", model: "claude-opus-5-5", effort: "high" },
   "fable-5-1-high": { name: "Claude Fable 5.1 High (Local CLI)", model: "fable", effort: "high" },
   "fable-5-1-medium": { name: "Claude Fable 5.1 Medium (Local CLI)", model: "fable", effort: "medium" },
-  "fable-5-1-max": { name: "Claude Fable 5.1 Max (Local CLI)", model: "fable", effort: "max" }
+  "fable-5-1-max": { name: "Claude Fable 5.1 Max (Local CLI)", model: "fable", effort: "max" },
+  // Model ids starting with "codex-" run through the signed-in Codex CLI (ChatGPT plan).
+  "codex-gpt-6-astra-high": { name: "GPT-6 Astra High (Codex Local CLI)", model: "gpt-6-astra", effort: "high" },
+  "codex-gpt-6-astra-xhigh": { name: "GPT-6 Astra Extra High (Codex Local CLI)", model: "gpt-6-astra", effort: "xhigh" },
+  "codex-gpt-6-sol-high": { name: "GPT-6 Sol High (Codex Local CLI)", model: "gpt-6-sol", effort: "high" },
+  "codex-gpt-6-luna-medium": { name: "GPT-6 Luna Medium (Codex Local CLI)", model: "gpt-6-luna", effort: "medium" },
+  "codex-gpt-5.6-sol-high": { name: "GPT-5.6 Sol High (Codex Local CLI)", model: "gpt-5.6-sol", effort: "high" },
+  "codex-gpt-5.6-terra-high": { name: "GPT-5.6 Terra High (Codex Local CLI)", model: "gpt-5.6-terra", effort: "high" },
+  "codex-gpt-5.6-luna-medium": { name: "GPT-5.6 Luna Medium (Codex Local CLI)", model: "gpt-5.6-luna", effort: "medium" }
 };
+
+function backendOf(model) {
+  return typeof model === "string" && model.startsWith("codex-") ? "codex" : "claude";
+}
+
+function cleanCodexEnvironment() {
+  const environment = { ...process.env };
+  // Always use the signed-in ChatGPT plan: no API keys, gateways or another Codex home.
+  for (const key of Object.keys(environment)) {
+    if (/^(?:OPENAI_|CODEX_)/.test(key)) delete environment[key];
+  }
+  return environment;
+}
 
 function cleanClaudeEnvironment(toolMode = false) {
   const environment = { ...process.env };
@@ -117,6 +149,53 @@ async function resolveClaudeBinary() {
   throw new Error("Could not find an executable local Claude CLI. Install or update the Claude Code VS Code extension.");
 }
 
+// Resolved per Codex request, not once: the path changes on every ChatGPT
+// extension update, and the old folder is deleted.
+async function resolveCodexBinary() {
+  const candidates = [process.env.CODEX_BRIDGE_BINARY].filter(Boolean);
+  const extensionsDirectory = resolve(homedir(), ".vscode/extensions");
+  try {
+    const extensions = (await readdir(extensionsDirectory))
+      .filter((name) => name.startsWith("openai.chatgpt-"))
+      .sort(compareVersions);
+    for (const extension of extensions) {
+      const bin = join(extensionsDirectory, extension, "bin");
+      for (const platform of await readdir(bin).catch(() => [])) candidates.push(join(bin, platform, "codex"));
+    }
+  } catch {}
+  for (const candidate of candidates) {
+    try {
+      await access(candidate, fsConstants.X_OK);
+      return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+function codexUnavailable(message) {
+  const error = new Error(message);
+  error.status = 400;
+  error.type = "codex_unavailable";
+  return error;
+}
+
+// The Codex binary, once it is known to be signed in with ChatGPT. Only the
+// CLI itself reads ~/.codex/auth.json; the bridge sees just the status line.
+async function codexCli() {
+  const binary = await resolveCodexBinary();
+  if (!binary) throw codexUnavailable("Codex models need the signed-in Codex CLI from the ChatGPT VS Code extension (~/.vscode/extensions/openai.chatgpt-*/bin/*/codex); none was found. Set CODEX_BRIDGE_BINARY to override.");
+  const status = await new Promise((resolveStatus) => {
+    const child = spawn(binary, ["login", "status"], { stdio: ["ignore", "pipe", "pipe"], env: cleanCodexEnvironment() });
+    let output = "";
+    child.stdout.on("data", (chunk) => { output += chunk.toString("utf8"); });
+    child.stderr.on("data", (chunk) => { output += chunk.toString("utf8"); });
+    child.on("error", () => resolveStatus(""));
+    child.on("close", (code) => resolveStatus(code === 0 ? output : ""));
+  });
+  if (!/Logged in using ChatGPT/i.test(status)) throw codexUnavailable("Codex CLI must be signed in with ChatGPT (run `codex login`), not an API key.");
+  return binary;
+}
+
 function readClaudeAuth(binary) {
   return new Promise((resolveAuth, reject) => {
     const child = spawn(binary, ["auth", "status", "--json"], {
@@ -163,8 +242,8 @@ function zonedDate(zone, year, month, day, hour, minute) {
   return new Date(instant);
 }
 
-function nextLocalReset(message, now = new Date()) {
-  const match = message.match(RESET_TIME);
+function nextLocalReset(message, now = new Date(), pattern = RESET_TIME) {
+  const match = message.match(pattern);
   if (!match) return new Date(now.getTime() + 5 * 60 * 1000);
   const [, month, day, hourText, minute = "0", meridiem] = match;
   let zone = message.match(/\(([A-Za-z]+(?:\/[\w+-]+)+)\)/)?.[1];
@@ -185,21 +264,24 @@ function nextLocalReset(message, now = new Date()) {
 // Kilo retries 429 responses exponentially and shows a reply with no content
 // meanwhile. The bridge already knows the reset time, so a non-retryable 400
 // with a readable message is what actually reaches the chat.
-function subscriptionLimitError(limit) {
+function subscriptionLimitError(limit, backend = "claude") {
   const resetsAt = limit.until.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
-  const error = new Error(`Claude subscription usage limit reached; resets at ${resetsAt}. Claude CLI said: ${limit.message}`);
+  const error = new Error(backend === "codex"
+    ? `ChatGPT plan usage limit reached for Codex; resets at ${resetsAt}. Codex CLI said: ${limit.message}`
+    : `Claude subscription usage limit reached; resets at ${resetsAt}. Claude CLI said: ${limit.message}`);
   error.status = 400;
   error.type = "subscription_limit_error";
   return error;
 }
 
-function cachedSubscriptionError() {
-  if (!subscriptionLimit) return null;
-  if (subscriptionLimit.until <= new Date()) {
-    subscriptionLimit = null;
+function cachedSubscriptionError(backend = "claude") {
+  const limit = subscriptionLimits[backend];
+  if (!limit) return null;
+  if (limit.until <= new Date()) {
+    subscriptionLimits[backend] = null;
     return null;
   }
-  return subscriptionLimit;
+  return limit;
 }
 
 // A limit belongs to the account that hit it; after a CLI account switch a
@@ -209,11 +291,16 @@ function persistedLimit(saved, account, now = new Date()) {
   return saved?.message && account && saved.account === account && until > now ? { message: saved.message, until, account } : null;
 }
 
-function rememberSubscriptionLimit(message) {
-  subscriptionLimit = { message, until: nextLocalReset(message), account: claudeAuth?.email || null };
-  process.stdout.write(`${JSON.stringify({ event: "subscription_limit", until: subscriptionLimit.until.toISOString() })}\n`);
+function rememberSubscriptionLimit(message, backend = "claude") {
+  if (backend === "codex") {
+    subscriptionLimits.codex = { message, until: nextLocalReset(message, new Date(), CODEX_RESET_TIME), account: null };
+    process.stdout.write(`${JSON.stringify({ event: "subscription_limit", backend, until: subscriptionLimits.codex.until.toISOString() })}\n`);
+    return subscriptionLimits.codex;
+  }
+  subscriptionLimits.claude = { message, until: nextLocalReset(message), account: claudeAuth?.email || null };
+  process.stdout.write(`${JSON.stringify({ event: "subscription_limit", until: subscriptionLimits.claude.until.toISOString() })}\n`);
   saveProviderState();
-  return subscriptionLimit;
+  return subscriptionLimits.claude;
 }
 
 // One conversation runs one CLI job at a time, in arrival order, so a CLI
@@ -227,19 +314,29 @@ function withConversationLock(key, task) {
   return queued;
 }
 
-// Different conversations share CLAUDE_CONCURRENCY CLI slots, first come first served.
-async function withClaudeSlot(task) {
-  if (activeClaude < CLAUDE_CONCURRENCY) activeClaude += 1;
-  else await new Promise((resolveSlot) => claudeSlotWaiters.push(resolveSlot));
-  try {
-    return await task();
-  } finally {
-    // Hand the slot straight to the next waiter so a newcomer cannot jump the line.
-    const next = claudeSlotWaiters.shift();
-    if (next) next();
-    else activeClaude -= 1;
-  }
+// Different conversations share a backend's CLI slots, first come first served.
+function createSlotPool(limit) {
+  return {
+    limit,
+    active: 0,
+    waiters: [],
+    async run(task) {
+      if (this.active < this.limit) this.active += 1;
+      else await new Promise((resolveSlot) => this.waiters.push(resolveSlot));
+      try {
+        return await task();
+      } finally {
+        // Hand the slot straight to the next waiter so a newcomer cannot jump the line.
+        const next = this.waiters.shift();
+        if (next) next();
+        else this.active -= 1;
+      }
+    }
+  };
 }
+
+const claudePool = createSlotPool(CLAUDE_CONCURRENCY);
+const codexPool = createSlotPool(CODEX_CONCURRENCY);
 
 function conversationLockKey(model, cwd, anchor) {
   return JSON.stringify([model, cwd, anchor]);
@@ -321,13 +418,20 @@ function rememberClaudeSession(session) {
   session.lastUsed = Date.now();
   if (!claudeSessions.includes(session)) claudeSessions.push(session);
   claudeSessions.sort((left, right) => right.lastUsed - left.lastUsed);
-  claudeSessions.splice(MAX_CLAUDE_SESSIONS);
+  trimSessions();
   saveProviderState();
+}
+
+// Keeps each backend's MAX_SESSIONS_PER_BACKEND most recent sessions (the list is newest first).
+function trimSessions() {
+  const counts = { claude: 0, codex: 0 };
+  const kept = claudeSessions.filter((session) => ++counts[backendOf(session.model)] <= MAX_SESSIONS_PER_BACKEND);
+  claudeSessions.splice(0, claudeSessions.length, ...kept);
 }
 
 function saveProviderState() {
   const state = {
-    subscriptionLimit: subscriptionLimit ? { message: subscriptionLimit.message, until: subscriptionLimit.until.toISOString(), account: subscriptionLimit.account } : null,
+    subscriptionLimit: subscriptionLimits.claude ? { message: subscriptionLimits.claude.message, until: subscriptionLimits.claude.until.toISOString(), account: subscriptionLimits.claude.account } : null,
     sessions: claudeSessions.map(({ id, model, cwd, hashes, anchor, toolsHash, lastUsed }) => ({ id, model, cwd, hashes, anchor, toolsHash, lastUsed }))
   };
   stateWrite = stateWrite.catch(() => {}).then(async () => {
@@ -343,12 +447,13 @@ async function loadProviderState() {
   try {
     const state = JSON.parse(await readFile(SESSION_STATE_FILE, "utf8"));
     const loaded = Array.isArray(state.sessions) ? state.sessions : [];
-    for (const session of loaded.slice(0, MAX_CLAUDE_SESSIONS)) {
+    for (const session of loaded) {
       if (typeof session?.id !== "string" || typeof session?.model !== "string" || typeof session?.cwd !== "string" || !Array.isArray(session?.hashes)) continue;
       claudeSessions.push({ ...session, anchor: typeof session.anchor === "string" ? session.anchor : undefined, toolsHash: typeof session.toolsHash === "string" ? session.toolsHash : "", result: null, resultAt: 0 });
     }
-    subscriptionLimit = persistedLimit(state.subscriptionLimit, claudeAuth?.email);
-    process.stdout.write(`${JSON.stringify({ event: "state_loaded", sessions: claudeSessions.length, limitedUntil: subscriptionLimit?.until?.toISOString() || null })}\n`);
+    trimSessions();
+    subscriptionLimits.claude = persistedLimit(state.subscriptionLimit, claudeAuth?.email);
+    process.stdout.write(`${JSON.stringify({ event: "state_loaded", sessions: claudeSessions.length, limitedUntil: subscriptionLimits.claude?.until?.toISOString() || null })}\n`);
   } catch (error) {
     if (error.code !== "ENOENT") process.stderr.write(`Could not load Claude session state: ${error.message}\n`);
   }
@@ -416,6 +521,17 @@ function imageAttachmentPrompt(files) {
   ].join("\n");
 }
 
+// Codex gets the images themselves (--image), not paths to Read.
+function codexImagePrompt(files) {
+  return files.length ? `IMAGE ATTACHMENTS\nThe ${files.length} embedded image(s) from the messages below are attached to this message, in order.` : "";
+}
+
+const CLAUDE_IMAGE_NOTE = "[Embedded image attachment is available to the Claude Read tool.]";
+
+function codexTranscript(messages) {
+  return conversationTranscript(messages).replaceAll(CLAUDE_IMAGE_NOTE, "[Embedded image attachment: attached to this message.]");
+}
+
 function compactText(text) {
   return text.replace(/data:([^;,]+);base64,[A-Za-z0-9+/=\r\n]+/g, (value, mimeType) =>
     `[Embedded ${mimeType} attachment omitted from text prompt: ${value.length} characters]`
@@ -443,7 +559,7 @@ function contentText(content) {
     if (["image", "image_url", "input_image"].includes(part?.type)) {
       const url = imageSource(part);
       if (typeof url === "string" && !url.startsWith("data:")) return `[Image attachment: ${url.slice(0, 2048)}]`;
-      return "[Embedded image attachment is available to the Claude Read tool.]";
+      return CLAUDE_IMAGE_NOTE;
     }
     return jsonForPrompt(part);
   }).join("\n");
@@ -483,7 +599,16 @@ function conversationTranscript(messages) {
   }).join("\n\n");
 }
 
-function conversationPrompt(messages, imageFiles = []) {
+function conversationPrompt(messages, imageFiles = [], codex = false) {
+  if (codex) {
+    return [
+      "Answer the coding-agent request below (from Kilo Code or VS Code) through the authenticated local Codex CLI.",
+      "The workspace is read-only for you: inspect files if needed, but do not modify anything. Return a concise final answer.",
+      codexImagePrompt(imageFiles),
+      "",
+      codexTranscript(messages)
+    ].join("\n");
+  }
   const transcript = conversationTranscript(messages);
 
   return [
@@ -510,7 +635,7 @@ function toolsCatalogHash(tools) {
   return tools.length ? createHash("sha256").update(jsonForHash(compactTools(tools))).digest("hex") : "";
 }
 
-function kiloToolPrompt(messages, tools, imageFiles = [], knownCatalog = "") {
+function kiloToolPrompt(messages, tools, imageFiles = [], knownCatalog = "", codex = false) {
   // ponytail: a resumed step trusts the CLI to still remember the catalog it
   // was sent earlier in this session. After autocompact the schemas may be
   // summarized away. Ceiling accepted because --json-schema still pins the
@@ -520,17 +645,21 @@ function kiloToolPrompt(messages, tools, imageFiles = [], knownCatalog = "") {
     : `AVAILABLE CLIENT TOOLS\n${JSON.stringify(compactTools(tools))}`;
 
   return [
-    "You are the model driving a coding agent (Kilo Code or VS Code) through the authenticated local Claude CLI.",
+    `You are the model driving a coding agent (Kilo Code or VS Code) through the authenticated local ${codex ? "Codex" : "Claude"} CLI.`,
     "Follow the complete conversation and its system instructions. The agent client, not this CLI process, owns all file, terminal, web, and subagent execution.",
     "Return one decision: a final answer, or one or more client tool calls. Batch independent calls (several reads or searches, edits to different files) into one decision; a call that needs another call's result waits for a later turn. Never claim a tool ran until its result appears in a later TOOL message.",
     "For a final answer, set kind to final, put the answer in content, and set tool_calls to an empty array.",
-    "For tool calls, set kind to tool_call, content to an empty string, and tool_calls to a list of { tool_name, arguments } where tool_name is an available tool and arguments is a valid object matching its parameters.",
-    "Use the client's own subagent tool (Kilo's task tool) when the engineering-lead policy calls for delegation; do not substitute Claude CLI background agents.",
-    imageAttachmentPrompt(imageFiles),
+    codex
+      ? "For tool calls, set kind to tool_call, content to an empty string, and tool_calls to a list of { tool_name, arguments_json } where tool_name is an available tool and arguments_json is a JSON-encoded object matching its parameters."
+      : "For tool calls, set kind to tool_call, content to an empty string, and tool_calls to a list of { tool_name, arguments } where tool_name is an available tool and arguments is a valid object matching its parameters.",
+    codex
+      ? "Never run shell commands, patches, searches or any tool of your own: every action is a client tool call in this decision. Your own sandbox applies only to your disabled built-in tools; the listed client tools have full write and execute access granted by the user, so make edits and run commands through them. Use the client's own subagent tool (Kilo's task tool) when the engineering-lead policy calls for delegation."
+      : "Use the client's own subagent tool (Kilo's task tool) when the engineering-lead policy calls for delegation; do not substitute Claude CLI background agents.",
+    codex ? codexImagePrompt(imageFiles) : imageAttachmentPrompt(imageFiles),
     "",
     catalog,
     "",
-    conversationTranscript(messages)
+    codex ? codexTranscript(messages) : conversationTranscript(messages)
   ].join("\n");
 }
 
@@ -546,8 +675,9 @@ function normalizeUsage(usage) {
   };
 }
 
+// Codex: "thread/resume failed: no rollout found for thread id ...".
 function missingClaudeSession(error) {
-  return /(?:session|conversation).*(?:not found|does not exist|missing)|could not find.*(?:session|conversation)/i.test(error?.message || "");
+  return /(?:session|conversation).*(?:not found|does not exist|missing)|could not find.*(?:session|conversation)|no rollout found/i.test(error?.message || "");
 }
 
 function compactSchema(value) {
@@ -593,18 +723,54 @@ function toolDecisionSchema(tools) {
 
 // The CLI's decision for a tool-mode step: a final answer, or one or more
 // Kilo tool calls that Kilo runs and answers together.
-function parseDecision(payload, tools) {
+function parseDecision(payload, tools, cli = "Claude CLI") {
   let decision = payload.structured_output;
   if (!decision && payload.result) {
     try { decision = JSON.parse(payload.result); } catch {}
   }
   const calls = decision?.kind === "tool_call" && Array.isArray(decision.tool_calls) ? decision.tool_calls : [];
   if (!decision || !["final", "tool_call"].includes(decision.kind) || (decision.kind === "tool_call" && !calls.length)) {
-    throw new Error("Claude CLI did not return a valid Kilo decision");
+    throw new Error(`${cli} did not return a valid Kilo decision`);
   }
   const unavailable = calls.find((call) => !tools.some((tool) => tool?.function?.name === call?.tool_name));
-  if (unavailable) throw new Error(`Claude CLI requested an unavailable Kilo tool: ${unavailable?.tool_name}`);
+  if (unavailable) throw new Error(`${cli} requested an unavailable Kilo tool: ${unavailable?.tool_name}`);
   return decision;
+}
+
+// Codex forwards --output-schema to OpenAI's strict structured outputs: every
+// object closed and fully required, so a free-form arguments object is illegal.
+// Arguments travel as a JSON-encoded string instead.
+function codexDecisionSchema(tools) {
+  const schema = toolDecisionSchema(tools);
+  schema.properties.tool_calls.items = {
+    type: "object",
+    properties: {
+      tool_name: schema.properties.tool_calls.items.properties.tool_name,
+      arguments_json: { type: "string", description: "JSON-encoded object of the tool's arguments" }
+    },
+    required: ["tool_name", "arguments_json"],
+    additionalProperties: false
+  };
+  return schema;
+}
+
+// A Codex decision (arguments_json strings) as the shared { tool_name, arguments } decision.
+function codexDecision(text, tools) {
+  let decision = null;
+  try {
+    const raw = JSON.parse(text);
+    decision = {
+      ...raw,
+      tool_calls: (Array.isArray(raw.tool_calls) ? raw.tool_calls : []).map((call) => {
+        const args = JSON.parse(call?.arguments_json || "{}");
+        if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("arguments_json is not an object");
+        return { tool_name: call.tool_name, arguments: args };
+      })
+    };
+  } catch {
+    decision = null;
+  }
+  return parseDecision({ structured_output: decision }, tools, "Codex CLI");
 }
 
 // OpenAI tool_calls entries; index is required in stream deltas and ignored elsewhere.
@@ -679,6 +845,113 @@ function claudeArgs(profile, tools, session, imageDirectory = null, streaming = 
   return args;
 }
 
+// The prompt goes in on stdin ("-") and comes before --image, whose value list is greedy.
+// resume takes no -C or --sandbox and does not inherit the model or effort, so
+// both are passed on every call and the sandbox goes in as config.
+function codexArgs(profile, tools, session, cwd, schemaFile = null, imageFiles = []) {
+  const args = [
+    "exec",
+    ...(session.resume ? ["resume", session.id] : []),
+    "-",
+    "--json",
+    // Skips config.toml: its model provider, MCP servers and profiles. Auth still loads.
+    "--ignore-user-config",
+    "--skip-git-repo-check",
+    ...(session.resume ? [] : ["-C", cwd]),
+    "-c", 'sandbox_mode="read-only"',
+    "-m", profile.model,
+    "-c", `model_reasoning_effort="${profile.effort}"`
+  ];
+  if (tools.length) {
+    // Drops the read-only sandbox notice, which made Codex refuse client-tool edits.
+    args.push(...CODEX_DISABLED_FEATURES.flatMap((feature) => ["--disable", feature]), "-c", 'web_search="disabled"', "-c", "include_permissions_instructions=false", "--output-schema", schemaFile);
+  }
+  for (const file of imageFiles) args.push("--image", file);
+  return args;
+}
+
+// Codex exec --json events: thread.started (thread id), item.completed items
+// (agent_message is whole text, no deltas), turn.completed (usage), and error
+// followed by turn.failed on failure.
+function parseCodexEvents(stdout) {
+  const run = { threadId: null, text: null, usage: null, error: null, failed: false, ownItems: [] };
+  for (const line of stdout.split("\n")) {
+    if (!line.trim().startsWith("{")) continue;
+    let event;
+    try { event = JSON.parse(line); } catch { continue; }
+    if (event.type === "thread.started") run.threadId = event.thread_id || run.threadId;
+    else if (event.type === "item.completed" && event.item?.type === "agent_message") run.text = event.item.text;
+    // "error" items are warnings (model mismatch on resume); anything else is Codex's own tool.
+    else if (event.type === "item.completed" && !["reasoning", "error"].includes(event.item?.type)) run.ownItems.push(event.item?.type);
+    else if (event.type === "turn.completed") run.usage = event.usage;
+    else if (event.type === "error") run.error = event.message;
+    else if (event.type === "turn.failed") {
+      run.failed = true;
+      run.error = event.error?.message || run.error;
+    }
+  }
+  return run;
+}
+
+// Codex wraps API errors as pretty-printed {"error":{"message"}} JSON.
+function readableCodexError(message) {
+  if (typeof message !== "string") return "";
+  try { return JSON.parse(message)?.error?.message || message; } catch { return message; }
+}
+
+function codexResult(code, stdout, stderr, tools) {
+  const run = parseCodexEvents(stdout);
+  if (run.ownItems.length) process.stdout.write(`${JSON.stringify({ event: "codex_own_tools", thread: run.threadId, items: run.ownItems })}\n`);
+  if (code !== 0 || run.failed || typeof run.text !== "string") {
+    const message = readableCodexError(run.error) || stderr.replace(/^Reading additional input from stdin\.\.\.\s*/m, "").trim() || `Codex CLI exited with code ${code}`;
+    const error = new Error(message);
+    error.status = CODEX_LIMIT.test(message) ? 429 : 500;
+    throw error;
+  }
+  // OpenAI input_tokens already include cached_input_tokens, output_tokens the reasoning tokens.
+  const usage = normalizeUsage(run.usage);
+  if (tools.length) return { decision: codexDecision(run.text, tools), usage, sessionId: run.threadId };
+  return { text: run.text || "Codex completed the task without a text response.", usage, sessionId: run.threadId };
+}
+
+// No text deltas exist, so a streamed request gets the status line, then the whole answer.
+async function runCodex(profile, prompt, cwd, signal, tools = [], session, imageFiles = []) {
+  if (signal.aborted) throw cancellationError();
+  const binary = await codexCli();
+  const schemaDirectory = tools.length ? await mkdtemp(join(tmpdir(), "kilo-codex-schema-")) : null;
+  try {
+    const schemaFile = schemaDirectory && join(schemaDirectory, "decision.json");
+    if (schemaFile) await writeFile(schemaFile, JSON.stringify(codexDecisionSchema(tools)), { mode: 0o600 });
+    if (signal.aborted) throw cancellationError();
+    const { code, stdout, stderr } = await new Promise((resolveRun, reject) => {
+      const child = spawn(binary, codexArgs(profile, tools, session, cwd, schemaFile, imageFiles), {
+        cwd,
+        stdio: ["pipe", "pipe", "pipe"],
+        env: cleanCodexEnvironment()
+      });
+      const out = [];
+      const err = [];
+      child.stdin.on("error", (error) => {
+        if (error.code !== "EPIPE") reject(error);
+      });
+      child.stdin.end(prompt);
+      child.stdout.on("data", (chunk) => out.push(chunk));
+      child.stderr.on("data", (chunk) => err.push(chunk));
+      child.on("error", reject);
+      const cancel = () => child.kill("SIGTERM");
+      signal.addEventListener("abort", cancel, { once: true });
+      child.on("close", (exitCode, stoppedBy) => {
+        signal.removeEventListener("abort", cancel);
+        if (stoppedBy || signal.aborted) return reject(cancellationError());
+        resolveRun({ code: exitCode, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") });
+      });
+    });
+    return codexResult(code, stdout, stderr, tools);
+  } finally {
+    if (schemaDirectory) await rm(schemaDirectory, { recursive: true, force: true });
+  }
+}
+
 // How much of a partially received JSON string body can be decoded right now.
 // Stops before a half-arrived escape so JSON.parse never sees a dangling "\".
 function safeStringSpan(raw, start) {
@@ -731,7 +1004,34 @@ function createDecisionStream() {
   };
 }
 
-function runClaude(profile, prompt, cwd, signal, tools = [], session, imageDirectory = null, onText = null) {
+// The extension deletes its old version folder on auto-update, so a cached
+// path can vanish while the bridge runs; re-resolve instead of failing forever.
+async function liveClaudeBinary(resolver = resolveClaudeBinary) {
+  if (claudeBinary) {
+    try {
+      await access(claudeBinary, fsConstants.X_OK);
+      return claudeBinary;
+    } catch {}
+  }
+  claudeBinary = await resolver();
+  return claudeBinary;
+}
+
+async function runClaude(...args) {
+  if (args[3].aborted) throw cancellationError();
+  await liveClaudeBinary();
+  try {
+    return await spawnClaude(...args);
+  } catch (error) {
+    // Deleted between the check and the spawn: nothing ran yet, so retry once.
+    if (error.code !== "ENOENT") throw error;
+    claudeBinary = null;
+    await liveClaudeBinary();
+    return spawnClaude(...args);
+  }
+}
+
+function spawnClaude(profile, prompt, cwd, signal, tools = [], session, imageDirectory = null, onText = null) {
   return new Promise((resolveResult, reject) => {
     if (signal.aborted) return reject(cancellationError());
     const args = claudeArgs(profile, tools, session, imageDirectory, Boolean(onText));
@@ -883,16 +1183,24 @@ const server = createServer(async (request, response) => {
       transport: "authenticated-local-claude-cli",
       authMethod: claudeAuth?.authMethod || null,
       subscriptionType: claudeAuth?.subscriptionType || null,
-      concurrency: { limit: CLAUDE_CONCURRENCY, active: activeClaude, queued: claudeSlotWaiters.length, conversations: conversationLocks.size },
+      concurrency: { limit: CLAUDE_CONCURRENCY, active: claudePool.active, queued: claudePool.waiters.length, conversations: conversationLocks.size },
       sessionReuse: true,
       sessions: claudeSessions.length,
-      limitedUntil: cachedSubscriptionError()?.until?.toISOString() || null
+      limitedUntil: cachedSubscriptionError()?.until?.toISOString() || null,
+      codex: {
+        concurrency: { limit: CODEX_CONCURRENCY, active: codexPool.active, queued: codexPool.waiters.length },
+        limitedUntil: cachedSubscriptionError("codex")?.until?.toISOString() || null
+      }
     });
   }
   if (request.method === "GET" && url.pathname === "/v1/models") {
+    // Codex models are listed only while a signed-in Codex CLI is installed.
+    const codexReady = await codexCli().then(() => true, () => false);
     return sendJson(response, 200, {
       object: "list",
-      data: Object.entries(profiles).map(([id, profile]) => ({ id, name: profile.name, object: "model", owned_by: "local-claude-cli" }))
+      data: Object.entries(profiles)
+        .filter(([id]) => codexReady || backendOf(id) !== "codex")
+        .map(([id, profile]) => ({ id, name: profile.name, object: "model", owned_by: backendOf(id) === "codex" ? "local-codex-cli" : "local-claude-cli" }))
     });
   }
   if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {
@@ -927,8 +1235,10 @@ const server = createServer(async (request, response) => {
     })}\n`);
     const profile = profiles[body.model];
     if (!profile) return sendJson(response, 400, { error: { message: `Unknown local Claude profile: ${body.model}` } });
+    const backend = backendOf(body.model);
+    const codex = backend === "codex";
     const tools = Array.isArray(body.tools) ? body.tools.filter((tool) => tool?.type === "function") : [];
-    const fullPrompt = tools.length ? kiloToolPrompt(body.messages, tools) : conversationPrompt(body.messages);
+    const fullPrompt = tools.length ? kiloToolPrompt(body.messages, tools, [], "", codex) : conversationPrompt(body.messages, [], codex);
     const cwd = await workingDirectory(fullPrompt);
     const id = `chatcmpl-local-${Date.now()}`;
     // Only tool mode streams. Conversation mode lets the CLI run its own tools,
@@ -946,12 +1256,12 @@ const server = createServer(async (request, response) => {
         process.stdout.write(`${JSON.stringify({ event: "session_cache_hit", session: matched.session.id })}\n`);
         return matched.session.result;
       }
-      return withClaudeSlot(() => runConversationStep(matched));
+      return (codex ? codexPool : claudePool).run(() => runConversationStep(matched));
     });
     async function runConversationStep(matched) {
       if (controller.signal.aborted) throw cancellationError();
-      const limited = cachedSubscriptionError();
-      if (limited) throw subscriptionLimitError(limited);
+      const limited = cachedSubscriptionError(backend);
+      if (limited) throw subscriptionLimitError(limited, backend);
       const session = matched?.session || {
         id: randomUUID(),
         model: body.model,
@@ -980,19 +1290,23 @@ const server = createServer(async (request, response) => {
       let resumed = Boolean(matched);
       // The catalog only has to be described once per CLI session.
       let knownCatalog = resumed && catalogHash && session.toolsHash === catalogHash ? catalogHash : "";
+      // A new Codex thread gets its id from Codex; session.id is replaced once it runs.
+      const run = (text, target) => codex
+        ? runCodex(profile, text, cwd, controller.signal, tools, target, attachments.files)
+        : runClaude(profile, text, cwd, controller.signal, tools, target, attachments.directory, onText);
       try {
         attachments = await materializeImageAttachments(deltaMessages);
-        prompt = tools.length ? kiloToolPrompt(deltaMessages, tools, attachments.files, knownCatalog) : conversationPrompt(deltaMessages, attachments.files);
+        prompt = tools.length ? kiloToolPrompt(deltaMessages, tools, attachments.files, knownCatalog, codex) : conversationPrompt(deltaMessages, attachments.files, codex);
         let recoveredSession = false;
         let output;
         try {
-          output = await runClaude(profile, prompt, cwd, controller.signal, tools, { id: session.id, resume: resumed }, attachments.directory, onText);
+          output = await run(prompt, { id: session.id, resume: resumed });
         } catch (error) {
           if (knownCatalog && !controller.signal.aborted && /Kilo decision|unavailable Kilo tool/i.test(error.message)) {
             knownCatalog = "";
-            prompt = kiloToolPrompt(deltaMessages, tools, attachments.files, "");
+            prompt = kiloToolPrompt(deltaMessages, tools, attachments.files, "", codex);
             process.stdout.write(`${JSON.stringify({ event: "catalog_resent", session: session.id })}\n`);
-            output = await runClaude(profile, prompt, cwd, controller.signal, tools, { id: session.id, resume: resumed }, attachments.directory, onText);
+            output = await run(prompt, { id: session.id, resume: resumed });
           } else if (!resumed || !missingClaudeSession(error) || controller.signal.aborted) {
             throw error;
           } else {
@@ -1002,13 +1316,14 @@ const server = createServer(async (request, response) => {
             deltaMessages = body.messages;
             await removeImageAttachments(attachments);
             attachments = await materializeImageAttachments(deltaMessages);
-            prompt = tools.length ? kiloToolPrompt(deltaMessages, tools, attachments.files) : conversationPrompt(deltaMessages, attachments.files);
+            prompt = tools.length ? kiloToolPrompt(deltaMessages, tools, attachments.files, "", codex) : conversationPrompt(deltaMessages, attachments.files, codex);
             resumed = false;
             recoveredSession = true;
             process.stdout.write(`${JSON.stringify({ event: "session_missing", session: missingSession, replacement: session.id })}\n`);
-            output = await runClaude(profile, prompt, cwd, controller.signal, tools, { id: session.id, resume: false }, attachments.directory, onText);
+            output = await run(prompt, { id: session.id, resume: false });
           }
         }
+        if (output.sessionId) session.id = output.sessionId;
         // Stored with the result, so a cached repeat reports the real run time.
         output.elapsedMs = Date.now() - startedAt;
         session.toolsHash = catalogHash;
@@ -1030,8 +1345,8 @@ const server = createServer(async (request, response) => {
         })}\n`);
         return output;
       } catch (error) {
-        if (error.status === 429 && SUBSCRIPTION_LIMIT.test(error.message)) {
-          throw subscriptionLimitError(rememberSubscriptionLimit(error.message));
+        if (error.status === 429 && (codex ? CODEX_LIMIT : SUBSCRIPTION_LIMIT).test(error.message)) {
+          throw subscriptionLimitError(rememberSubscriptionLimit(error.message, backend), backend);
         }
         throw error;
       } finally {
@@ -1183,6 +1498,12 @@ if (process.argv.includes("--self-test")) {
     claudeBinary = null;
     await rm(stubDirectory, { recursive: true, force: true });
   }
+
+  claudeBinary = join(tmpdir(), "claude-deleted-by-extension-update", "claude");
+  if (await liveClaudeBinary(async () => "/resolved/claude") !== "/resolved/claude" || claudeBinary !== "/resolved/claude") {
+    throw new Error("A deleted cached Claude CLI path is not re-resolved");
+  }
+  claudeBinary = null;
 
   const firstArgs = claudeArgs(profiles["fable-5-1-high"], [], { id: "11111111-1111-4111-8111-111111111111", resume: false });
   const resumeArgs = claudeArgs(profiles["fable-5-1-high"], [], { id: "11111111-1111-4111-8111-111111111111", resume: true });
@@ -1439,7 +1760,7 @@ if (process.argv.includes("--self-test")) {
   const runs = [];
   let running = 0;
   let peak = 0;
-  const fakeJob = (key, label, fail = false) => withConversationLock(key, () => withClaudeSlot(async () => {
+  const fakeJob = (key, label, fail = false) => withConversationLock(key, () => claudePool.run(async () => {
     const run = { label, start: performance.now() };
     running += 1;
     peak = Math.max(peak, running);
@@ -1480,9 +1801,128 @@ if (process.argv.includes("--self-test")) {
   if (peak !== CLAUDE_CONCURRENCY || runs.length !== capped.length || starts.join() !== capped.join()) {
     throw new Error(`The CLI concurrency cap was not respected in order: peak ${peak} of ${CLAUDE_CONCURRENCY}, starts ${starts.join()}`);
   }
-  if (activeClaude !== 0 || claudeSlotWaiters.length || conversationLocks.size) {
+  if (claudePool.active !== 0 || claudePool.waiters.length || conversationLocks.size) {
     throw new Error("CLI slots or conversation locks leaked after the jobs finished");
   }
+
+  // Codex backend: routing, argv, strict schema, JSONL parsing, limits, pools.
+  const codexIds = Object.keys(profiles).filter((id) => backendOf(id) === "codex");
+  if (codexIds.join() !== "codex-gpt-6-astra-high,codex-gpt-6-astra-xhigh,codex-gpt-6-sol-high,codex-gpt-6-luna-medium,codex-gpt-5.6-sol-high,codex-gpt-5.6-terra-high,codex-gpt-5.6-luna-medium"
+    || backendOf("fable-5-1-high") !== "claude" || backendOf("opus-5-5-fast") !== "claude" || backendOf(undefined) !== "claude") {
+    throw new Error("Model ids are not routed to Codex by the codex- prefix");
+  }
+  const luna = profiles["codex-gpt-5.6-luna-medium"];
+  const newCodex = codexArgs(luna, decisionTools, { id: "ignored", resume: false }, "/tmp", "/s/decision.json", ["/i/a.png", "/i/b.png"]);
+  const at = (args, flag) => args[args.indexOf(flag) + 1];
+  if (newCodex.slice(0, 2).join() !== "exec,-" || at(newCodex, "-C") !== "/tmp" || at(newCodex, "-m") !== "gpt-5.6-luna" || !newCodex.includes('model_reasoning_effort="medium"')
+    || !newCodex.includes("--ignore-user-config") || !newCodex.includes("--skip-git-repo-check") || !newCodex.includes('sandbox_mode="read-only"') || !newCodex.includes("--json")
+    || at(newCodex, "--output-schema") !== "/s/decision.json" || !newCodex.join(" ").includes("--disable shell_tool") || newCodex.includes("--ephemeral") || !newCodex.includes("include_permissions_instructions=false")
+    || newCodex.slice(-4).join() !== "--image,/i/a.png,--image,/i/b.png") {
+    throw new Error(`A new Codex tool-mode run has the wrong argv: ${newCodex.join(" ")}`);
+  }
+  const resumeCodex = codexArgs(profiles["codex-gpt-6-astra-xhigh"], decisionTools, { id: "thread-1", resume: true }, "/tmp", "/s/decision.json");
+  if (resumeCodex.slice(0, 4).join() !== "exec,resume,thread-1,-" || resumeCodex.includes("-C") || at(resumeCodex, "-m") !== "gpt-6-astra" || !resumeCodex.includes('model_reasoning_effort="xhigh"') || resumeCodex.includes("--image")) {
+    throw new Error(`A resumed Codex run does not re-pass its model and effort: ${resumeCodex.join(" ")}`);
+  }
+  const chatCodex = codexArgs(luna, [], { id: "x", resume: false }, "/tmp");
+  if (chatCodex.includes("--output-schema") || chatCodex.includes("--disable") || !chatCodex.includes('sandbox_mode="read-only"') || chatCodex.includes("include_permissions_instructions=false")) {
+    throw new Error("A Codex conversation-mode run has tool-mode flags or a writable sandbox");
+  }
+  const strict = (node) => !node || typeof node !== "object" || (Array.isArray(node) ? node.every(strict)
+    : (node.type !== "object" || (node.additionalProperties === false && Object.keys(node.properties || {}).sort().join() === [...(node.required || [])].sort().join()))
+      && Object.values(node).every(strict));
+  const codexSchema = codexDecisionSchema(multiTools);
+  if (!strict(codexSchema) || codexSchema.properties.tool_calls.items.properties.tool_name.enum.join() !== "read,grep" || codexSchema.properties.tool_calls.items.properties.arguments_json.type !== "string"
+    || toolDecisionSchema(multiTools).properties.tool_calls.items.properties.arguments.type !== "object") {
+    throw new Error("The Codex decision schema is not strict, or the Claude schema changed");
+  }
+  const jsonl = (...events) => events.map((event) => JSON.stringify(event)).join("\n");
+  const usageEvent = { type: "turn.completed", usage: { input_tokens: 12854, cached_input_tokens: 9984, cache_write_input_tokens: 0, output_tokens: 1019, reasoning_output_tokens: 947 } };
+  const finalRun = codexResult(0, jsonl({ type: "thread.started", thread_id: "t-1" }, { type: "turn.started" },
+    { type: "item.completed", item: { id: "item_0", type: "error", message: "This session was recorded with model x" } },
+    { type: "item.completed", item: { id: "item_1", type: "agent_message", text: JSON.stringify({ kind: "final", content: "done", tool_calls: [] }) } }, usageEvent), "", multiTools);
+  if (finalRun.decision.content !== "done" || finalRun.sessionId !== "t-1" || finalRun.usage.prompt_tokens !== 12854 || finalRun.usage.completion_tokens !== 1019) {
+    throw new Error(`A Codex final answer, thread id or usage was not parsed: ${JSON.stringify(finalRun)}`);
+  }
+  const callRun = codexResult(0, jsonl({ type: "thread.started", thread_id: "t-2" },
+    { type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ kind: "tool_call", content: "", tool_calls: [{ tool_name: "read", arguments_json: "{\"filePath\":\"a.js\"}" }, { tool_name: "grep", arguments_json: "{\"pattern\":\"x\"}" }] }) } }, usageEvent), "", multiTools);
+  const codexCalls = openAiToolCalls(callRun.decision);
+  if (codexCalls.map((call) => `${call.function.name}:${call.function.arguments}`).join() !== `read:{"filePath":"a.js"},grep:{"pattern":"x"}`) {
+    throw new Error("A Codex tool_call decision's arguments_json was not parsed into OpenAI tool_calls");
+  }
+  const codexFailure = (stdout, stderr = "", code = 1, tools = multiTools) => { try { codexResult(code, stdout, stderr, tools); } catch (error) { return error; } return null; };
+  const failed = codexFailure(jsonl({ type: "thread.started", thread_id: "t-3" }, { type: "error", message: "{\n \"error\": {\n \"message\": \"Invalid schema\", \"code\": \"invalid_json_schema\"\n }\n}" }, { type: "turn.failed", error: { message: "{\"error\":{\"message\":\"Invalid schema\"}}" } }));
+  const badArguments = codexFailure(jsonl({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ kind: "tool_call", content: "", tool_calls: [{ tool_name: "read", arguments_json: "{not json" }] }) } }), "", 0);
+  const noRollout = codexFailure("", "Reading additional input from stdin...\nError: thread/resume: thread/resume failed: no rollout found for thread id x (code -32600)");
+  const limitHit = codexFailure(jsonl({ type: "error", message: "You've hit your usage limit. Upgrade to Pro or try again at 3:04 PM." }, { type: "turn.failed", error: { message: "You've hit your usage limit. Upgrade to Pro or try again at 3:04 PM." } }));
+  if (failed?.message !== "Invalid schema" || failed.status !== 500 || !/valid Kilo decision/.test(badArguments?.message || "") || !missingClaudeSession(noRollout) || noRollout.message.includes("Reading additional") || limitHit?.status !== 429) {
+    throw new Error(`Codex failures are not classified: ${[failed, badArguments, noRollout, limitHit].map((error) => error?.message).join(" | ")}`);
+  }
+  for (const [text, expected] of [
+    ["You've hit your usage limit. Upgrade to Plus to continue using Codex, or try again at 3:04 PM.", true],
+    ["Usage limit reached. You've reached your usage limit.", true],
+    ["Your workspace is out of credits. Add credits to continue.", true],
+    ["Rate limit reached for plan", true],
+    ["Invalid schema for response_format 'codex_output_schema'", false],
+    ["stream disconnected before completion", false]
+  ]) {
+    if (CODEX_LIMIT.test(text) !== expected) throw new Error(`Codex limit misclassified: ${text}`);
+  }
+  const codexNow = new Date(2026, 8, 23, 10, 0);
+  const sameDay = nextLocalReset("try again at 3:04 PM.", codexNow, CODEX_RESET_TIME);
+  const laterDay = nextLocalReset("or try again at Sep 25th, 2026 3:04 PM.", codexNow, CODEX_RESET_TIME);
+  if (sameDay.getTime() !== new Date(2026, 8, 23, 15, 4).getTime() || laterDay.getTime() !== new Date(2026, 8, 25, 15, 4).getTime()) {
+    throw new Error(`A Codex reset time was not parsed: ${sameDay.toISOString()} ${laterDay.toISOString()}`);
+  }
+  const codexLimitError = subscriptionLimitError({ message: "You've hit your usage limit.", until: sameDay }, "codex");
+  if (codexLimitError.status !== 400 || codexLimitError.type !== "subscription_limit_error" || !/^ChatGPT plan usage limit reached for Codex; resets at .*Codex CLI said: You've hit/.test(codexLimitError.message)) {
+    throw new Error("A Codex usage limit is not surfaced like the Claude one");
+  }
+  rememberSubscriptionLimit("You've hit your usage limit. try again at 3:04 PM.", "codex");
+  if (cachedSubscriptionError() || !cachedSubscriptionError("codex")) throw new Error("The Codex limit is not kept apart from Claude's");
+  subscriptionLimits.codex = null;
+  process.env.OPENAI_API_KEY = "sk-test";
+  process.env.CODEX_HOME = "/elsewhere";
+  const codexEnvironment = cleanCodexEnvironment();
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.CODEX_HOME;
+  if (codexEnvironment.OPENAI_API_KEY || codexEnvironment.CODEX_HOME || !codexEnvironment.PATH) throw new Error("API keys or another Codex home reach the Codex CLI");
+  const codexPrompt = kiloToolPrompt(vscodeChat, vscodeTools, ["/i/a.png"], "", true);
+  if (!codexPrompt.includes("arguments_json") || !codexPrompt.includes("Codex CLI") || codexPrompt.includes("Claude") || !codexPrompt.includes("attached to this message")) {
+    throw new Error("The Codex tool prompt still describes the Claude CLI");
+  }
+  // A stub Codex replays JSONL and records its argv and stdin, so the spawn path runs without network.
+  const codexStub = await mkdtemp(join(tmpdir(), "codex-stub-"));
+  try {
+    const decisionLine = jsonl({ type: "thread.started", thread_id: "stub-thread" }, { type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ kind: "final", content: "stubbed", tool_calls: [] }) } }, usageEvent);
+    await writeFile(join(codexStub, "codex"), `#!/bin/sh\nif [ "$1" = login ]; then echo "Logged in using ChatGPT"; exit 0; fi\nprintf '%s\\n' "$@" > "${codexStub}/args"\ncat > "${codexStub}/stdin"\ncat <<'EOF'\n${decisionLine}\nEOF\n`, { mode: 0o755 });
+    process.env.CODEX_BRIDGE_BINARY = join(codexStub, "codex");
+    const stubbed = await runCodex(luna, "prompt via stdin", "/tmp", new AbortController().signal, decisionTools, { id: "x", resume: false });
+    const stubArgs = (await readFile(join(codexStub, "args"), "utf8")).split("\n");
+    if (stubbed.decision.content !== "stubbed" || stubbed.sessionId !== "stub-thread" || await readFile(join(codexStub, "stdin"), "utf8") !== "prompt via stdin" || stubArgs[1] !== "-") {
+      throw new Error("The Codex runner did not pass the prompt on stdin or parse the stub's result");
+    }
+    if ((await readdir(tmpdir())).some((name) => name.startsWith("kilo-codex-schema-") && stubArgs.includes(join(tmpdir(), name, "decision.json")))) {
+      throw new Error("The Codex decision schema file was not removed");
+    }
+  } finally {
+    delete process.env.CODEX_BRIDGE_BINARY;
+    await rm(codexStub, { recursive: true, force: true });
+  }
+  // Codex sessions and CLI slots never crowd out Claude's.
+  const lru = [...Array.from({ length: MAX_SESSIONS_PER_BACKEND + 5 }, (unused, index) => ({ id: `c${index}`, model: "codex-gpt-5.6-luna-medium" })), { id: "claude-old", model: "fable-5-1-high" }];
+  claudeSessions.push(...lru);
+  trimSessions();
+  const keptClaude = claudeSessions.some((session) => session.id === "claude-old");
+  const keptCodex = claudeSessions.filter((session) => backendOf(session.model) === "codex").length;
+  claudeSessions.length = 0;
+  if (!keptClaude || keptCodex !== MAX_SESSIONS_PER_BACKEND) throw new Error("Codex sessions evicted Claude sessions from the LRU");
+  const releaseCodex = [];
+  const busyCodex = Array.from({ length: CODEX_CONCURRENCY }, () => codexPool.run(() => new Promise((resolveJob) => releaseCodex.push(resolveJob))));
+  const claudeRan = await Promise.race([claudePool.run(async () => true), new Promise((resolveJob) => setTimeout(() => resolveJob(false), 200))]);
+  releaseCodex.forEach((release) => release());
+  await Promise.all(busyCodex);
+  if (!claudeRan || claudePool.active !== 0 || codexPool.active !== 0) throw new Error("A full Codex pool blocked a Claude run");
   process.stdout.write("Claude prompt compaction self-test passed.\n");
 } else {
   claudeBinary = await resolveClaudeBinary();
