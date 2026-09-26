@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="704" viewBox="0 0 900 704" role="img" aria-labelledby="title desc">
+  <title id="title">How the VS Code configuration fits together</title>
+  <desc id="desc">VS Code (Copilot Chat and Kilo Code) hosts the engineering leads; Opus + Jev Engineering Lead is recommended, with Fable, Fable + Jev, Astra and Astra + Jev as alternatives. Leads delegate to deepseek-workstream-lead, deepseek-implementer, glm-investigator and luna-utility only when justified. Model turns go through the Claude Local CLI provider (127.0.0.1:32123), the OpenRouter speed proxy (127.0.0.1:32126) and the Codex router (127.0.0.1:43128). Tools are Peekaboo background screen control with peekaboo-runner, Playwright or the in-app browser, and advisory Jev (TypeSafe).</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e2e8f0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .h1 { font-size: 21px; font-weight: 700; fill: #f8fafc; }
+    .sub { font-size: 13px; fill: #94a3b8; }
+    .head { font-size: 12px; font-weight: 700; letter-spacing: 1.2px; fill: #7dd3fc; }
+    .name { font-size: 14px; font-weight: 600; }
+    .small { font-size: 12px; fill: #a8b5c8; }
+    .port { font-size: 12px; fill: #7dd3fc; }
+    .note { font-size: 12px; fill: #94a3b8; }
+    .panel { fill: #111a2e; stroke: #22304a; }
+    .box { fill: #16223a; stroke: #33476a; }
+    .alt { fill: #16223a; stroke: #33476a; }
+    .rec { fill: #2a1f0a; stroke: #f59e0b; stroke-width: 2; }
+    .arrow { stroke: #64748b; stroke-width: 2; fill: none; marker-end: url(#tip); }
+  </style>
+  <defs>
+    <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Solid background so the diagram reads the same in GitHub light and dark themes. -->
+  <rect width="900" height="704" rx="18" fill="#0b1220"/>
+
+  <text x="32" y="42" class="h1">How the configuration fits together</text>
+  <text x="32" y="64" class="sub">Recommended: Opus + Jev Engineering Lead, in VS Code Copilot Chat or Kilo Code</text>
+
+  <!-- 1. Editor -->
+  <rect x="24" y="80" width="852" height="86" rx="12" class="panel"/>
+  <text x="40" y="99" class="head">1 · EDITOR</text>
+  <rect x="40" y="108" width="404" height="44" rx="8" class="box"/>
+  <text x="242" y="127" class="name" text-anchor="middle">VS Code · Copilot Chat (Chat tab)</text>
+  <text x="242" y="144" class="small" text-anchor="middle">copilot-chat/ · 17 custom agents, mcp.json, models</text>
+  <rect x="456" y="108" width="404" height="44" rx="8" class="box"/>
+  <text x="658" y="127" class="name" text-anchor="middle">VS Code · Kilo Code extension</text>
+  <text x="658" y="144" class="small" text-anchor="middle">examples/ · kilo.jsonc and agent/*.md</text>
+
+  <path d="M450 166 V184" class="arrow"/>
+  <text x="462" y="180" class="note">you pick one lead in the agent picker</text>
+
+  <!-- 2. Leads -->
+  <rect x="24" y="188" width="852" height="110" rx="12" class="panel"/>
+  <text x="40" y="207" class="head">2 · ENGINEERING LEAD (OWNS THE TASK)</text>
+  <text x="436" y="207" class="head" style="fill:#94a3b8">ALTERNATIVES</text>
+  <rect x="40" y="216" width="380" height="68" rx="10" class="rec"/>
+  <rect x="52" y="224" width="112" height="20" rx="10" fill="#f59e0b"/>
+  <text x="108" y="238" text-anchor="middle" style="font-size:12px;font-weight:700;fill:#1c1206">RECOMMENDED</text>
+  <text x="52" y="262" style="font-size:16px;font-weight:700;fill:#fef3c7">Opus + Jev Engineering Lead</text>
+  <text x="52" y="278" class="small" style="fill:#fcd9a0">Claude Opus 5.5 High via local Claude CLI · Jev advisory</text>
+  <rect x="436" y="216" width="206" height="29" rx="7" class="alt"/>
+  <text x="539" y="235" class="small" text-anchor="middle" style="font-size:13px;fill:#cbd5e1">Fable Engineering Lead</text>
+  <rect x="654" y="216" width="206" height="29" rx="7" class="alt"/>
+  <text x="757" y="235" class="small" text-anchor="middle" style="font-size:13px;fill:#cbd5e1">Fable + Jev</text>
+  <rect x="436" y="255" width="206" height="29" rx="7" class="alt"/>
+  <text x="539" y="274" class="small" text-anchor="middle" style="font-size:13px;fill:#cbd5e1">Astra Engineering Lead</text>
+  <rect x="654" y="255" width="206" height="29" rx="7" class="alt"/>
+  <text x="757" y="274" class="small" text-anchor="middle" style="font-size:13px;fill:#cbd5e1">Astra + Jev</text>
+
+  <path d="M450 298 V316" class="arrow"/>
+  <text x="462" y="312" class="note">delegates only when scale or risk justifies it</text>
+
+  <!-- 3. Workers -->
+  <rect x="24" y="320" width="852" height="86" rx="12" class="panel"/>
+  <text x="40" y="339" class="head">3 · WORKERS (SUBAGENTS, EXCLUSIVE SCOPE)</text>
+  <rect x="40" y="348" width="220" height="44" rx="8" class="box"/>
+  <text x="150" y="367" class="mono" text-anchor="middle" style="font-size:13px">deepseek-workstream-lead</text>
+  <text x="150" y="384" class="small" text-anchor="middle">DeepSeek · 3+ workstreams</text>
+  <rect x="270" y="348" width="196" height="44" rx="8" class="box"/>
+  <text x="368" y="367" class="mono" text-anchor="middle" style="font-size:13px">deepseek-implementer</text>
+  <text x="368" y="384" class="small" text-anchor="middle">DeepSeek · bounded code</text>
+  <rect x="476" y="348" width="196" height="44" rx="8" class="box"/>
+  <text x="574" y="367" class="mono" text-anchor="middle" style="font-size:13px">glm-investigator</text>
+  <text x="574" y="384" class="small" text-anchor="middle">GLM 5.3 Flash · read-only</text>
+  <rect x="682" y="348" width="178" height="44" rx="8" class="box"/>
+  <text x="771" y="367" class="mono" text-anchor="middle" style="font-size:13px">luna-utility</text>
+  <text x="771" y="384" class="small" text-anchor="middle">GPT-5.6 Luna · tiny chores</text>
+
+  <path d="M234 406 V426" class="arrow"/>
+  <text x="246" y="421" class="note">model turns (leads and workers)</text>
+  <path d="M666 406 V426" class="arrow"/>
+  <text x="678" y="421" class="note">tool calls</text>
+
+  <!-- 4. Local services -->
+  <rect x="24" y="430" width="420" height="232" rx="12" class="panel"/>
+  <text x="40" y="449" class="head">4 · LOCAL SERVICES (LOOPBACK)</text>
+  <rect x="40" y="458" width="388" height="62" rx="8" class="box"/>
+  <text x="52" y="478" class="name">Claude Local CLI provider</text>
+  <text x="416" y="478" class="mono port" text-anchor="end">127.0.0.1:32123</text>
+  <text x="52" y="496" class="small">Fable and Opus turns via the signed-in Claude CLI</text>
+  <text x="52" y="512" class="mono small">ai.kilo.claude-local-cli-provider</text>
+  <rect x="40" y="528" width="388" height="62" rx="8" class="box"/>
+  <text x="52" y="548" class="name">OpenRouter speed proxy</text>
+  <text x="416" y="548" class="mono port" text-anchor="end">127.0.0.1:32126</text>
+  <text x="52" y="566" class="small">Copilot Chat: DeepSeek to DeepSeek API direct,</text>
+  <text x="52" y="582" class="small">GLM to OpenRouter with throughput provider sort</text>
+  <rect x="40" y="598" width="388" height="50" rx="8" class="box"/>
+  <text x="52" y="618" class="name">Codex router</text>
+  <text x="416" y="618" class="mono port" text-anchor="end">127.0.0.1:43128</text>
+  <text x="52" y="637" class="small">Codex model picker: Astra, Fable, DeepSeek, GLM</text>
+
+  <!-- 5. Tools -->
+  <rect x="456" y="430" width="420" height="232" rx="12" class="panel"/>
+  <text x="472" y="449" class="head">5 · TOOLS (ACT AND VERIFY)</text>
+  <rect x="472" y="458" width="388" height="62" rx="8" class="box"/>
+  <text x="484" y="478" class="name">Peekaboo screen control</text>
+  <text x="484" y="496" class="small">Background-first by element ID, no cursor takeover</text>
+  <text x="484" y="512" class="small"><tspan class="mono">peekaboo-runner.mjs</tspan> runs a UI plan in one call</text>
+  <rect x="472" y="528" width="388" height="62" rx="8" class="box"/>
+  <text x="484" y="548" class="name">Playwright / in-app browser</text>
+  <text x="484" y="566" class="small">Separate automated browser for websites,</text>
+  <text x="484" y="582" class="small">never the user's own Chrome window</text>
+  <rect x="472" y="598" width="388" height="50" rx="8" class="box"/>
+  <text x="484" y="618" class="name">Jev (TypeSafe MCP)</text>
+  <text x="484" y="637" class="small">Advisory evidence checks; never approves completion</text>
+
+  <text x="32" y="686" class="note">Services listen on loopback only · credentials stay in keychains and auth stores, never in Git</text>
+</svg>
