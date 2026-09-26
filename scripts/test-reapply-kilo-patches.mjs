@@ -1,5 +1,6 @@
 // Check for scripts/reapply-kilo-patches.sh: a pristine fake Kilo install gets all three
-// patches plus one notification; a second run is a no-op with no notification.
+// patches plus one notification; a second run is a no-op with no notification; a failing
+// patch is logged and notified without blocking the others, and the run exits non-zero.
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -7,9 +8,14 @@ import os from "node:os"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dirname, "..")
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kilo-reapply-"))
-const dist = path.join(tmp, "ext", "kilocode.kilo-code-9.9.9-darwin-arm64", "dist")
-fs.mkdirSync(dist, { recursive: true })
+const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "kilo-reapply-"))) // realpath: patch CLIs compare import.meta.url with argv[1]
+const install = (ext) => {
+  const dist = path.join(tmp, ext, "kilocode.kilo-code-9.9.9-darwin-arm64", "dist")
+  fs.mkdirSync(dist, { recursive: true })
+  for (const [name, text] of [["webview.js", webview], ["agent-manager.js", webview], ["extension.js", extension]])
+    fs.writeFileSync(path.join(dist, name), text)
+  return dist
+}
 
 // Trimmed Kilo 7.7.7 anchors (see examples/patches/check-per-agent-model.mjs).
 const webview = [
@@ -22,8 +28,7 @@ const webview = [
   "let It=Ge?Mt.agentSelections[Ge]:nn(),un=1;",
 ].join("\n")
 const extension = 'let{visible,defaultAgent}=filterVisibleAgents(agents),message6={type:"agentsLoaded",agents:visible.map(mapAgent),allAgents:agents.map(mapAgent),defaultAgent};switch(x){case"t":break;case"persistVariant":{let stored2=1}}'
-for (const [name, text] of [["webview.js", webview], ["agent-manager.js", webview], ["extension.js", extension]])
-  fs.writeFileSync(path.join(dist, name), text)
+const dist = install("ext")
 
 // Fake osascript records notifications instead of showing them.
 const bin = path.join(tmp, "bin"), notes = path.join(tmp, "notes")
@@ -41,9 +46,9 @@ for (const [from, to] of [["copilot-chat/config/mcp.json", "Library/Application 
 fs.writeFileSync(path.join(home, ".claude.json"), JSON.stringify({ mcpServers: { peekaboo: { type: "stdio", command: "peekaboo",
   args: ["mcp", "serve", "--no-remote", "--transport", "stdio", "--allow-foreground"] } } }))
 
-const run = () => execFileSync("bash", [path.join(root, "scripts/reapply-kilo-patches.sh")], {
-  env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, KILO_EXTENSIONS_DIR: path.join(tmp, "ext"),
-    KILO_PATCH_DIR: path.join(root, "examples/patches"), KILO_PATCH_LOG: path.join(tmp, "log"), KILO_PATCH_SETTLE: "0",
+const run = (ext = "ext", patches = path.join(root, "examples/patches")) => execFileSync("bash", [path.join(root, "scripts/reapply-kilo-patches.sh")], {
+  env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, KILO_EXTENSIONS_DIR: path.join(tmp, ext),
+    KILO_PATCH_DIR: patches, KILO_PATCH_LOG: path.join(tmp, "log"), KILO_PATCH_SETTLE: "0",
     KILO_CONFIG: path.join(root, "examples/kilo.jsonc") },
 })
 const read = (f) => fs.existsSync(f) ? fs.readFileSync(f, "utf8") : ""
@@ -60,6 +65,17 @@ run()
 assert.match(read(path.join(tmp, "log")), /all patches present/)
 assert.equal(read(notes).trim().split("\n").length, 1, "second run must not notify")
 assert.deepEqual(["webview.js", "agent-manager.js", "extension.js"].map((f) => read(path.join(dist, f))), before)
+
+// A broken first patch (jev-agent-order) must not block per-agent-model and global-last-agent.
+const broken = path.join(tmp, "patches")
+fs.cpSync(path.join(root, "examples/patches"), broken, { recursive: true })
+fs.writeFileSync(path.join(broken, "jev-agent-order.mjs"), "process.exit(1)\n")
+const dist2 = install("ext2")
+assert.throws(() => run("ext2", broken), (e) => e.status === 1)
+assert.match(read(path.join(tmp, "log")), /FAILED jev-agent-order\.mjs/)
+assert.match(read(notes), /Kilo patch re-apply FAILED: jev-agent-order/)
+for (const marker of ["Xi.forget", "persistLastSelectedAgent"]) assert.ok(read(path.join(dist2, "webview.js")).includes(marker), marker)
+assert.match(read(path.join(dist2, "extension.js")), /persistLastSelectedAgent/)
 
 fs.rmSync(tmp, { recursive: true })
 console.log("reapply-kilo-patches checks passed")

@@ -45,8 +45,8 @@ try {
   ] }, opts());
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.deepEqual(r.steps.map(s => s.status), ['passed', 'passed', 'passed', 'passed']);
-  assert.ok(calls().every(c => c.at(-1) === '--json'));
-  assert.deepEqual(calls().find(c => c[0] === 'type'), ['type', 'x', '--snapshot', 'snap1', '--json']);
+  assert.ok(calls().every(c => c.slice(-2).join(' ') === '--json --no-remote'));
+  assert.deepEqual(calls().find(c => c[0] === 'type'), ['type', 'x', '--snapshot', 'snap1', '--json', '--no-remote']);
   const evidence = jevCalls.at(-1).evidence;
   assert.equal(jevCalls.at(-1).purpose, 'evidence_check');
   assert.ok(evidence.includes('"text entry area" = hi') && evidence.includes('[secure]') && !evidence.includes('hunter2'));

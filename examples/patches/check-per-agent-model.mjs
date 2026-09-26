@@ -49,4 +49,22 @@ assert.equal(startAgent("Fable Engineering Lead"), "Fable Engineering Lead")
 assert.equal(startAgent(undefined), "astra-engineering-lead")
 assert.equal(startAgent("deleted-agent"), "astra-engineering-lead")
 
+// Kilo 7.8.1 shapes: renamed minified ids, guarded resolver, multi-line Jev ordering in agentsLoaded.
+const fixture781 = [
+  "r=n(e.session)??n(e.preferred)??n(e.override)??n(e.mode)??n(e.global);if(r)return r;",
+  "defaults:ne=>de()??(H()[ne]?Mt.modelSelections[ne]:void 0)??Pa(ne)??Mi(),agent:fr,",
+  "let je=dF({...$i(),mode:Pa(ne),global:Mi(),recent:Mt.recentModels});",
+  'function _ge(ne,je){let At=je??o();if(At){Xi.pin(At),nn("agentSelections",At,ne);return}Nt(ne)}',
+  'let il=t.onMessage(ne=>{if(ne.type!=="agentsLoaded")return;et((function orderAgents(agents) {\n  return agents;\n})(ne.agents)),qe(ne.allAgents??ne.agents),Oe(ne.defaultAgent);let je=1});',
+  "let an=xe(()=>{let ne=o();return ne?Mt.agentSelections[ne]??De():rn()??De()});",
+  "let It=je?Mt.agentSelections[je]:rn(),pn=1;",
+].join("\n")
+const patched781 = patchWebview(patch(fixture781))
+assert.equal(patchWebview(patch(patched781)), patched781, "7.8.1 patches must be idempotent")
+assert.match(patched781, /n\(e\.session\)\?\?n\(e\.override\)\?\?n\(e\.mode\)\?\?n\(e\.preferred\)\?\?n\(e\.global\)/)
+assert.match(patched781, /defaults:ne=>\(H\(\)\[ne\]\?Mt\.modelSelections\[ne\]:void 0\)\?\?Pa\(ne\)\?\?de\(\)\?\?Mi\(\),agent/)
+assert.match(patched781, /recent:Mt\.recentModels,preferred:de\(\)\}\)/)
+assert.match(patched781, /\{t\.postMessage\(\{type:"persistLastSelectedAgent",agent:ne\}\),Oe\(ne\);let At=je\?\?o\(\);if\(At\)\{\/\^\(\?:sidebar-\)\?pending:\/\.test\(At\)\?Xi\.forget\(At\)/)
+assert.match(patched781, /:rn\(\)\?\?De\(\),pn=1/)
+
 console.log("per-agent-model and global-last-agent patch checks passed")

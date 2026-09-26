@@ -54,7 +54,7 @@ function checkDir(dir) {
     }
     const tools = list(fm.tools);
     const text = fs.readFileSync(file, 'utf8');
-    assert.ok(!/peekaboo\/(browser|\*)/.test(text), `${f}: peekaboo browser or wildcard`);
+    assert.ok(!/peekaboo\/(browser|move|drag|\*)/.test(text), `${f}: peekaboo browser, wildcard, or move/drag (absent from Peekaboo 4.4.0)`);
     assert.equal(tools.some((t) => t.startsWith('claude-code-local/')), OPUS_ESCALATION.includes(name), `${f}: claude-code-local is for the non-Opus leads only`);
     assert.ok(!/claude-code-local|Claude_Code_Local/.test(text) || LEADS.includes(name), `${f}: mentions claude-code-local`);
     assert.deepEqual(tools.filter((t) => t.startsWith('typesafe/')), JEV.includes(name) ? ['typesafe/evaluate_work'] : [], `${f}: Jev (typesafe/evaluate_work) is for the Jev leads only`);

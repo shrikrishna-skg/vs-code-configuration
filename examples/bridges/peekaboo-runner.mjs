@@ -2,8 +2,8 @@
 // Screen runner: executes a JSON plan of Peekaboo CLI steps with a deterministic check
 // after every step, asks Jev only for `expect_text`, and prints one compact JSON report.
 // Usage: node peekaboo-runner.mjs <plan.json> | --recipe <name>  [--save <name>] [--confirmed <stepId>]...
-// Speed: `peekaboo daemon start` keeps Peekaboo services warm between CLI calls; this
-// runner never starts it.
+// Every call runs with --no-remote (in-process, like the MCP servers): the shared daemon
+// route fails with "ScreenCaptureKit owner PID ..." while any --no-remote server owns capture.
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -67,7 +67,7 @@ export function summarize(data) {
 }
 
 function exec(bin, args) {
-  return new Promise(resolve => execFile(bin, args.includes('--json') ? args : [...args, '--json'],
+  return new Promise(resolve => execFile(bin, [...args, ...['--json', '--no-remote'].filter(f => !args.includes(f))],
     { timeout: 30000, maxBuffer: 32 << 20 }, (error, stdout) => {
       let body = null; try { body = JSON.parse(stdout); } catch {}
       resolve({ code: error ? (typeof error.code === 'number' ? error.code : 1) : 0, body });

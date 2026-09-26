@@ -13,7 +13,7 @@ Observed on 2026-09-23: VS Code 1.139.0, bundled Copilot Chat 0.67.0, Codex CLI 
 | `config/prompts/*.agent.md` | `~/Library/Application Support/Code/User/prompts/` | The Kilo agents as 17 custom agents |
 | `config/prompts/reply-style.instructions.md` | same `prompts/` folder | Reply style and UI-verification rule |
 | `config/mcp.json` | `~/Library/Application Support/Code/User/mcp.json` | `peekaboo` and `claude-code-local` MCP servers for the Chat tab (placeholders) |
-| `config/chatLanguageModels.json` | `~/Library/Application Support/Code/User/chatLanguageModels.json` | Custom Endpoint group "Claude Local CLI" (four bridge models, no key) |
+| `config/chatLanguageModels.json` | `~/Library/Application Support/Code/User/chatLanguageModels.json` | Custom Endpoint groups "Claude Local CLI", "Speed Proxy" and "Codex Local CLI" (no keys) |
 | `config/settings.jsonc` | `~/Library/Application Support/Code/User/settings.json` | Chat instruction, subagent, approval and sound-off keys only |
 | `config/config.peekaboo.toml` | `~/.codex/config.toml` | Codex tab Peekaboo with `disabled_tools = ["browser"]` (placeholders) |
 | `scripts/install.sh` | | Installs or merges the files above |
@@ -33,7 +33,7 @@ bash copilot-chat/scripts/install.sh --codex-snippet   # prints the Codex snippe
 ```
 
 - **Idempotent:** a file is written only when its content changes, and the old file is first copied to `<file>.bak-<timestamp>`. A second run changes nothing.
-- **Merges, never replaces:** `settings.json` gets only the keys in `config/settings.jsonc`; `mcp.json` gets only the two servers; `chatLanguageModels.json` gets only the "Claude Local CLI" group. Other settings, servers and model groups (such as your OpenRouter group) stay as they are.
+- **Merges, never replaces:** `settings.json` gets only the keys in `config/settings.jsonc`; `mcp.json` gets only the two servers; `chatLanguageModels.json` gets only the "Claude Local CLI", "Speed Proxy" and "Codex Local CLI" groups. Other settings, servers and model groups (such as your OpenRouter group) stay as they are.
 - **Paths:** `<ABSOLUTE_PATH_TO_PEEKABOO>` and `<ABSOLUTE_PATH_TO_NODE>` come from `command -v`, the Kilo folder is `~/.config/kilo`, and `<HOME>` is `$HOME`. Override with `PEEKABOO_BIN`, `NODE_BIN`, `KILO_CONFIG_DIR` or `VSCODE_USER_DIR`.
 - **Plain JSON only:** if the live `settings.json` has comments or trailing commas, the script stops and asks you to merge by hand.
 - **Not touched:** Kilo, `~/.claude.json`, `~/.claude` and `~/.codex`. Append the `--codex-snippet` output to `~/.codex/config.toml` yourself, after a backup.
@@ -53,7 +53,7 @@ bash scripts/verify.sh                                      # whole repository, 
 Every tab runs the same command:
 
 ```text
-~/.local/node/bin/peekaboo mcp serve --no-remote --transport stdio --allow-foreground
+~/.local/node/bin/peekaboo mcp serve --no-remote --transport stdio
 ```
 
 - **`--no-remote`** must follow `serve`. Without it, a second window's server fails with "ScreenCaptureKit owner PID ... does not serve selected socket".
@@ -67,8 +67,9 @@ Every tab runs the same command:
 
 The Chat tab reaches Fable and Opus through the local Claude CLI bridge (`ai.kilo.claude-local-cli-provider`, `http://127.0.0.1:32123/v1`). One bridge process serves Kilo and VS Code.
 
-- **Claude models:** `chatLanguageModels.json` defines one Custom Endpoint group with `fable-5-1-high`, `fable-5-1-max`, `opus-5-5-fast` and `opus-5-5-high`. Tool calling, vision and thinking are on. Custom Endpoint needs no API key; the bridge ignores the empty `Authorization` header.
-- **Astra, Sol, Luna:** Copilot's own models ("GPT-6 Astra", "GPT-5.6 Sol", "GPT-5.6 Luna"). Custom Endpoint also accepts `apiType: "responses"`, so the Codex router (`http://127.0.0.1:43128/v1`) is a possible alternative. It is untested.
+- **Claude models:** the "Claude Local CLI" Custom Endpoint group has `fable-5-1-high`, `fable-5-1-medium`, `fable-5-1-max`, `opus-5-5-fast`, `opus-5-5-medium` and `opus-5-5-high`. Tool calling, vision and thinking are on. Custom Endpoint needs no API key; the bridge ignores the empty `Authorization` header.
+- **Codex models (ChatGPT plan):** the "Codex Local CLI" Custom Endpoint group serves `codex-*` models (for example `GPT-6 Astra High (Codex Local CLI)`) through the same bridge and the signed-in Codex CLI. The Astra leads ask for it first, then fall back to Copilot's `GPT-6 Astra`.
+- **Astra, Sol, Luna:** Copilot's own models ("GPT-6 Astra", "GPT-5.6 Sol", "GPT-5.6 Luna") still work and use Copilot quota.
 - **DeepSeek through the DeepSeek API, GLM through OpenRouter:** both run through the "Speed Proxy" Custom Endpoint group and [`openrouter-speed-proxy.mjs`](../examples/bridges/openrouter-speed-proxy.mjs) (LaunchAgent `ai.kilo.openrouter-speed-proxy` from [`ai.kilo.openrouter-speed-proxy.plist`](../examples/bridges/ai.kilo.openrouter-speed-proxy.plist), `http://127.0.0.1:32126/v1`).
   - **DeepSeek direct:** the proxy sends every `deepseek/*` model to `https://api.deepseek.com`: `DeepSeek V4.1 Flash API` (`deepseek/deepseek-v4.1-flash`) as `deepseek-flash`, DeepSeek's always-latest Flash alias, and `DeepSeek V4 Pro API` (`deepseek/deepseek-v4-pro`, text-only input) as `deepseek-v4-pro` (both confirmed with `GET /models`), with the key Kilo already stores in `~/.local/share/kilo/auth.json`, the same account Kilo and Codex use. It drops OpenRouter-only request fields (`reasoning`, `provider`, `usage`) and never sends VS Code's OpenRouter key there. The built-in OpenRouter group no longer carries a DeepSeek entry.
   - **GLM:** `z-ai/glm-5.3-flash` goes to OpenRouter with VS Code's own `Authorization` header.
@@ -99,7 +100,7 @@ Bridge behaviour for VS Code ([`../examples/bridges/claude-cli-provider.mjs`](..
 
 | Agent | Model | Picker | Subagents it may call |
 |---|---|---|---|
-| Astra Engineering Lead, Astra + Jev | `GPT-6 Astra` (Copilot) | yes | the four workers |
+| Astra Engineering Lead, Astra + Jev | `GPT-6 Astra High (Codex Local CLI) (customendpoint)`, then Copilot `GPT-6 Astra` | yes | the four workers |
 | Fable Engineering Lead, Fable + Jev | `Claude Fable 5.1 High (Local CLI) (customendpoint)` | yes | the four workers |
 | Opus + Jev | `Claude Opus 5.5 High (Local CLI) (customendpoint)` | yes | the four workers |
 | Opus 5.5 High | `Claude Opus 5.5 High (Local CLI) (customendpoint)` | yes | none |
@@ -143,7 +144,7 @@ node ~/.config/kilo/patches/check-peekaboo-mcp.mjs --live   # plus Peekaboo tool
 `install.sh` prints a short version of these at the end.
 
 1. Run **Developer: Reload Window** in every VS Code window.
-2. **MCP view:** start `peekaboo` and `claude-code-local` and confirm both show Running, with Peekaboo listing 26 tools. In the default Agent mode's tool picker, untick `peekaboo > browser`.
+2. **MCP view:** start `peekaboo` and `claude-code-local` and confirm both show Running, with Peekaboo listing 24 tools (Peekaboo 4.4.0 has no `move` or `drag`, so no agent lists them). In the default Agent mode's tool picker, untick `peekaboo > browser`.
 3. **Manage Models:**
    - Confirm "Custom Endpoint" is offered (a Copilot plan or org policy can hide it) and the four "Claude ... (Local CLI)" models are enabled. Leave the API key empty; if the form insists on one, enter any placeholder.
    - **Add Models > OpenRouter:** enter your own key, then add and pin "Z.ai: GLM 5.3 Flash" (GLM fallback). Rerun `install.sh` so "Speed Proxy" picks up the key.

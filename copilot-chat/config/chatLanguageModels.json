@@ -156,5 +156,123 @@
 				"reasoningEffort": "high"
 			}
 		}
+	},
+	{
+		"name": "Codex Local CLI",
+		"vendor": "customendpoint",
+		"models": [
+			{
+				"id": "codex-gpt-6-astra-high",
+				"name": "GPT-6 Astra High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-6-astra-xhigh",
+				"name": "GPT-6 Astra Extra High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-6-sol-high",
+				"name": "GPT-6 Sol High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-6-luna-medium",
+				"name": "GPT-6 Luna Medium (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-5.6-sol-high",
+				"name": "GPT-5.6 Sol High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-5.6-terra-high",
+				"name": "GPT-5.6 Terra High (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			},
+			{
+				"id": "codex-gpt-5.6-luna-medium",
+				"name": "GPT-5.6 Luna Medium (Codex Local CLI)",
+				"url": "http://127.0.0.1:32123/v1",
+				"apiType": "chat-completions",
+				"toolCalling": true,
+				"vision": true,
+				"thinking": true,
+				"contextWindow": 272000,
+				"maxOutputTokens": 32000,
+				"editTools": [
+					"apply-patch",
+					"multi-find-replace",
+					"find-replace"
+				]
+			}
+		]
 	}
 ]

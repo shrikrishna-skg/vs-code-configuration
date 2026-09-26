@@ -28,7 +28,9 @@ const deepseekKey = () => {
 
 // Picks the upstream for a parsed chat request. DeepSeek: upstream model id, proxy-held key
 // (the client's OpenRouter key is never sent there) and no OpenRouter-only fields.
+// GLM on OpenRouter gets Kilo's throughput sort unless the client chose its own provider.
 function route(json, headers, readKey = deepseekKey) {
+  if (/^z-ai\/glm-/.test(json?.model || "")) json.provider ??= { sort: "throughput" };
   if (!/^deepseek\//.test(json?.model || "")) return { base: UPSTREAM, name: "openrouter", headers };
   json.model = DEEPSEEK_MODELS[json.model] ?? json.model.slice("deepseek/".length);
   json.reasoning_effort ??= json.reasoning?.effort;
@@ -244,7 +246,13 @@ if (process.argv.includes("--self-test")) {
   assert.deepEqual(ds2, { model: "deepseek-v4-pro", reasoning_effort: "high" });
   const glm = { model: "z-ai/glm-5.3-flash", reasoning: { effort: "low" }, usage: { include: true } };
   const toGlm = route(glm, client, () => assert.fail("OpenRouter requests must not read the DeepSeek key"));
-  assert.deepEqual([toGlm.base, toGlm.headers, glm], [UPSTREAM, client, { model: "z-ai/glm-5.3-flash", reasoning: { effort: "low" }, usage: { include: true } }]);
+  assert.deepEqual([toGlm.base, toGlm.headers, glm], [UPSTREAM, client, { model: "z-ai/glm-5.3-flash", reasoning: { effort: "low" }, usage: { include: true }, provider: { sort: "throughput" } }]);
+  const glmOwn = { model: "z-ai/glm-5.3-flash", provider: { order: ["z-ai"], allow_fallbacks: false } };
+  route(glmOwn, client);
+  assert.deepEqual(glmOwn.provider, { order: ["z-ai"], allow_fallbacks: false }, "client provider choice is never overridden");
+  const other = { model: "openai/gpt-5" };
+  route(other, client);
+  assert.equal(other.provider, undefined, "only GLM gets the throughput sort");
   process.stdout.write("Speed proxy self-test passed.\n");
 } else {
   createServer((request, response) => {

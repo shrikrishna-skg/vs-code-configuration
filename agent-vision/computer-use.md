@@ -2,7 +2,7 @@
 
 [Peekaboo](https://www.npmjs.com/package/@steipete/peekaboo) `4.4.0` is a macOS
 computer-use server. It exposes 26 MCP tools that act on the real desktop:
-`see`, `click`, `type`, `press`, `scroll`, `drag`, `move`, `set_value`, `paste`
+`see`, `click`, `type`, `press`, `scroll`, `set_value`, `paste`
 and `clipboard` for input, plus `app`, `window`, `space`, `menu`, `dock` and
 `dialog` for application control, and `capture`, `image`, `analyze`,
 `inspect_ui` and `verify_state` for reading the screen back.

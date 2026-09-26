@@ -60,7 +60,7 @@ Acceptance: each capability in the mapping table is confirmed or marked as unava
 ## Phase 1: screen automation and MCP servers (all three tabs)
 
 VS Code Chat tab:
-- [x] Create the user `mcp.json` with a `peekaboo` stdio server: `~/.local/node/bin/peekaboo mcp serve --no-remote --transport stdio --allow-foreground`. Keep `--no-remote` right after `serve`.
+- [x] Create the user `mcp.json` with a `peekaboo` stdio server: `~/.local/node/bin/peekaboo mcp serve --no-remote --transport stdio`. Keep `--no-remote` right after `serve`.
 - [x] Add `claude-code-local`: `node ~/.config/kilo/bridges/claude-cli-mcp.mjs` with the same absolute paths as `kilo.jsonc`.
 - [ ] Start both from the MCP view. Confirm they are Running and that Peekaboo lists 26 tools. **User step.** Scripted stdio `tools/list` with the exact configured commands returned 26 Peekaboo tools and 4 claude-code-local tools.
 - [ ] Turn off Peekaboo's `browser` tool in the Chat tool picker. It needs a Chrome DevTools HTTP endpoint that `chrome://inspect` debugging does not provide. **Custom agents:** `browser` is already left out of their `tools:` lists. **User step:** untick it in the default Agent mode picker.

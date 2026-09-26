@@ -3,7 +3,7 @@
     "peekaboo": {
       "type": "stdio",
       "command": "<ABSOLUTE_PATH_TO_PEEKABOO>",
-      "args": ["mcp", "serve", "--no-remote", "--transport", "stdio", "--allow-foreground"]
+      "args": ["mcp", "serve", "--no-remote", "--transport", "stdio"]
     },
     "claude-code-local": {
       "type": "stdio",

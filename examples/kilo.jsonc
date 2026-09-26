@@ -1,5 +1,6 @@
 {
   "$schema": "https://app.kilo.ai/config.json",
+  "autoupdate": false,
   "instructions": [
     "<ABSOLUTE_PATH_TO_GLOBAL_AGENTS_MD>",
     "<ABSOLUTE_PATH_TO_RESPONSE_STYLE_MD>"
@@ -69,8 +70,7 @@
         "serve",
         "--no-remote",
         "--transport",
-        "stdio",
-        "--allow-foreground"
+        "stdio"
       ],
       "enabled": true,
       "timeout": 600000

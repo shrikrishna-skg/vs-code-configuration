@@ -3,7 +3,7 @@
 command = "<ABSOLUTE_PATH_TO_PEEKABOO>"
 # --no-remote right after "serve": otherwise a second window's server fails with
 # "ScreenCaptureKit owner PID ... does not serve selected socket".
-args = ["mcp", "serve", "--no-remote", "--transport", "stdio", "--allow-foreground"]
+args = ["mcp", "serve", "--no-remote", "--transport", "stdio"]
 # browser needs a Chrome DevTools HTTP endpoint that is not available here.
 disabled_tools = ["browser"]
 startup_timeout_sec = 120

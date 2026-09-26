@@ -3,7 +3,7 @@ name: "Opus + Jev Engineering Lead"
 description: "Engineering lead on Claude Opus 5.5 High via the local Claude CLI, with selective Jev evidence screening and fast element-ID screen control. Uses worker subagents only when scale or risk justifies the overhead."
 model: "Claude Opus 5.5 High (Local CLI) (customendpoint)"
 reasoning-effort: high
-tools: ['read', 'search', 'edit', 'execute', 'web', 'todo', 'agent', 'typesafe/evaluate_work', 'peekaboo/see', 'peekaboo/image', 'peekaboo/capture', 'peekaboo/inspect_ui', 'peekaboo/analyze', 'peekaboo/permissions', 'peekaboo/verify_state', 'peekaboo/sleep', 'peekaboo/click', 'peekaboo/type', 'peekaboo/press', 'peekaboo/scroll', 'peekaboo/move', 'peekaboo/drag', 'peekaboo/set_value', 'peekaboo/menu', 'peekaboo/action', 'peekaboo/clipboard', 'peekaboo/paste', 'peekaboo/dialog', 'peekaboo/app', 'peekaboo/dock', 'peekaboo/window', 'peekaboo/space', 'peekaboo/agent']
+tools: ['read', 'search', 'edit', 'execute', 'web', 'todo', 'agent', 'typesafe/evaluate_work', 'peekaboo/see', 'peekaboo/image', 'peekaboo/capture', 'peekaboo/inspect_ui', 'peekaboo/analyze', 'peekaboo/permissions', 'peekaboo/verify_state', 'peekaboo/sleep', 'peekaboo/click', 'peekaboo/type', 'peekaboo/press', 'peekaboo/scroll', 'peekaboo/set_value', 'peekaboo/menu', 'peekaboo/action', 'peekaboo/clipboard', 'peekaboo/paste', 'peekaboo/dialog', 'peekaboo/app', 'peekaboo/dock', 'peekaboo/window', 'peekaboo/space', 'peekaboo/agent']
 agents: ['deepseek-workstream-lead', 'deepseek-implementer', 'glm-investigator', 'luna-utility']
 disable-model-invocation: true
 ---
