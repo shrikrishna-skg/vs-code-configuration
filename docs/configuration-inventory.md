@@ -31,7 +31,7 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 | VS Code behavior settings | `examples/vscode/settings.jsonc` | Relevant subset only; Copilot Chat keys are in `copilot-chat/config/settings.jsonc` |
 | VS Code Chat MCP servers | `copilot-chat/config/mcp.json` | Sanitized placeholders; live `~/Library/Application Support/Code/User/mcp.json` |
 | VS Code Chat custom models | `copilot-chat/config/chatLanguageModels.json` | Matches the live "Claude Local CLI" group; no key. The live OpenRouter group (secret-storage reference) is left out |
-| VS Code Chat custom agents | `copilot-chat/config/prompts/*.agent.md` (16) | Identical to the live `User/prompts/` files |
+| VS Code Chat custom agents | `copilot-chat/config/prompts/*.agent.md` (17) | Identical to the live `User/prompts/` files |
 | VS Code Chat reply-style instructions | `copilot-chat/config/prompts/reply-style.instructions.md` | Copy of the chat response style plus the UI-verification rule |
 | VS Code Chat settings and sound-off keys | `copilot-chat/config/settings.jsonc` | Same values as the live `settings.json`; merged by `copilot-chat/scripts/install.sh` |
 | Codex Peekaboo MCP entry | `copilot-chat/config/config.peekaboo.toml` | Sanitized snippet for `~/.codex/config.toml` |
@@ -50,4 +50,4 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 
 ## Naming detail
 
-The visible **Fable Engineering Lead** uses the authenticated local CLI. A lowercase compatibility alias existed locally, but duplicating both in a clean installation would add confusion, so this repository keeps only the visible canonical mode. The VS Code Chat port in `copilot-chat/config/prompts/` leaves the alias out as well, so it has 16 agents for the 17 live Kilo agent files.
+The visible **Fable Engineering Lead** uses the authenticated local CLI. A lowercase compatibility alias existed locally, but duplicating both in a clean installation would add confusion, so this repository keeps only the visible canonical mode. The VS Code Chat port in `copilot-chat/config/prompts/` leaves the alias out as well, so it has 17 agents for the 18 live Kilo agent files.

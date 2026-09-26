@@ -4,16 +4,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { evaluate } from '../examples/bridges/typesafe-mcp.mjs';
-import { orderAgents, patch, installedTarget, legacyOrder } from '../examples/patches/jev-agent-order.mjs';
+import { orderAgents, patch, installedTarget, legacyOrder, previousOrder } from '../examples/patches/jev-agent-order.mjs';
 const agents=['Astra + Jev Engineering Lead','astra-engineering-lead','Fable Engineering Lead','Other'].map(name=>({name}));
 assert.deepEqual(orderAgents(agents).map(a=>a.name),['astra-engineering-lead','Fable Engineering Lead','Astra + Jev Engineering Lead','Other']);
 assert.equal(agents[0].name,'Astra + Jev Engineering Lead');
 assert.deepEqual(orderAgents([{name:'Other'}]),[{name:'Other'}]);
-assert.deepEqual(orderAgents(['Astra + Jev Engineering Lead','Fable + Jev Engineering Lead','astra-engineering-lead','Fable Engineering Lead','Other'].map(name=>({name}))).map(a=>a.name),
-  ['astra-engineering-lead','Fable Engineering Lead','Fable + Jev Engineering Lead','Astra + Jev Engineering Lead','Other']);
-// Only the two Jev leads may allow the globally denied TypeSafe tools.
+assert.deepEqual(orderAgents(['Astra + Jev Engineering Lead','Opus + Jev Engineering Lead','Fable + Jev Engineering Lead','astra-engineering-lead','Fable Engineering Lead','Other'].map(name=>({name}))).map(a=>a.name),
+  ['astra-engineering-lead','Fable Engineering Lead','Fable + Jev Engineering Lead','Opus + Jev Engineering Lead','Astra + Jev Engineering Lead','Other']);
+// Only the Jev leads may allow the globally denied TypeSafe tools.
 const allowed=fs.readdirSync('examples/agent').filter(f=>/^\s*TypeSafe_[\w*]*:\s*allow\b/m.test(fs.readFileSync(path.join('examples/agent',f),'utf8'))).sort();
-assert.deepEqual(allowed,['Astra + Jev Engineering Lead.md','Fable + Jev Engineering Lead.md']);
+assert.deepEqual(allowed,['Astra + Jev Engineering Lead.md','Fable + Jev Engineering Lead.md','Opus + Jev Engineering Lead.md']);
 const kilo=JSON.parse(fs.readFileSync('examples/kilo.jsonc','utf8'));
 assert.equal(kilo.permission['TypeSafe_*'],'deny');assert.equal(kilo.mcp.TypeSafe.enabled,true);
 assert.throws(()=>patch('unknown bundle'));
@@ -25,7 +25,13 @@ assert.throws(()=>patch(patch(anchor)+anchor));
 const legacy=`if(ne.type!=="agentsLoaded")return;et((${legacyOrder})(ne.agents)),He(ne.allAgents??ne.agents)`;
 assert.equal(patch(legacy),patch(anchor));
 assert.equal(patch(legacy,true),anchor);
-for(const [m,set,all] of [['re','de','we'],['ne','ae','Ne'],['ne','et','He']]) {
+// The previous (Fable + Jev, Astra + Jev) order, as installed in 7.7.9, migrates and restores.
+const previous=`if(ne.type!=="agentsLoaded")return;et((${previousOrder})(ne.agents)),qe(ne.allAgents??ne.agents)`;
+const current=patch('if(ne.type!=="agentsLoaded")return;et(ne.agents),qe(ne.allAgents??ne.agents)');
+assert.notEqual(previous,current);assert.ok(current.includes('Opus + Jev Engineering Lead'));
+assert.equal(patch(previous),current);
+assert.equal(patch(previous,true),'if(ne.type!=="agentsLoaded")return;et(ne.agents),qe(ne.allAgents??ne.agents)');
+for(const [m,set,all] of [['re','de','we'],['ne','ae','Ne'],['ne','et','He'],['ne','et','qe']]) {
   const original=`if(${m}.type!=="agentsLoaded")return;${set}(${m}.agents),${all}(${m}.allAgents??${m}.agents)`;
   assert.equal(patch(patch(original),true),original);
 }

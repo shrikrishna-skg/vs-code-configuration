@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 export function orderAgents(agents) {
   const fable = agents.find(a => a.name === 'Fable Engineering Lead');
-  const moved = ['Fable + Jev Engineering Lead', 'Astra + Jev Engineering Lead'].map(n => agents.find(a => a.name === n)).filter(Boolean);
+  const moved = ['Fable + Jev Engineering Lead', 'Opus + Jev Engineering Lead', 'Astra + Jev Engineering Lead'].map(n => agents.find(a => a.name === n)).filter(Boolean);
   if (!fable || !moved.length) return agents;
   const result = agents.filter(a => !moved.includes(a));
   result.splice(result.indexOf(fable) + 1, 0, ...moved);
@@ -22,15 +22,25 @@ export const legacyOrder = `function orderAgents(agents) {
   return result;
 }`;
 
-// Verified installed 7.7.2/7.7.5/7.7.6/7.7.7 anchors: display only, not default selection.
+// Exact previous (Fable + Jev, Astra + Jev) ordering function; --apply migrates it, --restore removes it.
+export const previousOrder = `function orderAgents(agents) {
+  const fable = agents.find(a => a.name === 'Fable Engineering Lead');
+  const moved = ['Fable + Jev Engineering Lead', 'Astra + Jev Engineering Lead'].map(n => agents.find(a => a.name === n)).filter(Boolean);
+  if (!fable || !moved.length) return agents;
+  const result = agents.filter(a => !moved.includes(a));
+  result.splice(result.indexOf(fable) + 1, 0, ...moved);
+  return result;
+}`;
+
+// Verified installed 7.7.2/7.7.5/7.7.6/7.7.7/7.7.9/7.8.1 anchors: display only, not default selection.
 const anchors = [
-  ['re','de','we'], ['ne','ae','Ne'], ['ne','et','He'],
+  ['re','de','we'], ['ne','ae','Ne'], ['ne','et','He'], ['ne','et','qe'],
 ].map(([m,set,all])=>{
   const wrap=fn=>`if(${m}.type!=="agentsLoaded")return;${set}((${fn})(${m}.agents)),${all}(${m}.allAgents??${m}.agents)`;
-  return { before:`if(${m}.type!=="agentsLoaded")return;${set}(${m}.agents),${all}(${m}.allAgents??${m}.agents)`, after:wrap(orderAgents.toString()), legacy:wrap(legacyOrder) };
+  return { before:`if(${m}.type!=="agentsLoaded")return;${set}(${m}.agents),${all}(${m}.allAgents??${m}.agents)`, after:wrap(orderAgents.toString()), legacy:wrap(legacyOrder), previous:wrap(previousOrder) };
 });
 export function patch(source, restore = false) {
-  const matches = anchors.flatMap(a => ['before', 'after', 'legacy'].flatMap(state =>
+  const matches = anchors.flatMap(a => ['before', 'after', 'legacy', 'previous'].flatMap(state =>
     Array.from({ length: source.split(a[state]).length - 1 }, () => ({ a, state }))));
   if (matches.length !== 1) throw new Error('Unsupported or ambiguous Kilo bundle: expected exactly one known agent-list anchor; no changes made.');
   const { a, state } = matches[0];

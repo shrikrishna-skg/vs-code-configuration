@@ -10,7 +10,7 @@ Observed on 2026-09-23: VS Code 1.139.0, bundled Copilot Chat 0.67.0, Codex CLI 
 
 | Folder file | Live file | Purpose |
 |---|---|---|
-| `config/prompts/*.agent.md` | `~/Library/Application Support/Code/User/prompts/` | The Kilo agents as 16 custom agents |
+| `config/prompts/*.agent.md` | `~/Library/Application Support/Code/User/prompts/` | The Kilo agents as 17 custom agents |
 | `config/prompts/reply-style.instructions.md` | same `prompts/` folder | Reply style and UI-verification rule |
 | `config/mcp.json` | `~/Library/Application Support/Code/User/mcp.json` | `peekaboo` and `claude-code-local` MCP servers for the Chat tab (placeholders) |
 | `config/chatLanguageModels.json` | `~/Library/Application Support/Code/User/chatLanguageModels.json` | Custom Endpoint group "Claude Local CLI" (four bridge models, no key) |
@@ -95,12 +95,13 @@ Bridge behaviour for VS Code ([`../examples/bridges/claude-cli-provider.mjs`](..
 - **Reply style:** `prompts/reply-style.instructions.md` (`applyTo: "**"`) carries the UI-verification rule and an exact copy of `~/.config/kilo/chat-response-style.md`. The location settings reject absolute paths, so VS Code cannot load the source file directly. `node copilot-chat/scripts/check-copilot-agents.mjs --live` fails if the copy drifts.
 - **Claude Code agents hidden:** `chat.agentFilesLocations: {"~/.claude/agents": false}` keeps Claude Code's own delegation agents (a folder VS Code loads by default) out of the Copilot picker.
 
-**Agents.** The Kilo agents are 16 `.agent.md` files in the user `prompts/` folder (Kilo's hidden lowercase Fable alias is left out as unreachable). Only frontmatter keys found in the VS Code 1.139 prompt validator are used: `name`, `description`, `model`, `reasoning-effort`, `tools`, `agents`, `user-invocable` and `disable-model-invocation`.
+**Agents.** The Kilo agents are 17 `.agent.md` files in the user `prompts/` folder (Kilo's hidden lowercase Fable alias is left out as unreachable). Only frontmatter keys found in the VS Code 1.139 prompt validator are used: `name`, `description`, `model`, `reasoning-effort`, `tools`, `agents`, `user-invocable` and `disable-model-invocation`.
 
 | Agent | Model | Picker | Subagents it may call |
 |---|---|---|---|
 | Astra Engineering Lead, Astra + Jev | `GPT-6 Astra` (Copilot) | yes | the four workers |
 | Fable Engineering Lead, Fable + Jev | `Claude Fable 5.1 High (Local CLI) (customendpoint)` | yes | the four workers |
+| Opus + Jev | `Claude Opus 5.5 High (Local CLI) (customendpoint)` | yes | the four workers |
 | Opus 5.5 High | `Claude Opus 5.5 High (Local CLI) (customendpoint)` | yes | none |
 | deepseek-workstream-lead | DeepSeek API, then `GPT-5.6 Sol` | no (subagent only) | implementer, GLM, Luna |
 | deepseek-implementer, luna-utility | DeepSeek / `GPT-5.6 Luna` | no (subagent only) | none |
@@ -109,9 +110,9 @@ Bridge behaviour for VS Code ([`../examples/bridges/claude-cli-provider.mjs`](..
 
 - **Leads cannot be called as subagents:** they set `disable-model-invocation: true`.
 - **Nested delegation:** `chat.subagents.allowInvocationsFromSubagents: true` lets the workstream lead call its workers. VS Code caps nesting at depth 5 and has no setting for Kilo's depth of 2; the `agents:` lists still limit who can call whom.
-- **No `browser` tool:** `tools:` lists name each Peekaboo tool individually and leave `browser` out. Only the leads get `claude-code-local/opus_5_5_high`.
+- **No `browser` tool:** `tools:` lists name each Peekaboo tool individually and leave `browser` out. Only the leads get `claude-code-local/opus_5_5_high`, except Opus + Jev (already Opus).
 - **Step limits:** VS Code has no per-agent field, only the global `chat.agent.maxRequests`. Each agent body states its Kilo limit (leads 50, DeepSeek 45, GLM 14, Luna 8).
-- **Jev:** the two Jev leads call `typesafe/evaluate_work` (server `typesafe` in `mcp.json`); no other agent lists it.
+- **Jev:** the three Jev leads call `typesafe/evaluate_work` (server `typesafe` in `mcp.json`); no other agent lists it.
 
 ## Approvals
 
@@ -147,7 +148,7 @@ node ~/.config/kilo/patches/check-peekaboo-mcp.mjs --live   # plus Peekaboo tool
    - Confirm "Custom Endpoint" is offered (a Copilot plan or org policy can hide it) and the four "Claude ... (Local CLI)" models are enabled. Leave the API key empty; if the form insists on one, enter any placeholder.
    - **Add Models > OpenRouter:** enter your own key, then add and pin "Z.ai: GLM 5.3 Flash" (GLM fallback). Rerun `install.sh` so "Speed Proxy" picks up the key.
    - Enable and pin the "Speed Proxy" models, `DeepSeek V4.1 Flash API`, `DeepSeek V4 Pro API` and `GLM 5.3 Flash (OpenRouter Speed)`. If the picker names differ, tell the lead the exact names.
-4. **Agent picker:** confirm it shows Astra Engineering Lead, Astra + Jev, Fable Engineering Lead, Fable + Jev and Opus 5.5 High, and no workers or Claude Code agents.
+4. **Agent picker:** confirm it shows Astra Engineering Lead, Astra + Jev, Fable Engineering Lead, Fable + Jev, Opus + Jev and Opus 5.5 High, and no workers or Claude Code agents.
 5. **Chat tab:** have Peekaboo `see` capture the VS Code window (`app_target: "Code"`), then click one element and type in one field. Click **Always allow** on the read-only Peekaboo tools.
 6. **Claude Code tab:** add `--no-remote` after `serve` in `mcpServers.peekaboo.args` of `~/.claude.json`, merge the browser deny from `../claude-code/config/settings.json`, start a new session, and confirm `peekaboo` connects (no `CONNECTION_CLOSED`) and one `see` capture works.
 7. **Codex tab:** append `install.sh --codex-snippet` output to `~/.codex/config.toml`, start a new session and run one `see` capture.

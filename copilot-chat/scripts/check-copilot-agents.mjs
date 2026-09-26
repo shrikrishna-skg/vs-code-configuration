@@ -15,8 +15,10 @@ const live = path.join(os.homedir(), 'Library', 'Application Support', 'Code', '
 const KEYS = new Set(['name', 'description', 'model', 'reasoning-effort', 'tools', 'advancedOptions', 'handoffs',
   'argument-hint', 'target', 'agents', 'hooks', 'user-invocable', 'disable-model-invocation', 'github']);
 const LEADS = ['Astra Engineering Lead', 'Astra + Jev Engineering Lead', 'Fable Engineering Lead',
-  'Fable + Jev Engineering Lead'];
-const JEV = ['Astra + Jev Engineering Lead', 'Fable + Jev Engineering Lead'];
+  'Fable + Jev Engineering Lead', 'Opus + Jev Engineering Lead'];
+const JEV = ['Astra + Jev Engineering Lead', 'Fable + Jev Engineering Lead', 'Opus + Jev Engineering Lead'];
+// Leads that get the Opus escalation tool; the Opus lead has none (Opus escalating to Opus is pointless).
+const OPUS_ESCALATION = LEADS.filter((n) => n !== 'Opus + Jev Engineering Lead');
 const WORKERS = ['deepseek-workstream-lead', 'deepseek-implementer', 'glm-investigator', 'luna-utility'];
 const AGENTS = {
   ...Object.fromEntries(LEADS.map((n) => [n, WORKERS])),
@@ -38,7 +40,7 @@ function parse(file) {
 
 function checkDir(dir) {
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.agent.md'));
-  assert.equal(files.length, 16, `${dir}: expected 16 agents, found ${files.length}`);
+  assert.equal(files.length, 17, `${dir}: expected 17 agents, found ${files.length}`);
   const names = new Set();
   for (const f of files) {
     const file = path.join(dir, f);
@@ -53,9 +55,9 @@ function checkDir(dir) {
     const tools = list(fm.tools);
     const text = fs.readFileSync(file, 'utf8');
     assert.ok(!/peekaboo\/(browser|\*)/.test(text), `${f}: peekaboo browser or wildcard`);
-    assert.equal(tools.some((t) => t.startsWith('claude-code-local/')), LEADS.includes(name), `${f}: claude-code-local is lead-only`);
+    assert.equal(tools.some((t) => t.startsWith('claude-code-local/')), OPUS_ESCALATION.includes(name), `${f}: claude-code-local is for the non-Opus leads only`);
     assert.ok(!/claude-code-local|Claude_Code_Local/.test(text) || LEADS.includes(name), `${f}: mentions claude-code-local`);
-    assert.deepEqual(tools.filter((t) => t.startsWith('typesafe/')), JEV.includes(name) ? ['typesafe/evaluate_work'] : [], `${f}: Jev (typesafe/evaluate_work) is for the two Jev leads only`);
+    assert.deepEqual(tools.filter((t) => t.startsWith('typesafe/')), JEV.includes(name) ? ['typesafe/evaluate_work'] : [], `${f}: Jev (typesafe/evaluate_work) is for the Jev leads only`);
     if (name in AGENTS) assert.deepEqual(list(fm.agents), AGENTS[name], `${f}: subagent allow-list`);
     else assert.ok(!list(fm.agents).some((a) => !WORKERS.includes(a)), `${f}: may only call workers`);
     if (!list(fm.agents).length) assert.ok(!tools.includes('agent') && !tools.includes('agent/runSubagent'), `${f}: has agent tool without allow-list`);

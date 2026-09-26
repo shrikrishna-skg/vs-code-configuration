@@ -116,6 +116,7 @@ Primary leads:
 - [x] Astra + Jev Engineering Lead.
 - [x] Fable Engineering Lead (Fable 5.1 High via Custom Endpoint).
 - [x] Fable + Jev Engineering Lead.
+- [x] Opus + Jev Engineering Lead (Opus 5.5 High via Custom Endpoint; no Opus escalation tool).
 
 Workers (subagent-only; hide them from the picker if VS Code allows):
 - [x] DeepSeek Implementer: edit and terminal tools; no subagents.
@@ -128,7 +129,7 @@ Standalone profiles (optional, one agent each):
 
 Delegation rules:
 - [x] Map each lead's Kilo `task` allow-list to its subagent allow-list. Leads may call the four workers; nothing may call another lead.
-- [x] Keep the Opus escalation tool (`claude-code-local`) available to the leads only.
+- [x] Keep the Opus escalation tool (`claude-code-local`) available to the leads only (not Opus + Jev).
 - [x] Carry over step limits where VS Code supports them (leads 50, DeepSeek 45, GLM 14, Luna 8); otherwise note them in the agent body.
 - [x] Jev: TypeSafe re-enabled in Kilo and added to VS Code `mcp.json` for the two Jev leads only (2026-09-23).
 - [ ] Test: ask the Fable lead for a two-file change and confirm it delegates to DeepSeek Implementer, inspects the diff and runs a check. **User step.**

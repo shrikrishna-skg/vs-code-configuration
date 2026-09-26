@@ -29,6 +29,44 @@ patch opens it on Fable. `scripts/test-typesafe.mjs` asserts the two Jev leads a
 the only repository agents that allow `TypeSafe_*`. The ordering patch migrates
 the earlier Astra-only ordering on `--apply`; `--check` reports it as missing.
 
+## Opus + Jev variant
+
+Added 2026-09-26. **Opus + Jev Engineering Lead** is Fable + Jev on
+`claude-local-cli/opus-5-5-high` (variant `high`) through the same local Claude CLI
+bridge, with the same workers, Jev rules and Peekaboo tools. It has no Opus
+escalation lane (`Claude_Code_Local_*: deny`; no `claude-code-local` tool in VS Code
+Chat) and adds a **Fast screen control** section: one `see`, then act by element ID
+with background-first input (no cursor or focus takeover unless announced), re-`see`
+only after a state change, and confirm with `verify_state` or one capture. This cuts
+round trips; it does not make screen work instant or guaranteed. For latency-sensitive
+screen work the user may pick `Claude Opus 5.5 Fast (Local CLI)` manually. Source:
+`examples/agent/Opus + Jev Engineering Lead.md` and
+`copilot-chat/config/prompts/opus-jev-engineering-lead.agent.md`. The picker shows
+Fable Engineering Lead, then Fable + Jev, Opus + Jev, Astra + Jev; `--apply` migrates
+the previous Fable + Jev/Astra + Jev ordering, and `--restore` removes it.
+
+**Screen runner.** Added 2026-09-26. For multi-step UI tasks the Opus + Jev lead writes
+one JSON plan and runs `examples/bridges/peekaboo-runner.mjs` (live copy:
+`~/.config/kilo/bridges/peekaboo-runner.mjs`) in a single shell call. The runner
+executes each step through the Peekaboo CLI (`execFile`, no shell, allowlisted
+commands only), checks it deterministically (Peekaboo `verify` argv or an
+`{on, value?, contains?}` match against a fresh `see --tree --no-screenshot`), retries
+a failed check once after 300 ms, asks Jev (`evidence_check`, confidence >= 0.9) only
+for `expect_text`, stops before `confirm: true` steps unless `--confirmed <id>` is
+given, and prints one compact JSON report. Passing plans can be saved and replayed
+as recipes in `~/.config/kilo/recipes/`. This turns about one model turn per click into
+one or two per task; it does not make the UI faster. `peekaboo daemon start` keeps
+Peekaboo services warm between CLI calls; the runner never starts it. In 4.4.0,
+`peekaboo verify` returned `unknown` on this machine (incomplete app enumeration), so
+prefer the element-map `expect`. Save sheets and alerts are invisible to `see --app`,
+so plans wait for them with `"expect":{"dialog":true,"button":"Delete"}` (checked via
+`dialog list`) and act with `dialog click`; `dialog click`/`click` on a destructive
+button (Delete, Don't Save, Discard, Send, Pay, Submit…) is forced through the confirm
+gate. When a step has an `expect`, Peekaboo's `unverifiable`/`suspected_noop` effect
+defers to that check (TextEdit's `window close` reports `suspected_noop` while its
+sheet opens; background `menu click File > Close` opened no sheet). Checked by
+`scripts/test-peekaboo-runner.mjs`.
+
 ## Re-enabled in Kilo, added to VS Code Chat
 
 Updated 2026-09-23. Kilo's `TypeSafe` MCP server is `enabled: true` again (it had
@@ -176,7 +214,7 @@ Do not change routing defaults or expand to Fable on integration checks alone.
 Kilo's inspected schema has no agent-order setting. A narrow reversible patch
 reorders only the visible array after `agentsLoaded`, leaving default selection
 and backend agent definitions alone. Exact anchors were checked in installed
-7.7.2, 7.7.5 and 7.7.6 bundles (older versions remain during pending updates).
+7.7.2, 7.7.5, 7.7.6, 7.7.7, 7.7.9 and 7.8.1 bundles (older versions remain during pending updates).
 The script refuses unknown/ambiguous bundle layouts and is idempotent.
 
 After an update, run these commands from this repository. The script reads VS

@@ -125,7 +125,7 @@ cat <<'EOF'
 Manual steps (see copilot-chat/README.md#user-steps):
   1. Run "Developer: Reload Window" in every VS Code window.
   2. MCP view: start peekaboo, claude-code-local and typesafe; in the built-in Agent mode tool picker untick
-     peekaboo > browser and typesafe (only the two Jev leads should call Jev).
+     peekaboo > browser and typesafe (only the Jev leads should call Jev).
   3. Manage Models: enable the four "Claude ... (Local CLI)" Custom Endpoint models (API key empty).
   4. Manage Models > Add Models > OpenRouter: enter your own key in the VS Code form, then add and pin
      "Z.ai: GLM 5.3 Flash" (z-ai/glm-5.3-flash). Rerun this script so "Speed Proxy" picks up that key.

@@ -9,6 +9,8 @@ node --check examples/bridges/claude-cli-mcp.mjs
 node examples/bridges/claude-cli-provider.mjs --self-test
 node --check examples/bridges/typesafe-mcp.mjs
 node scripts/test-typesafe.mjs
+node --check examples/bridges/peekaboo-runner.mjs
+node scripts/test-peekaboo-runner.mjs
 node scripts/test-reapply-kilo-patches.mjs
 node --check examples/patches/codex-thinking-status.mjs
 node examples/patches/check-codex-thinking-status.mjs
