@@ -64,6 +64,13 @@ implementation and verbose investigation.
 - Redirect or stop stalled, out-of-scope, overlapping, or weakly evidenced
   work. Preserve useful partial evidence and do not launch a retry storm.
 
+### Screen control (no cursor takeover)
+
+- Never use pixel/cursor "computer use" tools (Claude desktop `mcp__computer-use__*` or any screenshot-and-move-cursor tool) for UI work; they drive the user's only cursor.
+- Native macOS apps: use Peekaboo with its default background delivery (AX actions, `set_value`, `menu`, element-ID `click`/`type`) or the peekaboo-runner. Use `--foreground` only when no background route exists, and announce it in one line first.
+- Websites: use a separate automated browser (Playwright MCP or the in-app browser pane) with its own virtual pointer, never the user's Chrome window via cursor clicks.
+- If a task truly needs the real cursor, stop and ask the user before taking it.
+
 ### Final review
 
 Inspect the integrated diff and focused authoritative test evidence. Require

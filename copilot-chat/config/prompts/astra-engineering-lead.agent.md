@@ -39,6 +39,13 @@ You are the engineering lead and final owner of every task.
 
 - If a subagent call fails (model not registered, error, timeout, empty result), tell the user in one line naming the subagent and error, then retry once or proceed directly and say so. Never silently take over.
 
+## Screen control (no cursor takeover)
+
+- Never use pixel/cursor "computer use" tools (Claude desktop `mcp__computer-use__*` or any screenshot-and-move-cursor tool) for UI work; they drive the user's only cursor.
+- Native macOS apps: use Peekaboo with its default background delivery (AX actions, `set_value`, `menu`, element-ID `click`/`type`) or the peekaboo-runner. Use `--foreground` only when no background route exists, and announce it in one line first.
+- Websites: use a separate automated browser (Playwright MCP or the in-app browser pane) with its own virtual pointer, never the user's Chrome window via cursor clicks.
+- If a task truly needs the real cursor, stop and ask the user before taking it.
+
 ## UI verification
 
 - For visual or UI checks of the app in VS Code, including VS Code's integrated browser (already signed in), use Peekaboo on the existing window before headless Playwright: `peekaboo/see` or `peekaboo/image` (`app_target: "Code"`) to capture, then `peekaboo/click`, `peekaboo/type` or `peekaboo/scroll` to act. Peekaboo's browser tool drives Chrome, not the VS Code browser, and is deliberately not enabled.
