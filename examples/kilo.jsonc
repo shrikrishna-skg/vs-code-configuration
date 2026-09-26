@@ -32,6 +32,11 @@
     }
   },
   "provider": {
+    "openrouter": {
+      "models": {
+        "z-ai/glm-5.3-flash": { "options": { "provider": { "sort": "throughput" } } }
+      }
+    },
     "deepseek": {
       "models": {
         "deepseek-flash": { "name": "DeepSeek V4.1 Flash API" },
