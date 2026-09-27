@@ -40,6 +40,14 @@ Tag `config-2026-09-26` → latest on main.
 - **Kilo pinned** (`autoupdate: false`); `reapply-kilo-patches.sh` applies each patch independently and names failures. Copilot Chat gained the "Codex Local CLI" model group; Peekaboo `move` and `drag` were removed (not in Peekaboo 4.4.0).
 - **Docs:** README navigation, [architecture diagram](../assets/architecture.svg) and this history.
 
+Later the same day (after the tag):
+
+- **Claude Code Local MCP timeout** raised from 10 to 30 minutes (`1800000`) in `kilo.jsonc`; Opus High delegates were hitting Kilo's `-32001` timeout.
+- **GLM routing** stays on `throughput`: a benchmark measured about 205 tok/s median against about 167 for `latency`, which was only about 0.1 s faster to first token.
+- **Claude bridge** retries once in the same CLI session when a decision is invalid (for example `tool_call` with no calls), replacing the catalog-only resend; the self-test no longer touches the live state file.
+- **`active-tab-blue.mjs`** Kilo patch: the selected session tab gets a blue underline and faint blue tint (`--vscode-focusBorder`); `reapply-kilo-patches.sh` applies it to `webview.css` and `agent-manager.css`.
+- **VS Code editor tabs:** `modernUIEditorTabStyle: pill` with blue `modernEditorTab.*` colors and a dim `tab.activeBorder`, since 1.139's connected tabs ignore classic `tab.*` colors.
+
 Restore: all install steps above, including `copilot-chat/scripts/install.sh`. Copy `examples/bridges/peekaboo-runner.mjs` to `~/.config/kilo/bridges/` for the runner.
 
 ## 2026-09-23

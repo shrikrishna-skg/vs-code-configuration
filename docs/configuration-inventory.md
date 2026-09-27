@@ -27,7 +27,7 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 | Luna utility | `examples/agent/luna-utility.md` | Exact active definition |
 | Four local CLI profiles | `examples/agent/` and MCP bridge | Fable High/Max and Opus Fast/High |
 | Local Claude MCP bridge | `examples/bridges/claude-cli-mcp.mjs` | Identical to the live copy; finds the Claude CLI under `~/.vscode/extensions` |
-| Local Claude CLI provider bridge | `examples/bridges/claude-cli-provider.mjs`, `fable-lead-system.md` | Identical to the live copies; serves Kilo and VS Code Custom Endpoint |
+| Local Claude CLI provider bridge | `examples/bridges/claude-cli-provider.mjs`, `fable-lead-system.md` | Claude path matches the live copy; the live Codex (`codex-*` models) backend is not mirrored yet. Serves Kilo and VS Code Custom Endpoint |
 | VS Code behavior settings | `examples/vscode/settings.jsonc` | Relevant subset only; Copilot Chat keys are in `copilot-chat/config/settings.jsonc` |
 | VS Code Chat MCP servers | `copilot-chat/config/mcp.json` | Sanitized placeholders; live `~/Library/Application Support/Code/User/mcp.json` |
 | VS Code Chat custom models | `copilot-chat/config/chatLanguageModels.json` | Matches the live "Claude Local CLI" group; no key. The live OpenRouter group (secret-storage reference) is left out |
@@ -37,7 +37,7 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 | Codex Peekaboo MCP entry | `copilot-chat/config/config.peekaboo.toml` | Sanitized snippet for `~/.codex/config.toml` |
 | Claude Code Peekaboo browser deny | `claude-code/config/settings.json` | `permissions.deny` includes `mcp__peekaboo__browser` |
 | Peekaboo guard for all tabs | `examples/patches/check-peekaboo-mcp.mjs` | Identical to the live copy; covers Kilo, VS Code, Claude Code and Codex |
-| Kilo bundle patches and auto re-apply | `examples/patches/{jev-agent-order,per-agent-model,global-last-agent}.mjs`, `scripts/reapply-kilo-patches.sh` | Verified on Kilo 7.7.7; LaunchAgent `ai.kilo.reapply-patches` |
+| Kilo bundle patches and auto re-apply | `examples/patches/{jev-agent-order,per-agent-model,global-last-agent,active-tab-blue}.mjs`, `scripts/reapply-kilo-patches.sh` | Verified on Kilo 7.7.7 (`active-tab-blue` on 7.8.1); LaunchAgent `ai.kilo.reapply-patches` |
 
 ## Intentionally not reproduced
 

@@ -1,4 +1,15 @@
 {
+  // VS Code 1.139 modern "connected" tabs paint the active tab with the editor background and
+  // ignore classic tab.* colors. Pill style honors modernEditorTab.activeBackground; tab.activeBorder
+  // drives the pill's bottom line and is kept dim on purpose.
+  "workbench.experimental.modernUIEditorTabStyle": "pill",
+  "workbench.colorCustomizations": {
+    "modernEditorTab.activeBackground": "#3794ff26",
+    "modernEditorTab.activeHoverBackground": "#3794ff33",
+    "tab.activeBorder": "#3794ff59",
+    "tab.unfocusedActiveBorder": "#3794ff33"
+  },
+
   // Commands Kilo handles in the agent terminal rather than forwarding to the shell.
   "terminal.integrated.commandsToSkipShell": [
     "kilo-code.new.agentManagerOpen",

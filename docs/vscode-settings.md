@@ -8,6 +8,7 @@ The VS Code layer contributes several behaviors that are separate from `kilo.jso
 - In-app attention notifications are enabled while OS notifications are disabled.
 - Claude Code opens in the panel and skips onboarding.
 - Accessibility support is explicitly enabled.
+- The active editor tab is a faint blue pill (`workbench.experimental.modernUIEditorTabStyle: pill` plus `modernEditorTab.*` and dim `tab.activeBorder` colors), because VS Code 1.139's default connected tabs ignore the classic `tab.*` colors.
 
 The sanitized settings are in `examples/vscode/settings.jsonc`. Merge those keys into the existing VS Code user settings instead of replacing the entire file.
 

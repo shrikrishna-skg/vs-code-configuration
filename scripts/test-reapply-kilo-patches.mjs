@@ -1,4 +1,4 @@
-// Check for scripts/reapply-kilo-patches.sh: a pristine fake Kilo install gets all three
+// Check for scripts/reapply-kilo-patches.sh: a pristine fake Kilo install gets all four
 // patches plus one notification; a second run is a no-op with no notification; a failing
 // patch is logged and notified without blocking the others, and the run exits non-zero.
 import assert from "node:assert/strict"
@@ -12,7 +12,7 @@ const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "kilo-reapply-
 const install = (ext) => {
   const dist = path.join(tmp, ext, "kilocode.kilo-code-9.9.9-darwin-arm64", "dist")
   fs.mkdirSync(dist, { recursive: true })
-  for (const [name, text] of [["webview.js", webview], ["agent-manager.js", webview], ["extension.js", extension]])
+  for (const [name, text] of [["webview.js", webview], ["agent-manager.js", webview], ["extension.js", extension], ["webview.css", css], ["agent-manager.css", css]])
     fs.writeFileSync(path.join(dist, name), text)
   return dist
 }
@@ -28,6 +28,9 @@ const webview = [
   "let It=Ge?Mt.agentSelections[Ge]:nn(),un=1;",
 ].join("\n")
 const extension = 'let{visible,defaultAgent}=filterVisibleAgents(agents),message6={type:"agentsLoaded",agents:visible.map(mapAgent),allAgents:agents.map(mapAgent),defaultAgent};switch(x){case"t":break;case"persistVariant":{let stored2=1}}'
+// Trimmed Kilo 7.8.1 active-tab rules (plain and .session-tab-bar), see examples/patches/active-tab-blue.mjs.
+const tab = "am-tab-active{color:var(--text-base);border-bottom-color:var(--surface-interactive-base);background:color-mix(in srgb,var(--surface-interactive-base) 10%,transparent)}"
+const css = `.${tab}.session-tab-bar .${tab}`
 const dist = install("ext")
 
 // Fake osascript records notifications instead of showing them.
@@ -59,12 +62,13 @@ assert.match(read(notes), /Kilo patches re-applied/)
 assert.match(read(path.join(tmp, "log")), /Peekaboo MCP config OK: .*\.codex\/config\.toml/)
 for (const marker of ["orderAgents", "Xi.forget", "persistLastSelectedAgent"]) assert.ok(read(path.join(dist, "webview.js")).includes(marker), marker)
 assert.match(read(path.join(dist, "extension.js")), /persistLastSelectedAgent/)
-const before = ["webview.js", "agent-manager.js", "extension.js"].map((f) => read(path.join(dist, f)))
+for (const f of ["webview.css", "agent-manager.css"]) assert.equal(read(path.join(dist, f)).split("border-bottom-color:var(--vscode-focusBorder, #3794ff)").length, 3, f)
+const before = ["webview.js", "agent-manager.js", "extension.js", "webview.css", "agent-manager.css"].map((f) => read(path.join(dist, f)))
 
 run()
 assert.match(read(path.join(tmp, "log")), /all patches present/)
 assert.equal(read(notes).trim().split("\n").length, 1, "second run must not notify")
-assert.deepEqual(["webview.js", "agent-manager.js", "extension.js"].map((f) => read(path.join(dist, f))), before)
+assert.deepEqual(["webview.js", "agent-manager.js", "extension.js", "webview.css", "agent-manager.css"].map((f) => read(path.join(dist, f))), before)
 
 // A broken first patch (jev-agent-order) must not block per-agent-model and global-last-agent.
 const broken = path.join(tmp, "patches")

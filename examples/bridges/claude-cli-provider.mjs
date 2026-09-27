@@ -21,7 +21,10 @@ const MAX_SCHEMA_DESCRIPTION_CHARS = 320;
 const MAX_CLAUDE_SESSIONS = 128;
 const REQUEST_CACHE_MS = 30 * 1000;
 const STATUS_DELAY_MS = 10 * 1000;
-const SESSION_STATE_FILE = resolve(homedir(), ".local/state/kilo/claude-cli-provider-state.json");
+// The self-test drives the real request handler, so it must never overwrite the live state.
+const SESSION_STATE_FILE = process.argv.includes("--self-test")
+  ? join(tmpdir(), `claude-cli-provider-self-test-${process.pid}.json`)
+  : resolve(homedir(), ".local/state/kilo/claude-cli-provider-state.json");
 const TOOL_SYSTEM_PROMPT_FILE = resolve(homedir(), ".config/kilo/bridges/fable-lead-system.md");
 const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\r\n]+)$/i;
 const EMBEDDED_DATA_URL = /data:([^;,]+);base64,[A-Za-z0-9+/=\r\n]+/g;
@@ -514,7 +517,7 @@ function kiloToolPrompt(messages, tools, imageFiles = [], knownCatalog = "") {
   // ponytail: a resumed step trusts the CLI to still remember the catalog it
   // was sent earlier in this session. After autocompact the schemas may be
   // summarized away. Ceiling accepted because --json-schema still pins the
-  // legal tool names; upgrade path is the resend-on-invalid-decision retry.
+  // legal tool names, and an invalid decision gets one decisionRetryPrompt resend.
   const catalog = knownCatalog
     ? `AVAILABLE CLIENT TOOLS: unchanged since earlier in this session (catalog #${knownCatalog.slice(0, 8)})`
     : `AVAILABLE CLIENT TOOLS\n${JSON.stringify(compactTools(tools))}`;
@@ -531,6 +534,18 @@ function kiloToolPrompt(messages, tools, imageFiles = [], knownCatalog = "") {
     catalog,
     "",
     conversationTranscript(messages)
+  ].join("\n");
+}
+
+// Sent into the same CLI session after it returned an invalid decision (e.g.
+// kind tool_call with no calls). The catalog is resent if the step only named it.
+function decisionRetryPrompt(error, tools, resendCatalog) {
+  return [
+    `Your last decision was rejected: ${error.message}.`,
+    "Return kind final with your answer in content, or kind tool_call with at least one call using only the listed client tool names. If the tool you wanted is not listed, say so in a final answer.",
+    resendCatalog
+      ? `AVAILABLE CLIENT TOOLS\n${JSON.stringify(compactTools(tools))}`
+      : `Listed client tool names: ${tools.map((tool) => tool?.function?.name).filter(Boolean).join(", ")}`
   ].join("\n");
 }
 
@@ -988,11 +1003,11 @@ const server = createServer(async (request, response) => {
         try {
           output = await runClaude(profile, prompt, cwd, controller.signal, tools, { id: session.id, resume: resumed }, attachments.directory, onText);
         } catch (error) {
-          if (knownCatalog && !controller.signal.aborted && /Kilo decision|unavailable Kilo tool/i.test(error.message)) {
-            knownCatalog = "";
-            prompt = kiloToolPrompt(deltaMessages, tools, attachments.files, "");
-            process.stdout.write(`${JSON.stringify({ event: "catalog_resent", session: session.id })}\n`);
-            output = await runClaude(profile, prompt, cwd, controller.signal, tools, { id: session.id, resume: resumed }, attachments.directory, onText);
+          // One corrective resend into the same CLI session, which already holds
+          // this step. Not once text has streamed (SSE deltas cannot be retracted).
+          if (tools.length && !firstOutputAt && !controller.signal.aborted && /Kilo decision|unavailable Kilo tool/i.test(error.message)) {
+            process.stdout.write(`${JSON.stringify({ event: "decision_retry", session: session.id, error: error.message, catalogResent: Boolean(knownCatalog) })}\n`);
+            output = await runClaude(profile, decisionRetryPrompt(error, tools, Boolean(knownCatalog)), cwd, controller.signal, tools, { id: session.id, resume: true }, attachments.directory, onText);
           } else if (!resumed || !missingClaudeSession(error) || controller.signal.aborted) {
             throw error;
           } else {
@@ -1482,6 +1497,47 @@ if (process.argv.includes("--self-test")) {
   }
   if (activeClaude !== 0 || claudeSlotWaiters.length || conversationLocks.size) {
     throw new Error("CLI slots or conversation locks leaked after the jobs finished");
+  }
+
+  // An invalid decision (tool_call with no calls) is resent once into the same
+  // CLI session; a second invalid one fails as before. A stub CLI plays
+  // numbered result lines through the real request handler.
+  const retryStub = await mkdtemp(join(tmpdir(), "claude-retry-stub-"));
+  try {
+    const resultLine = (decision) => `${JSON.stringify({ type: "result", structured_output: decision, usage: { output_tokens: 1 } })}\n`;
+    const invalidLine = resultLine({ kind: "tool_call", content: "", tool_calls: [] });
+    await writeFile(join(retryStub, "claude"), `#!/bin/sh\nn=$(( $(cat "${retryStub}/count" 2>/dev/null || echo 0) + 1 ))\necho $n > "${retryStub}/count"\nprintf '%s\\n' "$@" > "${retryStub}/args$n"\ncat > "${retryStub}/stdin$n"\ncat "${retryStub}/out$n"\n`, { mode: 0o755 });
+    claudeBinary = join(retryStub, "claude");
+    await new Promise((ready) => server.listen(0, HOST, ready));
+    const ask = (task) => fetch(`http://${HOST}:${server.address().port}/v1/chat/completions`, {
+      method: "POST",
+      body: JSON.stringify({ model: "opus-5-5-fast", stream: true, tools: decisionTools, messages: [{ role: "system", content: `<cwd>${retryStub}</cwd>` }, { role: "user", content: task }] })
+    }).then((reply) => reply.text());
+    const stubFile = (name) => readFile(join(retryStub, name), "utf8").catch(() => "");
+    await writeFile(join(retryStub, "out1"), invalidLine);
+    await writeFile(join(retryStub, "out2"), resultLine({ kind: "final", content: "recovered", tool_calls: [] }));
+    const recovered = (await ask("first task")).split("\n\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)).choices[0].delta.content || "").join("");
+    const [runArgs, retryArgs] = [(await stubFile("args1")).split("\n"), (await stubFile("args2")).split("\n")];
+    if (recovered !== "recovered" || (await stubFile("count")).trim() !== "2" || retryArgs[retryArgs.indexOf("--resume") + 1] !== runArgs[runArgs.indexOf("--session-id") + 1]
+      || !/rejected: Claude CLI did not return a valid Kilo decision/.test(await stubFile("stdin2"))) {
+      throw new Error(`An invalid Kilo decision was not retried once in the same CLI session: ${JSON.stringify(recovered)}`);
+    }
+    await rm(join(retryStub, "count"));
+    await writeFile(join(retryStub, "out2"), invalidLine);
+    const failure = JSON.parse(await ask("second task")).error?.message;
+    if (failure !== "Claude CLI did not return a valid Kilo decision" || (await stubFile("count")).trim() !== "2") {
+      throw new Error(`A second invalid Kilo decision did not fail with the original error after one retry: ${failure}`);
+    }
+  } finally {
+    if (server.listening) {
+      server.closeAllConnections();
+      server.close();
+    }
+    claudeBinary = null;
+    claudeSessions.length = 0;
+    await stateWrite;
+    await rm(SESSION_STATE_FILE, { force: true });
+    await rm(retryStub, { recursive: true, force: true });
   }
   process.stdout.write("Claude prompt compaction self-test passed.\n");
 } else {

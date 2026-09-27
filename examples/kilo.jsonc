@@ -60,7 +60,7 @@
         "<ABSOLUTE_PATH_TO_CLAUDE_EXECUTABLE>"
       ],
       "enabled": true,
-      "timeout": 600000
+      "timeout": 1800000
     },
     "Peekaboo": {
       "type": "local",
