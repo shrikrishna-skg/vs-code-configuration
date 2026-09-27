@@ -47,6 +47,7 @@ Later the same day (after the tag):
 - **Claude bridge** retries once in the same CLI session when a decision is invalid (for example `tool_call` with no calls), replacing the catalog-only resend; the self-test no longer touches the live state file.
 - **`active-tab-blue.mjs`** Kilo patch: the selected session tab gets a blue underline and faint blue tint (`--vscode-focusBorder`); `reapply-kilo-patches.sh` applies it to `webview.css` and `agent-manager.css`.
 - **VS Code editor tabs:** `modernUIEditorTabStyle: pill` with blue `modernEditorTab.*` colors and a dim `tab.activeBorder`, since 1.139's connected tabs ignore classic `tab.*` colors.
+- **Claude bridge mirror** now matches the live copy, including the Codex backend (live since 2026-09-23): `codex-*` models through the signed-in Codex CLI with their own slot pool and ChatGPT limit handling, plus `CLAUDE_BRIDGE_PORT` and `CLAUDE_BRIDGE_STATE_FILE` overrides.
 
 Restore: all install steps above, including `copilot-chat/scripts/install.sh`. Copy `examples/bridges/peekaboo-runner.mjs` to `~/.config/kilo/bridges/` for the runner.
 
