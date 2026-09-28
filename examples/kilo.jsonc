@@ -12,6 +12,16 @@
   "subagent_depth": 2,
   "permission": {
     "TypeSafe_*": "deny",
+    // Kilo's built-in doom-loop behavior only asks. Deny the detected repeat
+    // so a model cannot continue a tool loop unattended.
+    "doom_loop": "deny",
+    // A shell echo is a no-op for agent work. Keeping it denied prevents an
+    // accidental stream of auto-approved echo calls; use the edit tool for files.
+    "bash": {
+      "echo *": "deny",
+      "true": "deny",
+      ":": "deny"
+    },
     "Peekaboo_*": "allow",
     "Peekaboo_browser": "deny",
     "external_directory": {
@@ -50,7 +60,7 @@
       "options": { "baseURL": "https://api.primalabs.ai/v1" },
       "models": {
         "primalabs-ai/MiMo-V2.6-Pro-RL": {
-          "name": "MiMo V2.6 Pro RL",
+          "name": "MiMo V2.6 Pro RL (PrimalLabs)",
           "reasoning": true,
           "modalities": { "input": ["text", "image"], "output": ["text"] }
         },
