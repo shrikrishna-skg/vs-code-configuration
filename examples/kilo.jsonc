@@ -43,6 +43,23 @@
         "deepseek-flash": { "name": "DeepSeek V4.1 Flash API" },
         "deepseek-v4-pro": { "name": "DeepSeek V4 Pro API" }
       }
+    },
+    "primalabs": {
+      "name": "PrimalLabs",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": { "baseURL": "https://api.primalabs.ai/v1" },
+      "models": {
+        "primalabs-ai/MiMo-V2.6-Pro-RL": {
+          "name": "MiMo V2.6 Pro RL",
+          "reasoning": true,
+          "modalities": { "input": ["text", "image"], "output": ["text"] }
+        },
+        "primalabs-ai/DeepSeek-V4-Flash-0731": {
+          "name": "DeepSeek V4 Flash 0731 (PrimalLabs)",
+          "reasoning": true,
+          "modalities": { "input": ["text"], "output": ["text"] }
+        }
+      }
     }
   },
   "mcp": {

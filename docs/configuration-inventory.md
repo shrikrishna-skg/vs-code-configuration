@@ -18,6 +18,7 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 | Local component | Repository representation | Status |
 |---|---|---|
 | `kilo.jsonc` | `examples/kilo.jsonc` | Sanitized; absolute paths replaced |
+| PrimalLabs Kilo provider | `examples/kilo.jsonc` | OpenAI-compatible MiMo V2.6 Pro RL and DeepSeek V4 Flash 0731 model entries; credentials remain local |
 | Chat response style | `examples/instructions/chat-response-style.md` | Exact active contract |
 | Ponytail coding policy | `examples/instructions/AGENTS.md` | Upstream text preserved with attribution |
 | Astra lead | `examples/agent/astra-engineering-lead.md` | Exact active definition |
@@ -37,7 +38,7 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 | Codex Peekaboo MCP entry | `copilot-chat/config/config.peekaboo.toml` | Sanitized snippet for `~/.codex/config.toml` |
 | Claude Code Peekaboo browser deny | `claude-code/config/settings.json` | `permissions.deny` includes `mcp__peekaboo__browser` |
 | Peekaboo guard for all tabs | `examples/patches/check-peekaboo-mcp.mjs` | Identical to the live copy; covers Kilo, VS Code, Claude Code and Codex |
-| Kilo bundle patches and auto re-apply | `examples/patches/{jev-agent-order,per-agent-model,global-last-agent,active-tab-blue}.mjs`, `scripts/reapply-kilo-patches.sh` | Verified on Kilo 7.7.7 (`active-tab-blue` on 7.8.1); LaunchAgent `ai.kilo.reapply-patches` |
+| Kilo bundle patches and auto re-apply | `examples/patches/{jev-agent-order,per-agent-model,global-last-agent,active-tab-blue,model-favorites}.mjs`, `scripts/reapply-kilo-patches.sh` | Agent patches target 7.7.x; `active-tab-blue` and `model-favorites` target 7.8.1; LaunchAgent `ai.kilo.reapply-patches` |
 
 ## Intentionally not reproduced
 

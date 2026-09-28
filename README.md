@@ -19,6 +19,7 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 | Understand how requests are routed | [Architecture](docs/architecture.md) and [Task routing](docs/task-routing.md) |
 | Drive the screen or a browser | [Agent vision](agent-vision/README.md) and [`peekaboo-runner.mjs`](examples/bridges/peekaboo-runner.mjs) |
 | Set up the Claude Code extension | [`claude-code/README.md`](claude-code/README.md) |
+| Run Hermes Agent in VS Code (ACP) | [`hermes/README.md`](hermes/README.md) |
 | Check the repository | `bash scripts/verify.sh` |
 
 ## Recommended setup: Opus + Jev Engineering Lead
@@ -115,6 +116,8 @@ Run the repository's static and bridge-protocol checks at any time with `./scrip
 The native Claude Code extension snapshot is under [`claude-code/`](claude-code/README.md).
 
 VS Code's built-in Chat view (Copilot Chat, plus Peekaboo for the Claude Code and Codex tabs) is under [`copilot-chat/`](copilot-chat/README.md): run `bash copilot-chat/scripts/install.sh --dry-run`, then without `--dry-run`, then finish its UI steps. DeepSeek and GLM run through the local OpenRouter speed proxy (`127.0.0.1:32126`): DeepSeek goes straight to the DeepSeek API, and GLM needs OpenRouter added under Manage Models > Add Models with your own key, with "Z.ai: GLM 5.3 Flash" (`z-ai/glm-5.3-flash`) pinned as the fallback. Its settings also turn off the chat and terminal accessibility sounds that `editor.accessibilitySupport: "on"` makes audible.
+
+`examples/kilo.jsonc` also includes the OpenAI-compatible PrimalLabs provider: MiMo V2.6 Pro RL and DeepSeek V4 Flash 0731. A short live Kilo response from the PrimalLabs DeepSeek route reached 354.3 tok/s on 2026-09-28; treat that as an observed interactive rate, not a benchmark.
 
 Browser automation and macOS computer use are documented under [`agent-vision/`](agent-vision/README.md).
 

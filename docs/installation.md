@@ -47,7 +47,7 @@ The VS Code Chat (Copilot) keys, including the accessibility sound-off keys, are
 
 ## Optional selected-agent persistence
 
-New chats open on the last selected agent and its own model via `examples/patches/global-last-agent.mjs` and `per-agent-model.mjs` (Kilo 7.7.x), which modify the installed Kilo bundle. Kilo auto-updates discard them, so copy the patches and `scripts/reapply-kilo-patches.sh` to `~/.config/kilo/patches/` and load `~/Library/LaunchAgents/ai.kilo.reapply-patches.plist` (WatchPaths `~/.vscode/extensions`, RunAtLoad) with `launchctl bootstrap gui/$(id -u) <plist>`. It applies only missing patches, logs to `~/.config/kilo/logs/kilo-patches.log`, and notifies you to run Developer: Reload Window.
+New chats open on the last selected agent and its own model via `examples/patches/global-last-agent.mjs` and `per-agent-model.mjs` (Kilo 7.7.x). `model-favorites.mjs` adds saved drag ordering and a Favorites-only filter to the Kilo 7.8.1 model picker. These patches modify the installed Kilo bundle, and Kilo auto-updates discard them, so copy the patches and `scripts/reapply-kilo-patches.sh` to `~/.config/kilo/patches/` and load `~/Library/LaunchAgents/ai.kilo.reapply-patches.plist` (WatchPaths `~/.vscode/extensions`, RunAtLoad) with `launchctl bootstrap gui/$(id -u) <plist>`. It applies only missing patches, logs to `~/.config/kilo/logs/kilo-patches.log`, and notifies you to run Developer: Reload Window.
 
 ## Screen automation (Peekaboo)
 

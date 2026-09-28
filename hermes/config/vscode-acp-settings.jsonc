@@ -1,0 +1,11 @@
+// Add to VS Code user settings (~/Library/Application Support/Code/User/settings.json).
+// Needs the ACP Client extension (formulahendry.acp-client).
+// ACP command paths must be absolute: VS Code does not expand ~ and the GUI may not inherit your shell PATH.
+{
+  "acp.agents": {
+    "Hermes Agent": {
+      "command": "/Users/shri/.local/bin/hermes",
+      "args": ["acp"]
+    }
+  }
+}

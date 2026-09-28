@@ -37,6 +37,7 @@ Tag `config-2026-09-26` → latest on main.
 - **`peekaboo-runner.mjs`** runs a whole JSON UI plan through the Peekaboo CLI with a check after each step and a confirm gate for destructive buttons. It always passes `--no-remote`.
 - **No-cursor rule** in every lead: Peekaboo background delivery for native apps, a separate automated browser for websites, and ask before taking the real cursor.
 - **GLM 5.3 Flash** routed to the fastest OpenRouter providers (`provider.sort = throughput`) in `kilo.jsonc` and in the speed proxy; measured median went from about 28 to about 176 tok/s.
+- **Hermes Agent** (Nous Research) installed for VS Code through ACP. `hermes acp --check` passes; the absolute-path VS Code registration and live `~/.hermes/SOUL.md` are in place. The lead uses OpenRouter Opus 5.5, with DeepSeek V4.1 Flash workers and a three-worker cap. The OpenRouter key is still commented out in `~/.hermes/.env`, so a live chat awaits the user’s key entry; see [`hermes/README.md`](../hermes/README.md).
 - **Kilo pinned** (`autoupdate: false`); `reapply-kilo-patches.sh` applies each patch independently and names failures. Copilot Chat gained the "Codex Local CLI" model group; Peekaboo `move` and `drag` were removed (not in Peekaboo 4.4.0).
 - **Docs:** README navigation, [architecture diagram](../assets/architecture.svg) and this history.
 
@@ -48,6 +49,7 @@ Later the same day (after the tag):
 - **`active-tab-blue.mjs`** Kilo patch: the selected session tab gets a blue underline and faint blue tint (`--vscode-focusBorder`); `reapply-kilo-patches.sh` applies it to `webview.css` and `agent-manager.css`.
 - **VS Code editor tabs:** `modernUIEditorTabStyle: pill` with blue `modernEditorTab.*` colors and a dim `tab.activeBorder`, since 1.139's connected tabs ignore classic `tab.*` colors.
 - **Claude bridge mirror** now matches the live copy, including the Codex backend (live since 2026-09-23): `codex-*` models through the signed-in Codex CLI with their own slot pool and ChatGPT limit handling, plus `CLAUDE_BRIDGE_PORT` and `CLAUDE_BRIDGE_STATE_FILE` overrides.
+- **PrimalLabs provider:** Kilo now exposes MiMo V2.6 Pro RL and DeepSeek V4 Flash 0731 through PrimalLabs' OpenAI-compatible API. The authenticated catalog and streamed tool calls succeeded; a short live Kilo response on the DeepSeek route displayed 354.3 tok/s. That is an observed interactive rate, not a benchmark.
 
 Restore: all install steps above, including `copilot-chat/scripts/install.sh`. Copy `examples/bridges/peekaboo-runner.mjs` to `~/.config/kilo/bridges/` for the runner.
 
