@@ -15,6 +15,7 @@ node scripts/test-reapply-kilo-patches.mjs
 node --check examples/patches/codex-thinking-status.mjs
 node examples/patches/check-codex-thinking-status.mjs
 node examples/patches/check-per-agent-model.mjs
+node examples/patches/check-prompt-suggestions.mjs
 node examples/mockups/check-thinking-card.mjs
 node --check claude-code/scripts/validate.mjs
 node claude-code/scripts/validate.mjs

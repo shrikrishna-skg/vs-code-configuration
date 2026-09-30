@@ -107,7 +107,7 @@ flowchart TD
 4. Copy the files under `examples/agent/` to `~/.config/kilo/agent/`.
 5. Merge the relevant keys from `examples/vscode/settings.jsonc` into VS Code user settings.
 6. Configure the local Claude CLI bridge and authenticate providers outside Git.
-7. Optionally install the Kilo bundle patches under `examples/patches/`; LaunchAgent `ai.kilo.reapply-patches` runs `scripts/reapply-kilo-patches.sh` to re-apply them after each Kilo auto-update.
+7. Optionally install the Kilo bundle patches under `examples/patches/`; `prompt-suggestions.mjs` adds an external configurable **Prompts** menu that can add, edit, remove, reorder, and insert saved prompts without sending. LaunchAgent `ai.kilo.reapply-patches` runs `scripts/reapply-kilo-patches.sh` to re-apply the patches after each Kilo auto-update.
 8. Copy `examples/bridges/peekaboo-runner.mjs` to `~/.config/kilo/bridges/` for the Opus + Jev screen runner.
 9. Restart VS Code, select **Opus + Jev Engineering Lead** (or the Kilo default, **Astra Engineering Lead**), and run the scenario checks.
 

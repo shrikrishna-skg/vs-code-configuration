@@ -39,6 +39,7 @@ attempt() {
   ensure global-last-agent.mjs "$wv" "$ext" "$am"
   ensure active-tab-blue.mjs "$dist/webview.css" "$dist/agent-manager.css"
   ensure model-favorites.mjs "$wv" "$ext" "$dist/webview.css"
+  ensure prompt-suggestions.mjs "$wv" "$dist/webview.css"
   if [ "$applied" = 1 ]; then
     for f in "$wv" "$ext" "$am"; do node --check "$f" || { say "FAILED node --check $f"; return 1; }; done
     say "re-applied patches to $(basename "$dir")"
