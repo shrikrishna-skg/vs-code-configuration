@@ -25,6 +25,9 @@ implementation and verbose investigation.
   `opus-delivery-lead`. The delivery lead owns workers, integration, and its
   consolidated review packet.
 - Use `opus-test-integrator` only for material cross-workstream verification.
+- Use `continuous-qa-engineer` only when the user explicitly requests ongoing,
+  background, or checkpointed testing. It runs one bounded Sonnet QA cycle per
+  wake-up and may escalate one difficult failure to `opus-test-integrator`.
 - Use the smallest team that materially improves the result.
 
 ### Quota guardrails
@@ -36,6 +39,8 @@ implementation and verbose investigation.
 - Do not start duplicate workers on the same scope.
 - Keep no more than six subagents active. Normal large work uses two to four
   implementation workers beneath the delivery lead.
+- A continuous QA lane normally consumes one Sonnet slot and at most one Opus
+  escalation slot. It counts toward the same six-agent ceiling.
 
 ### Visible delegation contract
 

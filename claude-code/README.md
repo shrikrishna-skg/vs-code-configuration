@@ -18,24 +18,34 @@ flowchart TD
     F -->|Small implementation| OF[Opus implementer fast]
     F -->|Medium implementation| OH[Opus implementer high]
     F -->|Large separable task| L[Opus delivery lead]
+    F -->|Explicit background QA| Q[Sonnet continuous QA]
     L --> W1[Opus worker]
     L --> W2[Opus worker]
     L --> S[Optional Sonnet investigator]
     L --> T[Optional Opus test integrator]
+    Q -->|Difficult failure| T
     OF --> R[Fable review]
     OH --> R
     W1 --> L
     W2 --> L
     S --> L
     T --> L
+    Q --> R
     L --> R
     R --> A[Final answer with evidence]
 ```
 
 Fable owns planning, architecture, supervision, review, and final acceptance.
-Opus performs routine implementation. Sonnet is a bounded read-only
-investigator. The hierarchy is capped at two subagent layers and six concurrent
-subagents.
+Opus performs routine implementation. Sonnet provides bounded read-only
+investigation and the Continuous QA coordinator. The hierarchy is capped at two
+subagent layers and six concurrent subagents.
+
+The `continuous-qa-engineer` is opt-in. Each wake-up runs one bounded test
+cycle, records exact evidence in the existing long-run ledger when available,
+and returns. It defaults to report-only, treats a changed target as stale, and
+escalates at most one difficult failure to `opus-test-integrator`. Agent Host or
+a scheduler supplies continuity; the agent never sleeps or busy-polls in a
+single model turn.
 
 ## Visible delegation
 

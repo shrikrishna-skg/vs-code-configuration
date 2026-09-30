@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const expectedAgents = {
+  "continuous-qa-engineer": { model: "sonnet", effort: "high", background: "true", canDelegate: true, readOnly: true },
   "opus-delivery-lead": { model: "claude-opus-5-5", effort: "high", background: "true", canDelegate: true },
   "opus-implementer-high": { model: "claude-opus-5-5", effort: "high", background: "false" },
   "opus-implementer-fast": { model: "claude-opus-5-5", effort: "low", background: "false" },
@@ -41,6 +42,7 @@ assert(vscodeSettings["claudeCode.preferredLocation"] === "panel", "Claude must 
 const policy = await readFile(resolve(root, "config/CLAUDE.md"), "utf8");
 for (const phrase of [
   "Fable Engineering Lead",
+  "continuous-qa-engineer",
   "opus-delivery-lead",
   "sonnet-investigator",
   "Delegating: **<subject>**",
@@ -73,5 +75,16 @@ for (const [name, expected] of Object.entries(expectedAgents)) {
     assert(fields.disallowedTools?.includes("Edit") && fields.disallowedTools?.includes("Write"), `${name} needs explicit write denials`);
   }
 }
+
+const qa = await readFile(resolve(agentDir, "continuous-qa-engineer.md"), "utf8");
+const normalizedQa = qa.replace(/\s+/g, " ");
+for (const phrase of [
+  "one bounded QA cycle per invocation",
+  "Missing repair authority means report-only",
+  "at most one `opus-test-integrator` at a time",
+  "Rerun a failing check at most once",
+  "mark its result stale",
+  "do not launch a retry storm",
+]) assert(normalizedQa.toLowerCase().includes(phrase.toLowerCase()), `Continuous QA policy is missing: ${phrase}`);
 
 console.log("Claude Code configuration snapshot is valid.");
