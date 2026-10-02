@@ -1,4 +1,4 @@
-// Check for scripts/reapply-kilo-patches.sh: a pristine fake Kilo install gets all six
+// Check for scripts/reapply-kilo-patches.sh: a pristine fake Kilo install gets all seven
 // patches plus one notification; a second run is a no-op with no notification; a failing
 // patch is logged and notified without blocking the others, and the run exits non-zero.
 import assert from "node:assert/strict"
@@ -36,11 +36,14 @@ const webview = [
   '/*o.toggleFavorite(Le.providerID,Le.id)}function Nt(Le){*/',
   'var ULa=X("<div class=prompt-input-container><div class=mention-model-anchor aria-hidden=true></div><div class=prompt-input-wrapper><div></div></div><div class=prompt-input-hint><div class=prompt-input-hint-selectors></div><div class=prompt-input-hint-actions>");',
   'var ze=ULa(),Bt=ze.firstChild,Ot=Bt.nextSibling,Rn=Ot.firstChild,Jn=Rn.firstChild,Vn=Jn.nextSibling,zr=Ot.nextSibling,Oa=zr.firstChild,fo=Oa.nextSibling;ze.addEventListener("drop",ur=>{});',
+  'function history(e,t,n){let p=xe(()=>{let k=e.sessionIds?.();return k?t.sessions().filter(w=>k.has(w.id)):t.sessions()});$n({',
+  'groupBy:C=>n.t(OQa(C.updatedAt)),sortGroupsBy:(C,_)=>{let I=Object.fromEntries(_R.map((T,L)=>[n.t(T),L]));return(I[C.category]??99)-(I[_.category]??99)},',
+  'children:C=>[(()=>{var _=$Qa();return Q(_,()=>P0(C.updatedAt)),_})(),E(ue,{get when(){return t.currentSessionID()===C.id},get children(){return null}})]})}',
 ].join("\n")
 const extension = 'let{visible,defaultAgent}=filterVisibleAgents(agents),message6={type:"agentsLoaded",agents:visible.map(mapAgent),allAgents:agents.map(mapAgent),defaultAgent};switch(x){case"t":break;/*;case"persistVariant":{let stored2=0;case"requestFavorites":{let favorites=validateFavorites(this.extensionContext?.globalState.get("favoriteModels"));this.postMessage({type:"favoritesLoaded",favorites});break}*/}/*async toggleFavorite(message6){let current=validateFavorites(this.extensionContext?.globalState.get("favoriteModels")),key6=`${message6.providerID}/${message6.modelID}`,exists6=current.some(f2=>`${f2.providerID}/${f2.modelID}`===key6),favorites=message6.action==="add"&&!exists6?[...current,{providerID:message6.providerID,modelID:message6.modelID}]:message6.action==="remove"&&exists6?current.filter(f2=>`${f2.providerID}/${f2.modelID}`!==key6):current;await this.extensionContext?.globalState.update("favoriteModels",favorites),this.connectionService.notifyFavoritesChanged(favorites)}initializeConnection()*/'
 // Trimmed Kilo 7.8.1 active-tab rules (plain and .session-tab-bar), see examples/patches/active-tab-blue.mjs.
 const tab = "am-tab-active{color:var(--text-base);border-bottom-color:var(--surface-interactive-base);background:color-mix(in srgb,var(--surface-interactive-base) 10%,transparent)}"
-const css = `.${tab}.session-tab-bar .${tab}.model-selector-group-label{}.prompt-input-wrapper{display:flex}`
+const css = `.${tab}.session-tab-bar .${tab}.model-selector-group-label{}.prompt-input-wrapper{display:flex}.session-list{display:flex}`
 const dist = install("ext")
 
 // Fake osascript records notifications instead of showing them.
@@ -70,7 +73,8 @@ run()
 assert.match(read(path.join(tmp, "log")), /re-applied patches to kilocode\.kilo-code-9\.9\.9/)
 assert.match(read(notes), /Kilo patches re-applied/)
 assert.match(read(path.join(tmp, "log")), /Peekaboo MCP config OK: .*\.codex\/config\.toml/)
-for (const marker of ["orderAgents", "Xi.forget", "persistLastSelectedAgent", "favoritesFilterOpen", "model-selector-favorite-drag-handle", "prompt-suggestion-launcher"]) assert.ok(read(path.join(dist, "webview.js")).includes(marker), marker)
+for (const marker of ["orderAgents", "Xi.forget", "persistLastSelectedAgent", "favoritesFilterOpen", "model-selector-favorite-drag-handle", "prompt-suggestion-launcher", "Active tasks", "data-activity"]) assert.ok(read(path.join(dist, "webview.js")).includes(marker), marker)
+assert.match(read(path.join(dist, "webview.css")), /kilo-active-tasks-history/)
 assert.match(read(path.join(dist, "extension.js")), /persistLastSelectedAgent/)
 assert.match(read(path.join(dist, "extension.js")), /reorderFavorites/)
 for (const f of ["webview.css", "agent-manager.css"]) assert.equal(read(path.join(dist, f)).split("border-bottom-color:var(--vscode-focusBorder, #3794ff)").length, 3, f)
