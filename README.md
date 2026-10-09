@@ -12,7 +12,7 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 
 **Latest snapshot: [2026-10-09](docs/updates/2026-10-09.md)** · Git tag `config-2026-10-09` · [Dated change index](docs/configuration-history.md).
 
-**Prompt and context:** [Clarify goal](docs/clarify-goal.md) adds an editable preview using the selected model, supported attachments and recent chat. [Goal continuity](docs/goal-continuity.md) preserves the active objective and shares the canonical Ponytail policy.
+**Prompt and context:** [Clarify goal](docs/clarify-goal.md) adds an editable preview using DeepSeek on LithosAI, supported attachments and recent chat, with a visible Stop control. [Goal continuity](docs/goal-continuity.md) preserves the active objective and shares the canonical Ponytail policy.
 
 **Current Kilo setup:** [CTO (Recommended) and CTO + JEV](docs/cto-setup.md) replace the six older custom picker entries. [Native Kilo delegation](docs/cto-native.md) uses visible child agents and Agent Manager worktrees where isolation is needed. Fourteen workers / six writers is a scheduling policy in native chat; the separate isolated MCP scheduler enforces its own limits for terminal workflows. The older engineering-lead documentation below remains for the previous setup and Copilot configuration.
 

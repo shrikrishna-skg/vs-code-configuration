@@ -4,12 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import { clarify, contextFrom } from '../examples/patches/clarify-goal.cjs';
+import { clarify, cancel, contextFrom } from '../examples/patches/clarify-goal.cjs';
 import { patch } from '../examples/patches/clarify-goal.mjs';
 
 const input={text:'Explain this first; do not edit.',providerID:'test',modelID:'model',sessionID:'original',files:[]};
+const fixedModel={providerID:'lithosai',modelID:'deepseek-ai/DeepSeek-V4.1-Flash-ultra'};
+const fixedDefinition={capabilities:{input:{image:false}}};
 let calls=[];
-const client={provider:{list:async()=>({data:{all:[{id:'test',models:{model:{capabilities:{input:{image:false}}}}}]}})},session:{
+const client={provider:{list:async()=>({data:{all:[{id:'test',models:{model:{capabilities:{input:{image:true}}}}},{id:fixedModel.providerID,models:{[fixedModel.modelID]:fixedDefinition}}]}})},session:{
   messages:async args=>{calls.push(['history',args]);return {data:[{info:{role:'user'},parts:[{type:'text',text:'Fix the account layout.'},{type:'tool',text:'must not leak'}]}]};},
   create:async args=>{calls.push(['create',args]);return {data:{id:'temporary'}};},
   prompt:async args=>{calls.push(['prompt',args]);return {data:{parts:[{type:'text',text:'Explain the account layout issue without editing files.'}]}};},
@@ -19,16 +21,32 @@ const result=await clarify(client,input,'/tmp');
 assert.match(result.text,/without editing/);
 assert.deepEqual(calls.map(c=>c[0]),['history','create','prompt','abort','delete']);
 assert.deepEqual(calls[1][1].permission,[{permission:'*',pattern:'*',action:'deny'}]);
-assert.equal(calls[2][1].model.modelID,'model');
+assert.deepEqual(calls[2][1].model,fixedModel);
+assert.equal(result.model,`${fixedModel.providerID}/${fixedModel.modelID}`);
+assert.equal(input.providerID,'test');assert.equal(input.modelID,'model','Main chat selection must stay unchanged');
 assert.equal(calls[2][1].agent,'goal-clarifier');
 assert(!calls[2][1].parts[0].text.includes('must not leak'));
 assert(calls[2][1].system.includes('Ponytail'));
 assert.equal(input.text,'Explain this first; do not edit.');
 assert.equal(contextFrom(Array.from({length:100},()=>({info:{role:'user'},parts:[{type:'text',text:'x'.repeat(5000)}]}))).length,8);
 assert(contextFrom([{parts:[{type:'text',text:'x'.repeat(5000)}]}])[0].text.length<=850);
+for(const selection of [{providerID:'openai',modelID:'another-model'},{providerID:undefined,modelID:undefined}]) {
+  calls=[];await clarify(client,{...input,...selection},'/tmp');
+  assert.deepEqual(calls.find(c=>c[0]==='prompt')[1].model,fixedModel,'Always use the fixed clarification route');
+}
+const originalProviders=client.provider.list;
+client.provider.list=async()=>({data:{all:[]}});calls=[];
+await assert.rejects(()=>clarify(client,input,'/tmp'),/DeepSeek.*unavailable/);
+assert.equal(calls.length,0,'Unavailable DeepSeek must not fall back to another model');
+client.provider.list=originalProviders;
 calls=[];
 await assert.rejects(()=>clarify(client,{...input,files:[{mime:'image/png',url:'data:image/png;base64,AAA='}]},'/tmp'),/cannot read images/);
 assert.equal(calls.length,0,'No history or generation when attachments cannot be understood');
+fixedDefinition.capabilities.input.image=true;calls=[];
+const image={mime:'image/png',url:'data:image/png;base64,AAA=',filename:'goal.png'};
+await clarify(client,{...input,files:[image]},'/tmp');
+assert.deepEqual(calls.find(c=>c[0]==='prompt')[1].parts[0],{type:'file',...image});
+fixedDefinition.capabilities.input.image=false;
 const originalPrompt=client.session.prompt;
 client.session.prompt=async()=>{throw Error('Provider failed');};calls=[];
 await assert.rejects(()=>clarify(client,input,'/tmp'),/Provider failed/);
@@ -36,15 +54,65 @@ assert.equal(calls.at(-1)[0],'delete');
 client.session.prompt=async()=>({data:{parts:[{type:'tool',tool:'bash'},{type:'text',text:'done'}]}});
 await assert.rejects(()=>clarify(client,input,'/tmp'),/tool call/);
 client.session.prompt=originalPrompt;
+// Cancellation is scoped to the composer/provider, never the original chat.
+const owner={},otherOwner={},cancelInput={...input,requestId:'same-id'};
+let signal,started;
+const promptStarted=new Promise(resolve=>started=resolve);
+client.session.prompt=async(args,options)=>{
+  calls.push(['prompt',args]);signal=options.signal;started();
+  return new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
+};
+calls=[];
+const stopped=clarify(client,cancelInput,'/tmp',owner);
+const stoppedCheck=assert.rejects(stopped,{name:'AbortError'});
+await promptStarted;
+assert.equal(cancel(otherOwner,'same-id'),false,'Another composer cannot cancel this request');
+await assert.rejects(()=>clarify(client,cancelInput,'/tmp',owner),/already running/);
+assert.equal(cancel(owner,'same-id'),true);assert.equal(signal.aborted,true);
+await stoppedCheck;
+assert.deepEqual(calls.filter(c=>['abort','delete'].includes(c[0])).map(c=>c[1].sessionID),['temporary','temporary']);
+assert.equal(cancel(owner,'same-id'),false,'Completed cancellation is idempotent');
+client.session.prompt=originalPrompt;
+await clarify(client,cancelInput,'/tmp',owner); // Same composer can restart.
+client.provider.list=async(args,{signal})=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
+calls=[];
+const early=clarify(client,cancelInput,'/tmp',owner),earlyCheck=assert.rejects(early,{name:'AbortError'});
+assert.equal(cancel(owner,'same-id'),true);await earlyCheck;
+assert.equal(calls.length,0,'Stopping during provider lookup must not create a session');
+client.provider.list=originalProviders;
+// Even a transport resolving late after Stop cannot deliver a result or leave its session behind.
+let createStarted,finishCreate;
+const creating=new Promise(resolve=>createStarted=resolve),originalCreate=client.session.create;
+client.session.create=async()=>{createStarted();return new Promise(resolve=>finishCreate=resolve);};
+calls=[];
+const late=clarify(client,cancelInput,'/tmp',owner),lateCheck=assert.rejects(late,{name:'AbortError'});
+await creating;cancel(owner,'same-id');finishCreate({data:{id:'late-temporary'}});await lateCheck;
+assert.deepEqual(calls.filter(c=>['abort','delete'].includes(c[0])).map(c=>c[1].sessionID),['late-temporary','late-temporary']);
+assert(!calls.some(c=>c[0]==='prompt'));
+client.session.create=originalCreate;
 assert.throws(()=>patch('unsupported','webview.js'),/Unsupported/);
 const extensionAnchor='sdkClient.enhancePrompt.enhance({text:message6.text},{throwOnError:!0}).then(({data:data2})=>{this.postMessage({type:"enhancePromptResult",text:data2.text,requestId:message6.requestId})})';
-const patched=patch(extensionAnchor,'extension.js');assert.equal(patch(patched,'extension.js'),patched);assert(!patched.includes('enhancePrompt.enhance'));
-console.log('Clarify goal checks passed: selected model, bounded context, denied tools, attachment capability gate, cleanup, idempotence.');
+const extensionFixture='switch(message6.type){case"enhancePrompt":{'+extensionAnchor+'.catch(err2=>{let raw2=getErrorMessage(err2)||"Failed to enhance prompt";});break}}';
+const patched=patch(extensionFixture,'extension.js');assert.equal(patch(patched,'extension.js'),patched);assert(!patched.includes('enhancePrompt.enhance'));
+assert(patched.includes('case"cancelEnhancePrompt"'));assert(patched.includes('enhancePromptCancelled'));
+const ui=fs.readFileSync(new URL('../examples/patches/clarify-goal-ui.js',import.meta.url),'utf8');
+const rendererFixture=kind=>{
+  const [id,counter,finger,event]=kind==='webview.js'?['D','Oe','F','ze']:['I','Ve','R','Oe'];
+  const fingerprint=`()=>JSON.stringify([${id}(),${finger}(${id}()),t.selected(g()),t.currentVariant(g()),f()])`;
+  return '/* native-webview-recovery-client:v2 */\nfunction recovery() {}\n/* clarify-goal-patch:v1 */\n'+ui+'\n"use strict";\nfunction existing(){'+`globalThis.__kiloGoal.begin(w,(${fingerprint})(),${fingerprint});${event}.type==="enhancePromptError"&&J(!1);`+'}';
+};
+for(const kind of ['webview.js','agent-manager.js']) {
+  const upgraded=patch(rendererFixture(kind),kind);
+  assert(upgraded.startsWith('/* native-webview-recovery-client:v2 */\nfunction recovery() {}'));
+  assert.equal(patch(upgraded,kind),upgraded,'Keep installed renderer recovery wrappers and cancellation on reinstall');
+  assert(upgraded.includes('type:"cancelEnhancePrompt"'));
+}
+console.log('Clarify goal checks passed: fixed DeepSeek routing, no fallback, cancellation and restart, bounded context, denied tools, attachments, cleanup, idempotence and recovery compatibility.');
 
 const fixture=fs.mkdtempSync(path.join(os.tmpdir(),'clarify-installer-'));
 try {
   const dist=path.join(fixture,'.vscode/extensions/shrikrishna-skg.kilo-code-local-7.8.2/dist');fs.mkdirSync(dist,{recursive:true});
-  for(const file of ['extension.js','webview.js','agent-manager.js'])fs.writeFileSync(path.join(dist,file),'/* clarify-goal-patch:v1 */\n'+(file==='extension.js'?'':fs.readFileSync(new URL('../examples/patches/clarify-goal-ui.js',import.meta.url),'utf8')+'\n"use strict";\n'));
+  for(const file of ['extension.js','webview.js','agent-manager.js'])fs.writeFileSync(path.join(dist,file),file==='extension.js'?patched:rendererFixture(file));
   const config=path.join(fixture,'.config/kilo/kilo.jsonc');fs.mkdirSync(path.dirname(config),{recursive:true});
   const originalConfig=JSON.stringify({model:'keep/model',permission:{bash:'ask'},provider:{keep:{apiKey:'test-only-placeholder'}}});fs.writeFileSync(config,originalConfig);
   const policy=path.join(fixture,'.config/ponytail/AGENTS.md');fs.mkdirSync(path.dirname(policy),{recursive:true});fs.writeFileSync(policy,'test policy');
@@ -117,6 +185,39 @@ if(process.argv.includes('--ui')) {
     assert(await clarifyButton.isEnabled());
     await clarifyButton.focus();assert.equal(await clarifyButton.evaluate(e=>getComputedStyle(e).outlineStyle),'solid');
     console.log('Loading visibility checks passed: real Kilo CSS, four themes, 320/900px widths, reactive rerender, contrast, animation, reduced motion, forced colors, focus and reset.');
+    const begin=()=>page.evaluate(()=>{
+      const field=document.getElementById('draft');
+      window.stoppedIds=[];
+      window.__kiloGoal.begin(field,field.value,()=>field.value,{requestId:'stop-test',cancel:id=>window.stoppedIds.push(id)});
+    });
+    await begin();
+    assert.match(await page.locator('.kilo-goal-preview').textContent(),/DeepSeek V4.1 Flash Ultra · LithosAI/);
+    const stopButton=page.getByRole('button',{name:'Stop',exact:true});
+    assert(await stopButton.isVisible());await stopButton.focus();await stopButton.press('Enter');
+    assert(await stopButton.isDisabled());
+    assert.match(await page.locator('.kilo-goal-preview').getByRole('status').textContent(),/Stopping/);
+    assert.deepEqual(await page.evaluate(()=>window.stoppedIds),['stop-test']);
+    await page.evaluate(()=>{
+      const field=document.getElementById('draft');
+      window.__kiloGoal.preview(field,{text:'Late unwanted result'},()=>{throw Error('Must not apply');});
+      window.__kiloGoal.error(field,'Late error must be ignored','stop-test');
+      window.__kiloGoal.cancelled(field,'wrong-request');
+    });
+    assert.match(await page.locator('.kilo-goal-preview').getByRole('status').textContent(),/Stopping/);
+    await page.evaluate(()=>window.__kiloGoal.cancelled(document.getElementById('draft'),'stop-test'));
+    assert.match(await page.locator('.kilo-goal-preview').textContent(),/Clarification stopped/);
+    assert.equal(await page.locator('#draft').inputValue(),'Keep my draft');
+    assert.equal(await page.locator('#attachment').textContent(),'image.png');
+    await page.getByRole('button',{name:'Dismiss',exact:true}).click();
+    await page.evaluate(()=>window.__kiloGoal.error(document.getElementById('draft'),'Add a message describing your goal first.'));
+    assert.match(await page.getByRole('alert').textContent(),/Add a message/,'Validation still works after cancellation');
+    await begin();assert(await stopButton.isEnabled(),'A new clarification can start after Stop');
+    await page.evaluate(()=>{
+      const field=document.getElementById('draft');
+      window.__kiloGoal.preview(field,{text:'New result',model:'DeepSeek',attachments:1,contextMessages:0},()=>{});
+    });
+    assert.equal(await stopButton.count(),0,'Finished request has no stale Stop control');
+    console.log('Stop UI checks passed: visible model/status, keyboard activation, single cancel, late replies ignored, acknowledgment, draft/attachments retained and restart.');
     const setup=async()=>page.evaluate(()=>{
       const field=document.getElementById('draft');
       window.__kiloGoal.begin(field,field.value,()=>field.value);

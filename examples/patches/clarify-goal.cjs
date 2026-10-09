@@ -3,6 +3,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { fileURLToPath } = require('node:url');
+const clarificationModel = Object.freeze({ providerID: 'lithosai', modelID: 'deepseek-ai/DeepSeek-V4.1-Flash-ultra' });
+const active = new WeakMap();
+
+function cancel(owner, requestId) {
+  const controller = active.get(owner)?.get(requestId);
+  if (!controller) return false;
+  controller.abort();
+  return true;
+}
 
 const instructions = `You clarify a user's draft for an engineering agent. Do not execute the task.
 Return only the rewritten prompt, without a preamble or markdown fence. Preserve the user's language, intent, uncertainty, and requested scope. If it is already clear, keep it nearly unchanged. Usually 30–150 words; do not expand a short request into a plan or a long template.
@@ -20,24 +29,40 @@ function contextFrom(messages) {
   }).slice(-8);
 }
 
-async function clarify(client, message, directory) {
+async function clarify(client, message, directory, owner = client) {
+  let requests = active.get(owner);
+  if (!requests) active.set(owner, requests = new Map());
+  const key = message.requestId || Symbol();
+  if (requests.has(key)) throw Error('This clarification request is already running.');
+  const controller = new AbortController();
+  requests.set(key, controller);
+  try {
+    return await rewrite(client, message, directory, AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]));
+  } catch (error) {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    throw error;
+  } finally {
+    requests.delete(key);
+  }
+}
+
+async function rewrite(client, message, directory, signal) {
   const text = message.text;
   if (typeof text !== 'string' || !text.trim() || text.length > 24000) throw Error('Enter a goal under 24,000 characters. Your draft was kept.');
-  if (!message.providerID || !message.modelID) throw Error('Select a model before clarifying your goal.');
   const files = message.files || [];
   if (!Array.isArray(files) || files.length > 8) throw Error('Clarify up to eight attachments at a time. Your draft was kept.');
-  const signal = AbortSignal.timeout(120000);
   const options = { throwOnError: true, signal };
-  const model = { providerID: message.providerID, modelID: message.modelID };
+  const model = { ...clarificationModel };
   const providers = (await client.provider.list({ directory }, options)).data;
+  signal.throwIfAborted();
   const definition = providers?.all?.find(p => p.id === model.providerID)?.models?.[model.modelID];
-  if (!definition) throw Error('The selected model is unavailable. Your draft was kept.');
+  if (!definition) throw Error('The DeepSeek clarification model on LithosAI is unavailable. Your draft was kept.');
   const parts = [], references = [];
   for (const file of files) {
     if (!file || typeof file.url !== 'string' || typeof file.mime !== 'string') throw Error('An attachment is unavailable. Reattach it and try again.');
     if (/^image\/(png|jpeg|webp|gif)$/.test(file.mime) || file.mime === 'application/pdf') {
       const kind = file.mime.startsWith('image/') ? 'image' : 'pdf';
-      if (definition.capabilities?.input?.[kind] !== true) throw Error(`The selected model cannot read ${kind === 'image' ? 'images' : 'PDFs'}. Select a compatible model and clarify again; your draft and attachments are unchanged.`);
+      if (definition.capabilities?.input?.[kind] !== true) throw Error(`The DeepSeek clarification model cannot read ${kind === 'image' ? 'images' : 'PDFs'}. Your draft and attachments are unchanged.`);
       if (!file.url.startsWith(`data:${file.mime};base64,`) || file.url.length > 14000000) throw Error('Attach an inline image or PDF under 10 MB to clarify it.');
       parts.push({ type: 'file', mime: file.mime, url: file.url, filename: clip(file.filename, 200) });
     } else if (file.url.startsWith('file:')) {
@@ -54,6 +79,7 @@ async function clarify(client, message, directory) {
     const history = await client.session.messages({ sessionID: message.sessionID, directory, limit: 12 }, options);
     recent = contextFrom(history.data || []);
   }
+  signal.throwIfAborted();
   const policy = fs.readFileSync(path.join(os.homedir(), '.config/ponytail/AGENTS.md'), 'utf8');
   parts.push({ type: 'text', text: JSON.stringify({ draft: text, recentChat: recent, references, attachedMedia: parts.map(p => p.filename || p.mime) }) });
   let id;
@@ -61,8 +87,10 @@ async function clarify(client, message, directory) {
     const created = await client.session.create({ directory, title: 'Clarify goal (temporary)', agent: 'goal-clarifier',
       permission: [{ permission: '*', pattern: '*', action: 'deny' }] }, options);
     id = created.data.id;
+    signal.throwIfAborted();
     const response = await client.session.prompt({ sessionID: id, directory, agent: 'goal-clarifier', model,
       system: `${instructions}\n\nApplicable coding policy (do not execute code):\n${policy}`, parts }, options);
+    signal.throwIfAborted();
     const data = response.data;
     if (data?.info?.error) throw Error(data.info.error.data?.message || data.info.error.name || 'Model request failed.');
     if (data?.parts?.some(p => p.type === 'tool')) throw Error('Clarification attempted a tool call and was rejected.');
@@ -80,4 +108,4 @@ async function clarify(client, message, directory) {
     }
   }
 }
-module.exports = { clarify, contextFrom, instructions };
+module.exports = { clarify, cancel, contextFrom, instructions };

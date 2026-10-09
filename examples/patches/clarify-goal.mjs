@@ -6,16 +6,21 @@ import { spawnSync } from 'node:child_process';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const marker = '/* clarify-goal-patch:v1 */';
+const cancelMarker = '/* clarify-goal-cancel:v1 */';
 function replaceOnce(source, before, after) {
   if (source.split(before).length !== 2) throw Error('Unsupported or ambiguous Clarify goal anchor. No changes made.');
   return source.replace(before, after);
 }
 export function patch(source, kind, ui = fs.readFileSync(path.join(root, 'clarify-goal-ui.js'), 'utf8')) {
   if (source.includes(marker)) {
-    if (kind === 'extension.js') return source;
-    const boundary=source.indexOf('\n"use strict";');
-    if (!source.startsWith(marker+'\n/* clarify-goal-ui:v1 */') || boundary<0) throw Error('Unsupported installed Clarify goal UI prefix.');
-    return marker+'\n'+ui+'\n'+source.slice(boundary+1);
+    if (kind !== 'extension.js') {
+      // Other local patches prepend recovery helpers; retain those wrappers.
+      const start=source.indexOf(marker+'\n/* clarify-goal-ui:v1 */');
+      const boundary=source.indexOf('\n"use strict";',start);
+      if (start<0 || boundary<0) throw Error('Unsupported installed Clarify goal UI prefix.');
+      source=source.slice(0,start)+marker+'\n'+ui+'\n'+source.slice(boundary+1);
+    }
+    return addCancellation(source,kind);
   }
   if (kind === 'extension.js') {
     source = replaceOnce(source,
@@ -42,7 +47,33 @@ export function patch(source, kind, ui = fs.readFileSync(path.join(root, 'clarif
     source = source.replaceAll('u.t("prompt.action.enhance")','"Clarify goal"');
     source = ui + '\n' + source;
   } else throw Error('Expected extension.js, webview.js, or agent-manager.js');
-  return marker + '\n' + source;
+  return addCancellation(marker + '\n' + source,kind);
+}
+
+function addCancellation(source,kind) {
+  if(kind!=='extension.js') {
+    const event=kind==='webview.js'?'ze':'Oe';
+    source=source.replace(`globalThis.__kiloGoal.error(w,${event}.error)`,`globalThis.__kiloGoal.error(w,${event}.error,${event}.requestId)`);
+  }
+  if(source.includes(cancelMarker))return source;
+  if(kind==='extension.js') {
+    source=replaceOnce(source,'case"enhancePrompt":{',
+      'case"cancelEnhancePrompt":{if(!require(require("node:path").join(__dirname,"clarify-goal.cjs")).cancel(this,message6.requestId))this.postMessage({type:"enhancePromptCancelled",requestId:message6.requestId});break}case"enhancePrompt":{');
+    source=replaceOnce(source,'message6.sessionID?this.getSessionDirectory(message6.sessionID):this.getWorkspaceDirectory()).then(data2=>',
+      'message6.sessionID?this.getSessionDirectory(message6.sessionID):this.getWorkspaceDirectory(),this).then(data2=>');
+    source=replaceOnce(source,'.catch(err2=>{let raw2=getErrorMessage(err2)||"Failed to enhance prompt"',
+      '.catch(err2=>{if(err2?.name==="AbortError"){this.postMessage({type:"enhancePromptCancelled",requestId:message6.requestId});return}let raw2=getErrorMessage(err2)||"Failed to enhance prompt"');
+  }else{
+    const main=kind==='webview.js';
+    const id=main?'D':'I', counter=main?'Oe':'Ve', finger=main?'F':'R', event=main?'ze':'Oe';
+    const fingerprint=`()=>JSON.stringify([${id}(),${finger}(${id}()),t.selected(g()),t.currentVariant(g()),f()])`;
+    source=replaceOnce(source,`globalThis.__kiloGoal.begin(w,(${fingerprint})(),${fingerprint})`,
+      `globalThis.__kiloGoal.begin(w,(${fingerprint})(),${fingerprint},{requestId:\`enhance-\${${id}()}-\${${counter}}\`,cancel:requestId=>p.postMessage({type:"cancelEnhancePrompt",requestId})})`);
+    source=replaceOnce(source,`${event}.type==="enhancePromptError"&&`,
+      `${event}.type==="enhancePromptCancelled"&&${event}.requestId===\`enhance-\${${id}()}-\${${counter}}\`&&(J(!1),w&&globalThis.__kiloGoal.cancelled(w,${event}.requestId)),${event}.type==="enhancePromptError"&&`);
+  }
+  // Keep the UI prefix stable so future upgrades can replace it independently.
+  return kind==='extension.js'?source+'\n'+cancelMarker:source.replace('\n"use strict";','\n"use strict";'+cancelMarker);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

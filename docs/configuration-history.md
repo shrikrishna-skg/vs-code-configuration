@@ -37,7 +37,7 @@ Tag `config-2026-10-09`. See the [complete dated change index](updates/2026-10-0
 - **CTO and CTO + JEV:** isolated workers, fourteen-worker/six-writer limits, guarded integration and compact selected label.
 - **Shared computer control:** coordinated native desktop and browser tools, with automated and live model checks.
 - **Goal continuity and Ponytail:** bounded follow-ups, retained acceptance criteria and shared coding policy.
-- **Clarify goal:** the existing wand uses the selected model, supported attachments and recent chat, then opens an editable preview.
+- **Clarify goal:** the existing wand always uses DeepSeek on LithosAI with supported attachments and recent chat, shows a Stop control, then opens an editable preview.
 - **Supporting work:** manual Agent Manager opening, test repairs, the long-run plan validator and earlier Claude Desktop lead integration captured in this snapshot.
 - **Native CTO delegation, October 9:** [Visible Kilo children and worktree routing](cto-native.md) replace invisible MCP delegation in the CTO chat profiles; installed routes are preserved. Native limits are scheduling policy, while the separate MCP scheduler retains enforced limits.
 - **Approved restriction cleanup, October 9:** [C1–C12 changes](cto-permission-cleanup.md) remove unnecessary shell denials and conflicting instructions, align delivery commands with the CTO, and preserve role permissions and model settings.

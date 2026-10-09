@@ -14,9 +14,29 @@
   }
   function button(label, callback) { const b = document.createElement('button'); b.type='button'; b.textContent=label;b.addEventListener('click',callback);return b; }
   const api = {
-    begin(anchor, snapshot, current) { close(anchor); pending.set(anchor,{snapshot,current}); },
+    begin(anchor, snapshot, current, control) {
+      const request = {snapshot,current,control,stopped:false};
+      pending.set(anchor,request);
+      const el=panel(anchor,'Clarifying goal…');if(!el)return;
+      const meta=document.createElement('p');meta.className='kilo-goal-meta';meta.textContent='DeepSeek V4.1 Flash Ultra · LithosAI';
+      const status=document.createElement('p');status.className='kilo-goal-meta';status.setAttribute('role','status');status.textContent='Clarifying your draft with available attachments and recent context. Your original draft stays unchanged.';
+      el.append(meta,status);
+      if(control) el.append(button('Stop',event=>{
+        if(request.stopped)return;
+        request.stopped=true;event.currentTarget.disabled=true;
+        status.textContent='Stopping clarification… Your draft and attachments are kept.';
+        control.cancel(control.requestId);
+      }));
+    },
+    cancelled(anchor, requestId) {
+      const request=pending.get(anchor);if(!request||request.control?.requestId!==requestId)return;
+      request.stopped=true;
+      const el=panel(anchor,'Clarification stopped');if(!el)return;
+      const status=document.createElement('p');status.setAttribute('role','status');status.textContent='Your draft and attachments are unchanged. You can edit or clarify again.';
+      el.append(status,button('Dismiss',()=>close(anchor)));
+    },
     preview(anchor, response, apply) {
-      const request = pending.get(anchor); if (!request || !anchor.isConnected) return;
+      const request = pending.get(anchor); if (!request || request.stopped || !anchor.isConnected) return;
       const el = panel(anchor, 'Review your goal'); if (!el) return;
       const meta = document.createElement('p'); meta.className='kilo-goal-meta';
       meta.textContent = `${response.model} · ${response.attachments} attachment(s) · ${response.contextMessages} recent message(s)`;el.append(meta);
@@ -31,7 +51,7 @@
       });use.className='kilo-goal-use';row.append(use);el.append(row);field.focus();
       el.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close(anchor);anchor.focus();}});
     },
-    error(anchor, text) {const el=panel(anchor,'Could not clarify goal');if(!el)return;const p=document.createElement('p');p.textContent=text;p.setAttribute('role','alert');el.append(p,button('Dismiss',()=>close(anchor)));}
+    error(anchor, text, requestId) {const request=pending.get(anchor);if(request?.stopped&&request.control?.requestId===requestId)return;const el=panel(anchor,'Could not clarify goal');if(!el)return;const p=document.createElement('p');p.textContent=text;p.setAttribute('role','alert');el.append(p,button('Dismiss',()=>close(anchor)));}
   };
   globalThis.__kiloGoal = api;
   const style=document.createElement('style');style.textContent=`
