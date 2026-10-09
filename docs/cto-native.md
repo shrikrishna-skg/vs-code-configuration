@@ -2,6 +2,8 @@
 
 The CTO picker now delegates through Kilo's own `task` tool. Earlier it denied that tool and used separate MCP/CLI sessions; those real workers could not appear as child cards in the parent chat. Renaming todo items did not change that.
 
+The later [approved permission/instruction cleanup](cto-permission-cleanup.md) removes unnecessary global shell denials and conflicting workflow instructions while retaining native role permissions and finite budgets.
+
 ```text
 Selected CTO model (keeps the chat's model choice)
 ├─ Simple change → direct edit + focused verification

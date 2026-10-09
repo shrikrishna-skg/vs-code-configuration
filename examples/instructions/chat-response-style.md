@@ -1,6 +1,8 @@
 # Chat response style
 
-Apply this format to every user-facing chat reply, including progress updates, across projects and agents. Keep brief updates brief within this structure.
+Use English for user-visible text unless the user explicitly requests another language. Pass this requirement to delegates.
+
+Keep progress updates brief and focused on meaningful findings or blockers. Reserve the following structure for final replies; do not add these headings to progress updates or internal worker reports.
 
 Use three parts, in this order, with the exact unnumbered headings shown below. Never prefix these headings with 1, 2, or 3.
 
@@ -16,6 +18,8 @@ Use three parts, in this order, with the exact unnumbered headings shown below. 
 
 - Always include a concise assessment immediately after the answer.
 - Use the same readable spacing.
+
+An optional `## Verification` section may appear before My opinion when checks were actually run. Use at most three concise bullets; report failed or skipped checks honestly.
 
 ## Next step
 

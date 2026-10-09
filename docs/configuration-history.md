@@ -40,6 +40,7 @@ Tag `config-2026-10-09`. See the [complete dated change index](updates/2026-10-0
 - **Clarify goal:** the existing wand uses the selected model, supported attachments and recent chat, then opens an editable preview.
 - **Supporting work:** manual Agent Manager opening, test repairs, the long-run plan validator and earlier Claude Desktop lead integration captured in this snapshot.
 - **Native CTO delegation, October 9:** [Visible Kilo children and worktree routing](cto-native.md) replace invisible MCP delegation in the CTO chat profiles; installed routes are preserved. Native limits are scheduling policy, while the separate MCP scheduler retains enforced limits.
+- **Approved restriction cleanup, October 9:** [C1–C12 changes](cto-permission-cleanup.md) remove unnecessary shell denials and conflicting instructions, align delivery commands with the CTO, and preserve role permissions and model settings.
 - **Later October 9:** [adaptive CTO task routes](cto-adaptive.md) add scoped DeepSeek/Luna sessions and coordinated premium delegation, tracked in a subsequent commit without moving the dated tag.
 - **Repository protection:** disabled and removed a pre-existing workflow that sent credential matches and history to an external endpoint; no raw credentials, session history or unrelated screenshots are included.
 

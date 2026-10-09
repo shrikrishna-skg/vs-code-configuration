@@ -18,7 +18,7 @@ cp examples/instructions/AGENTS.md ~/.config/ponytail/AGENTS.md
 cp examples/instructions/chat-response-style.md ~/.config/kilo/chat-response-style.md
 ```
 
-These two files provide different controls: `AGENTS.md` governs coding decisions, while `chat-response-style.md` governs every user-facing response.
+These two files provide different controls: `AGENTS.md` governs coding decisions, while `chat-response-style.md` keeps progress updates brief and defines the final response format.
 
 ## Install the Kilo configuration
 

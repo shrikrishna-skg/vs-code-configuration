@@ -17,6 +17,7 @@ node scripts/test-reapply-kilo-patches.mjs
 node --check scripts/validate-long-run-plan.mjs
 node scripts/test-validate-long-run-plan.mjs
 node scripts/test-cto.mjs
+node scripts/test-cto-cleanup.mjs
 node scripts/test-native-subagent-ready.mjs
 node scripts/test-goal-policy.mjs
 node scripts/test-minimal-cto.mjs

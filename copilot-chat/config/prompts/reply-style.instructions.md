@@ -1,8 +1,15 @@
 ---
-name: "Reply style and UI verification"
-description: "Chat reply format (Answer / My opinion / Next step) and the Peekaboo-first UI verification rule, applied to every request."
+name: "Reply style, testing, and UI verification"
+description: "Proportional test requirements, chat reply format, and the Peekaboo-first UI verification rule, applied to every request."
 applyTo: "**"
 ---
+
+## Testing
+
+- For every behavioral code change, add or update the smallest relevant automated test.
+- For a bug fix, add a regression test that fails before the fix and passes after it.
+- Do not add tests for comments, formatting, configuration-only changes, or trivial non-behavioral refactors.
+- Reuse the project's existing test framework and conventions; do not add a test dependency when the current setup can cover the behavior.
 
 ## UI verification
 
@@ -13,7 +20,9 @@ applyTo: "**"
 
 # Chat response style
 
-Apply this format to every user-facing chat reply, including progress updates, across projects and agents. Keep brief updates brief within this structure.
+Use English for user-visible text unless the user explicitly requests another language. Pass this requirement to delegates.
+
+Keep progress updates brief and focused on meaningful findings or blockers. Reserve the following structure for final replies; do not add these headings to progress updates or internal worker reports.
 
 Use three parts, in this order, with the exact unnumbered headings shown below. Never prefix these headings with 1, 2, or 3.
 
@@ -29,6 +38,8 @@ Use three parts, in this order, with the exact unnumbered headings shown below. 
 
 - Always include a concise assessment immediately after the answer.
 - Use the same readable spacing.
+
+An optional `## Verification` section may appear before My opinion when checks were actually run. Use at most three concise bullets; report failed or skipped checks honestly.
 
 ## Next step
 
