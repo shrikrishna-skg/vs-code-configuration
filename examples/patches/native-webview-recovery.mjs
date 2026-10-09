@@ -12,6 +12,13 @@ export function installNativeWebviewRecovery(provider, panel, vscode, clock = gl
   let closed = false, sequence = 0, acknowledged = 0, pendingSince = 0, previousTick = Date.now();
   const started = previousTick;
   const state = provider.nativeWebviewRecoveryState ??= { attempts: [], snapshot: null };
+  // Persist failure timing, never prompts, attachment data, paths, or session IDs.
+  const log = (event, details = {}) => {
+    try {
+      const output = installNativeWebviewRecovery.output ??= vscode.window.createOutputChannel('Kilo Renderer Health', { log: true });
+      output.info(JSON.stringify({ event, view: panel.viewType, ...details }));
+    } catch { /* Diagnostics must not prevent recovery. */ }
+  };
   const listener = panel.webview.onDidReceiveMessage(message => {
     if (message.type === '__nativeWebviewPong' && Number.isInteger(message.sequence) && message.sequence > acknowledged && message.sequence <= sequence) { acknowledged = message.sequence; pendingSince = 0; }
     if (message.type === '__nativeWebviewSnapshot' && message.snapshot?.drafts?.version === 1) {
@@ -24,9 +31,10 @@ export function installNativeWebviewRecovery(provider, panel, vscode, clock = gl
     state.attempts = state.attempts.filter(time => now - time < 300000);
     if (state.attempts.length >= 2) {
       pendingSince = now;
-      if (!state.warned) { state.warned = true; vscode.window.showWarningMessage('Kilo’s chat renderer is not responding after two recovery attempts. Model tasks remain running; reopen this chat to recover its view.'); }
+      if (!state.warned) { state.warned = true; log('recovery-limit', { attempts: state.attempts.length }); vscode.window.showWarningMessage('Kilo’s chat renderer is not responding after two recovery attempts. Model tasks remain running; reopen this chat to recover its view.'); }
       return;
     }
+    log('unresponsive', { pendingMs: now - pendingSince, ready: Boolean(provider.isWebviewReady), visible: panel.visible, acknowledged, sequence });
     state.attempts.push(now);
     const sessionID = provider.getCurrentSessionId() ?? provider.opts.nativeRecoverySessionID;
     const next = vscode.window.createWebviewPanel(panel.viewType, panel.title, { viewColumn: panel.viewColumn, preserveFocus: true }, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [provider.extensionUri] });
@@ -41,6 +49,7 @@ export function installNativeWebviewRecovery(provider, panel, vscode, clock = gl
     console.warn('[Kilo Webview Recovery] Recreated an unresponsive chat view; backend preserved.');
     await provider.waitForReady();
     if (provider.panel !== next || provider.webview !== next.webview) return;
+    log('replacement-ready', { elapsedMs: Date.now() - now });
     const pendingDraft = next.viewType === 'kilo-code.new.TabPanel' && state.snapshot?.drafts?.tabs?.active?.startsWith('sidebar-pending:');
     if (sessionID && !pendingDraft) {
       const child = next.viewType === 'kilo-code.new.SubAgentViewerPanel';
@@ -53,13 +62,14 @@ export function installNativeWebviewRecovery(provider, panel, vscode, clock = gl
         if (session && provider.panel === next && provider.webview === next.webview) provider.registerSession(session);
       }
     }
+    log('recovery-dispatched', { elapsedMs: Date.now() - now });
   }
   const timer = clock.setInterval(() => {
     if (closed || provider.panel !== panel) return;
     const now = Date.now(), slept = now - previousTick > 20000;
     previousTick = now;
     if (!panel.visible || slept) { pendingSince = 0; return; }
-    if (pendingSince && now - pendingSince >= (provider.isWebviewReady ? 30000 : 60000) && now - started >= 60000) { recover().catch(error => { pendingSince = Date.now(); console.error('[Kilo Webview Recovery]', error); vscode.window.showWarningMessage('Kilo could not recover its chat view. Model tasks have not been restarted. Reopen the chat.'); }); return; }
+    if (pendingSince && now - pendingSince >= (provider.isWebviewReady ? 30000 : 60000) && now - started >= 60000) { recover().catch(error => { pendingSince = Date.now(); log('recovery-failed'); console.error('[Kilo Webview Recovery]', error); vscode.window.showWarningMessage('Kilo could not recover its chat view. Model tasks have not been restarted. Reopen the chat.'); }); return; }
     if (!pendingSince) pendingSince = now;
     panel.webview.postMessage({ type: '__nativeWebviewPing', sequence: ++sequence }).then(undefined, () => {});
   }, 5000);
@@ -102,7 +112,7 @@ export function nativeWebviewRecoveryClient() {
   });
 }
 
-const hostMarker = '/* native-webview-recovery:v2 */';
+const hostMarker = '/* native-webview-recovery:v3 */';
 const clientMarker = '/* native-webview-recovery-client:v2 */';
 const edits = [
   ['return buildWebviewHtml(webview,{sidebar:sidebar?', 'return buildWebviewHtml(webview,{nativeRecovery:this.nativeWebviewRecoveryState?.snapshot,sidebar:sidebar?'],
@@ -116,6 +126,12 @@ const edits = [
 ];
 export function patchHost(source) {
   if (source.includes(hostMarker)) return source;
+  const previous = '/* native-webview-recovery:v2 */\nfunction installNativeWebviewRecovery(';
+  if (source.startsWith(previous)) {
+    const end = source.indexOf('\n}\n', previous.length);
+    if (end < 0) throw new Error('Unsupported existing recovery helper.');
+    return `${hostMarker}\n${installNativeWebviewRecovery.toString()}\n${source.slice(end + 3)}`;
+  }
   for (const [before, after] of edits) {
     const count = source.split(before).length - 1;
     if (count !== (before === 'tabPanels.delete(panel),tabProvider.dispose()' ? 2 : 1)) throw new Error(`Unsupported Kilo bundle: recovery anchor count ${count}.`);

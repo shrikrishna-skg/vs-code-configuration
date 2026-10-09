@@ -4,7 +4,7 @@ import { installNativeWebviewRecovery, nativeWebviewRecoveryClient, patchHost, p
 
 function fixture() {
   let now = 1000, interval, clearCount = 0;
-  const log = [], panels = [];
+  const log = [], panels = [], diagnostics = [];
   const clock = { setInterval(fn) { interval = fn; return { unref() {} }; }, clearInterval() { clearCount++; } };
   const disposable = callback => { let active = true; return { dispose() { active = false; }, fire(...args) { if (active) callback(...args); } }; };
   function panel() {
@@ -22,10 +22,10 @@ function fixture() {
     resolveWebviewPanel(next) { this.panel = next; this.webview = next.webview; log.push('resolve same provider'); },
     initializeConnection: async () => {}, waitForReady: async () => {}, loadMessages(id) { log.push(['loadMessages', id]); }, getSessionInfo: async id => ({ id }), registerSession(session) { log.push(['registerSession', session.id]); }, postMessage(message) { log.push(message); }, dispose() { log.push('provider disposed'); },
   };
-  const vscode = { window: { createWebviewPanel(type, title, where, options) { assert.equal(where.preserveFocus, true); const next = panel(); next.viewType = type; return next; }, showWarningMessage(message) { log.push(message); } } };
+  const vscode = { window: { createOutputChannel(name, options) { assert.equal(name, 'Kilo Renderer Health'); assert.equal(options.log, true); return { info(text) { diagnostics.push(JSON.parse(text)); } }; }, createWebviewPanel(type, title, where, options) { assert.equal(where.preserveFocus, true); const next = panel(); next.viewType = type; return next; }, showWarningMessage(message) { log.push(message); } } };
   const install = vm.runInNewContext(`(${installNativeWebviewRecovery})`, { Date: { now: () => now }, console, Number, globalThis: clock });
   install(provider, first, vscode, clock);
-  return { first, provider, panels, log, install, vscode, clock, tick(ms = 5000) { now += ms; interval(); }, get clearCount() { return clearCount; } };
+  return { first, provider, panels, log, diagnostics, install, vscode, clock, tick(ms = 5000) { now += ms; interval(); }, get clearCount() { return clearCount; } };
 }
 
 const healthy = fixture();
@@ -47,6 +47,18 @@ assert.equal(dead.provider.nativeWebviewRecoveryState.snapshot.state.draft, 'kee
 assert(!dead.log.includes('provider disposed'));
 assert(!dead.log.some(value => ['sendMessage', 'createSession', 'abort'].includes(value?.type)));
 assert(dead.clearCount > 0);
+assert.deepEqual(dead.diagnostics.map(item => item.event), ['unresponsive', 'replacement-ready', 'recovery-dispatched']);
+assert.equal(dead.diagnostics[0].pendingMs, 55000);
+assert(!JSON.stringify(dead.diagnostics).includes('original-session'));
+assert.equal(healthy.diagnostics.length, 0, 'Healthy heartbeats must not create diagnostic traffic');
+const upgrade = patchHost(`/* native-webview-recovery:v2 */\n${installNativeWebviewRecovery.toString()}\nconst preserveOtherPatches = true;`);
+assert(upgrade.startsWith('/* native-webview-recovery:v3 */'));
+assert(upgrade.endsWith('const preserveOtherPatches = true;'));
+assert.equal(patchHost(upgrade), upgrade);
+const noLog = fixture(); noLog.vscode.window.createOutputChannel = () => { throw new Error('Output unavailable'); };
+for (let i = 0; i < 13; i++) noLog.tick();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(noLog.panels.length, 2, 'Unavailable diagnostics must not block renderer recovery');
 const closed = fixture(); closed.first.dispose(); for (let i = 0; i < 15; i++) closed.tick(); assert.equal(closed.panels.length, 1);
 assert.throws(() => patchClient('unsupported bundle'), /anchor/);
 assert.throws(() => patchHost('unsupported bundle'), /anchor/);

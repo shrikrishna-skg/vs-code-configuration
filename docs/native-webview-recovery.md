@@ -8,6 +8,10 @@ In an isolated VS Code profile, deliberately terminating only a webview renderer
 
 This identifies a recoverable failure class. The original spontaneous crash trigger remains unknown; the patch does not claim to prevent every renderer or GPU failure.
 
+An additional October 9 report showed the grey pane again. During direct inspection the same Mobile UAB chat was rendering and its workers were active; no restart was performed by the investigator. This does not establish whether the view recovered automatically or through a user action. There was no new OS crash report tying this occurrence to a particular JavaScript or GPU fault.
+
+The host patch now writes failure-only timing records to the **Kilo Renderer Health** Output channel: unresponsive heartbeat duration, replacement readiness, recovery dispatch, failure and retry-limit events. Records exclude conversation text, attachments, paths and session IDs. Readiness and dispatch are not proof of successful painting; compare these records with the visible pane and VS Code renderer logs. The v3 host helper upgrades v2 in place without rebuilding or replacing other patches. A running extension host loads it after the next normal window reload.
+
 ## Recovery behavior
 
 - A five-second heartbeat checks visible chat panels, including panels visible without keyboard focus. Hidden panels and host sleep gaps do not trigger recovery.
