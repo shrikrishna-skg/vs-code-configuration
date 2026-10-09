@@ -29,6 +29,23 @@ is saved next to the bundle. The existing live `reapply-kilo-patches.sh` hook
 also applies this patch to custom local Kilo builds. Unknown bundle layouts
 fail without modification and need a reviewed patch update.
 
+## Expanded subagent activity
+
+The local Kilo 7.8.2 task cards open by default in both the editor chat and
+Agent Manager, including background and completed subagents. Manual collapse
+and reopen still use Kilo's existing per-card state; untouched cards remain
+open through status changes. That state is local to the loaded view, so
+recreating the view returns cards to the expanded default. Individual tool
+details and the separate open-in-tab action are unchanged.
+
+`examples/patches/subagent-default-open.mjs` changes only the native task-card
+default policy. It does not submit model requests or start workers; expanded
+cards do subscribe to their existing activity streams. The existing scrollable
+height limit remains. The reapply script covers both bundles and fails closed
+on unknown anchors. Apply to `dist/webview.js` and `dist/agent-manager.js`;
+use `--check` to verify or `--restore` to undo just this change. Reload the
+Kilo view when running work can safely be left alone.
+
 ## Auto-approval boundary
 
 `kilo-code.new.autoApprove.enabled` is intentionally preserved because it is part of the observed setup. It increases autonomy and also increases risk. Pair it with:

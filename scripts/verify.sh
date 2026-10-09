@@ -28,6 +28,7 @@ node scripts/test-adaptive-cto.mjs
 python3 scripts/check-workspace-path.py --self-test
 node scripts/test-clarify-goal.mjs
 node scripts/test-cto-label.mjs
+node scripts/test-subagent-default-open.mjs
 node scripts/test-cto-concurrency.mjs
 node --check examples/patches/codex-thinking-status.mjs
 node examples/patches/check-codex-thinking-status.mjs
