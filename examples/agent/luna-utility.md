@@ -3,7 +3,7 @@ description: Exception-only tiny utility worker using GPT-5.6 Luna Fast. Use ver
 mode: subagent
 model: openai/gpt-5.6-luna-fast
 color: warning
-steps: 8
+steps: 20
 permission:
   task: deny
 ---

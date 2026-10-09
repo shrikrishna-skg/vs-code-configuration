@@ -16,6 +16,8 @@ This update implements the approved C1–C12 audit items in the existing Kilo se
 | C11 | Reassess a repeated failed approach after two unsuccessful attempts; keep working through supported alternatives when available. |
 | C12 | Route all six installed delivery commands through `CTO (Recommended)` with no command-level model override; align active delivery/worktree skills. |
 
+The C10 row records the original cleanup. A subsequent approved update raised the native iteration budgets to **300/150/60/20**; see [current native budgets](cto-native.md#iteration-budgets). Other protections and handoff instructions remain in place.
+
 The step-limit handoff is a model instruction, not a new runtime checkpoint or guarantee that a model reports before the platform forces its final response. The CTO must inspect partial results before resuming or reassigning. Command-level model overrides are removed; whether an agent switch retains the selected model still depends on the Kilo surface. Existing model settings are not changed.
 
 ## Install and restore

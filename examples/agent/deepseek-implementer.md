@@ -3,7 +3,7 @@ description: Leaf implementation worker using DeepSeek V4.1 Flash for substantia
 mode: subagent
 model: deepseek/deepseek-flash
 color: accent
-steps: 45
+steps: 150
 permission:
   task: deny
 ---

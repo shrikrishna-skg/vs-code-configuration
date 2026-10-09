@@ -106,6 +106,7 @@ try {
   assert(c.instructions.includes('custom-policy.md'));
   const primary = fs.readFileSync(path.join(install, 'agent', 'CTO (Recommended).md'), 'utf8');
   assert.match(primary, /model: test\/preserved-cto\nvariant: medium/);
+  assert.match(primary, /^steps: 300$/m);
   assert.match(primary, /task:\n    "\*": deny\n    deepseek-implementer: allow\n    glm-investigator: allow\n    luna-utility: allow/);
   assert.match(primary, /cto_\*: deny/);
   assert.match(primary, /NOT runtime-enforced native limits/);
@@ -114,6 +115,7 @@ try {
   for (const name of ['deepseek-implementer', 'glm-investigator', 'luna-utility']) {
     const worker = fs.readFileSync(path.join(install, 'agent', name + '.md'), 'utf8');
     assert.match(worker, /task: deny/); assert.match(worker, /agent_manager\*: deny/);
+    assert.match(worker, new RegExp('^steps: ' + { 'deepseek-implementer': 150, 'glm-investigator': 60, 'luna-utility': 20 }[name] + '$', 'm'));
     assert(worker.includes(process.env.CTO_PONYTAIL_FILE));
   }
   const reviewer = fs.readFileSync(path.join(install, 'agent', 'glm-investigator.md'), 'utf8');

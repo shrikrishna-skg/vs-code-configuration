@@ -3,7 +3,7 @@ description: Read-only investigator and independent reviewer using GLM 5.3 Flash
 mode: subagent
 model: openrouter/z-ai/glm-5.3-flash
 color: info
-steps: 14
+steps: 60
 permission:
   edit: deny
   background_process: deny

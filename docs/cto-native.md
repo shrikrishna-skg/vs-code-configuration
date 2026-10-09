@@ -20,6 +20,10 @@ Selected CTO model (keeps the chat's model choice)
 
 Use 2–4 workers initially; expand only for independent work. The **14 active workers / 6 writers** ceiling is a scheduling instruction in native mode, not a native runtime limit. Native `subagent_depth` limits nesting, not worker count. The installed specialist profiles deny further delegation, Agent Manager, external CLI bridges and computer control. The separate [MCP scheduler](cto-setup.md#separate-mcp-scheduler-architecture-terminal-workflow) remains available via the [coordinated terminal task](cto-adaptive.md), with its enforced limits and guarded publication.
 
+### Iteration budgets
+
+The approved long-task budgets are **300** iterations for either CTO profile, **150** for DeepSeek implementers, **60** for GLM investigators/reviewers, and **20** for Luna utilities. These replace the earlier 100/45/14/8 limits. They are ceilings, not required work or worker counts, and do not increase context-window size. Agents should finish once acceptance criteria pass. Loop protection, role permissions and incomplete-work handoff instructions remain unchanged; increased budgets are not a speed or accuracy guarantee. Separate MCP/terminal worker budgets are unaffected.
+
 ## Installation and use
 
 ```sh
