@@ -62,6 +62,22 @@ on unknown anchors. Apply to `dist/webview.js` and `dist/agent-manager.js`;
 use `--check` to verify or `--restore` to undo just this change. Reload the
 Kilo view when running work can safely be left alone.
 
+## Orange send and stop controls
+
+Sample 1 keeps the current composer layout and focus border, with a coral
+rounded button for the native upward Send arrow and white Stop square.
+It applies to editor chat and Agent Manager. Continue, recording, goal start,
+tooltips, keyboard activation and disabled-state decisions still use native
+Kilo handlers. Goal-start text remains visible. Clarify goal is unchanged.
+
+`examples/patches/composer-orange-actions.mjs` patches both `.js` and `.css`
+bundles in the custom Kilo 7.8.2 installation. It supports `--check` and
+`--restore`, creates backups and rejects unknown anchors. The reapply hook
+retains the patch. Reopen the view or reload VS Code when idle to activate it.
+Run `node scripts/test-composer-orange-actions.mjs` for the regression check;
+add `--ui` on this machine to test both installed bundle styles and icons in
+headless Chrome. Those browser fixtures are not full native Kilo task runs.
+
 ## Auto-approval boundary
 
 `kilo-code.new.autoApprove.enabled` is intentionally preserved because it is part of the observed setup. It increases autonomy and also increases risk. Pair it with:
