@@ -108,6 +108,7 @@ Observed real-provider results on October 9:
 | Scenario | Result |
 |---|---|
 | Two successive DeepSeek edits in the same session | Both verified and applied, approximately **9.3 s and 7.9 s**; neither called a premium model |
+| Installed interactive routine launcher, without `--auto` | DeepSeek published one checked replacement; the CLI reported **21.1 s**, and closing the session released its reservation |
 | Vague follow-up | Asked for a target and left files unchanged, approximately **4.7 s**, no premium call |
 | Explicit premium advice request | Consulted the configured CTO read-only, approximately **11.1 s**, no file changes |
 | CTO + DeepSeek implementation + GLM review | Accepted the patch and passed the destination check, approximately **76.5 s** |
