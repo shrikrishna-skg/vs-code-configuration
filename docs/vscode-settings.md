@@ -78,18 +78,37 @@ Run `node scripts/test-composer-orange-actions.mjs` for the regression check;
 add `--ui` on this machine to test both installed bundle styles and icons in
 headless Chrome. Those browser fixtures are not full native Kilo task runs.
 
-## Auto-approval boundary
+## Ask / Auto / Full access
 
-`kilo-code.new.autoApprove.enabled` is intentionally preserved because it is part of the observed setup. It increases autonomy and also increases risk. Pair it with:
+The shield in both Kilo chat composers opens a permission menu. It shows the
+backend-confirmed mode and displays errors instead of pretending a change
+succeeded. The choice is shared by Kilo chats in the same VS Code window.
 
-- Tight agent role permissions.
-- Read-only investigator definitions.
-- One writer per file or subsystem.
-- Explicit approval requirements for unknown task agents.
-- Version control and frequent diff inspection.
-- No credentials inside the workspace.
+- **Ask:** disables Kilo's automatic replies to permission requests. Actions
+  already allowed by native rules still run without asking.
+- **Auto:** approves ordinary pending and new permission requests. Sandbox
+  escalation requests still require a manual answer.
+- **Full access:** also approves sandbox escalation requests. This mode lasts
+  only until this VS Code window reloads or another mode is chosen; with the
+  native enabled flag retained, a reload returns it to Auto.
 
-Disable auto-approval on unfamiliar repositories, security-sensitive environments, or machines where shell and filesystem access are not sufficiently isolated.
+Explicit denied tools, role restrictions, missing tools, account access and OS
+permissions remain enforced. This menu neither rewrites agent policies nor
+disables the sandbox; Full access uses Kilo's existing one-request approval API
+for requests the backend actually issues. It adds no model calls.
+
+Installing the selector preserves the existing `kilo-code.new.autoApprove.enabled`
+setting. The legacy toggle command switches between Ask and Auto. External
+changes to that setting clear the window's Full access state. Selecting Ask
+also invalidates queued automatic-reply retries; an action already accepted
+by the backend cannot be recalled by changing this setting.
+
+`examples/patches/permission-modes.mjs` installs the backend adapter, shared
+menu helper and styles. It has `--check` and surgical `--restore` modes, and
+creates backups. The reapply script includes all five bundles. The backend
+helper is `permission-modes.cjs`; `permission-mode-ui.js` supplies the menu.
+Run `node scripts/test-permission-modes.mjs`, or add `--ui` for the installed
+bundle CSS checks in headless Chrome. Reopen/reload Kilo to load an update.
 
 ## Model settings versus the default agent
 

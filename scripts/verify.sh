@@ -31,6 +31,7 @@ node scripts/test-cto-label.mjs
 node scripts/test-subagent-default-open.mjs
 node scripts/test-todos-both-locations.mjs
 node scripts/test-composer-orange-actions.mjs
+node scripts/test-permission-modes.mjs
 node scripts/test-cto-concurrency.mjs
 node --check examples/patches/codex-thinking-status.mjs
 node examples/patches/check-codex-thinking-status.mjs

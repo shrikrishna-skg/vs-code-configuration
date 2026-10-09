@@ -95,7 +95,7 @@ const customDist = path.join(tmp, "custom", "shrikrishna-skg.kilo-code-local-7.8
 fs.mkdirSync(customDist, { recursive: true })
 const customPatches = path.join(tmp, "custom-patches"), customCalls = path.join(tmp, "custom-calls")
 fs.mkdirSync(customPatches)
-for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "subagent-default-open", "todos-both-locations", "composer-orange-actions", "clarify-goal", "native-webview-recovery"]) {
+for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "subagent-default-open", "todos-both-locations", "composer-orange-actions", "permission-modes", "clarify-goal", "native-webview-recovery"]) {
   fs.writeFileSync(path.join(customPatches, name + ".mjs"), `import fs from 'node:fs';fs.appendFileSync(${JSON.stringify(customCalls)}, JSON.stringify({name:${JSON.stringify(name)},args:process.argv.slice(2)})+'\\n');`)
 }
 run("custom", customPatches)
@@ -105,6 +105,8 @@ for (const file of ["webview.js", "agent-manager.js"]) assert(customInvocations.
 for (const file of ["webview.js", "agent-manager.js"]) assert(customInvocations.some(call => call.name === "todos-both-locations" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must include both to-do views")
 
 for (const file of ["webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]) assert(customInvocations.some(call => call.name === "composer-orange-actions" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must retain orange controls in both views")
+
+for (const file of ["extension.js", "webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]) assert(customInvocations.some(call => call.name === "permission-modes" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must retain permission modes")
 
 fs.rmSync(tmp, { recursive: true })
 console.log("reapply-kilo-patches checks passed")
