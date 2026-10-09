@@ -18,6 +18,7 @@ node --check scripts/validate-long-run-plan.mjs
 node scripts/test-validate-long-run-plan.mjs
 node scripts/test-cto.mjs
 node scripts/test-goal-policy.mjs
+node scripts/test-minimal-cto.mjs
 python3 scripts/check-workspace-path.py --self-test
 node scripts/test-clarify-goal.mjs
 node scripts/test-cto-label.mjs
