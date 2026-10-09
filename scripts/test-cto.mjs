@@ -89,17 +89,65 @@ try {
 
   // Installer preserves unrelated config, hides old entries, and restores bytes.
   const install = path.join(temp, 'install'); fs.mkdirSync(install);
-  const original = '{"default_agent":"astra-engineering-lead","custom":123,"mcp":{"existing":{"enabled":false}}}\n';
+  const original = '{"default_agent":"astra-engineering-lead","model":"test/main","custom":123,"permission":{"bash":{"echo *":"deny"}},"instructions":["custom-policy.md"],"mcp":{"existing":{"enabled":false}}}\n';
   fs.writeFileSync(path.join(install, 'kilo.jsonc'), original);
+  fs.mkdirSync(path.join(install, 'agent'));
+  fs.writeFileSync(path.join(install, 'agent', 'deepseek-implementer.md'), '---\nmodel: test/preserved-worker\n---\nOld body\n');
+  fs.writeFileSync(path.join(install, 'agent', 'CTO (Recommended).md'), '---\nmodel: test/preserved-cto\nvariant: medium\n---\nOld body\n');
   const script = fileURLToPath(new URL('./install-cto.mjs', import.meta.url));
   const env = { ...process.env, CTO_INSTALL_DIR: install, CTO_SELECTION_FILE: path.join(temp, 'selected') };
   const applied = spawnSync(process.execPath, [script, '--apply'], { env, encoding: 'utf8' }); assert.equal(applied.status, 0, applied.stderr);
   const c = JSON.parse(fs.readFileSync(path.join(install, 'kilo.jsonc')));
   assert.equal(c.custom, 123); assert.equal(c.mcp.existing.enabled, false); assert.equal(c.agent['astra-engineering-lead'].hidden, true);
   assert.equal(c.default_agent, 'CTO (Recommended)');
+  assert.equal(c.shared_agent_board, true);
+  assert.equal(c.model, 'test/main');
+  assert.equal(c.permission.bash['echo *'], 'deny');
+  assert(c.instructions.includes('custom-policy.md'));
+  const primary = fs.readFileSync(path.join(install, 'agent', 'CTO (Recommended).md'), 'utf8');
+  assert.match(primary, /model: test\/preserved-cto\nvariant: medium/);
+  assert.match(primary, /task:\n    "\*": deny\n    deepseek-implementer: allow\n    glm-investigator: allow\n    luna-utility: allow/);
+  assert.match(primary, /cto_\*: deny/);
+  assert.match(primary, /NOT runtime-enforced native limits/);
+  assert.match(primary, /background: true/);
+  assert.match(fs.readFileSync(path.join(install, 'agent', 'deepseek-implementer.md'), 'utf8'), /model: test\/preserved-worker/);
+  for (const name of ['deepseek-implementer', 'glm-investigator', 'luna-utility']) {
+    const worker = fs.readFileSync(path.join(install, 'agent', name + '.md'), 'utf8');
+    assert.match(worker, /task: deny/); assert.match(worker, /agent_manager\*: deny/);
+    assert(worker.includes(process.env.CTO_PONYTAIL_FILE));
+  }
+  const reviewer = fs.readFileSync(path.join(install, 'agent', 'glm-investigator.md'), 'utf8');
+  assert.match(reviewer, /background_process: deny/);
+  assert.match(reviewer, /the CTO runs executable tests/);
+  assert.match(reviewer, /never retry the same operation through a background process/);
   const backup = applied.stdout.match(/Backup: (.+)/)[1];
   const restored = spawnSync(process.execPath, [script, '--restore', backup], { env, encoding: 'utf8' }); assert.equal(restored.status, 0, restored.stderr);
   assert.equal(fs.readFileSync(path.join(install, 'kilo.jsonc'), 'utf8'), original);
+  // Profile-only upgrades must leave the running scheduler and custom instructions intact.
+  fs.mkdirSync(path.join(install, 'cto'), { recursive: true });
+  fs.writeFileSync(path.join(install, 'cto', 'manager.mjs'), 'running scheduler sentinel');
+  const native = spawnSync(process.execPath, [script, '--profiles-only', '--apply'], { env, encoding: 'utf8' });
+  assert.equal(native.status, 0, native.stderr);
+  assert.equal(fs.readFileSync(path.join(install, 'cto', 'manager.mjs'), 'utf8'), 'running scheduler sentinel');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(install, 'kilo.jsonc'))).mcp, JSON.parse(original).mcp);
+  const installed = fs.readFileSync(path.join(install, 'kilo.jsonc'), 'utf8');
+  const again = spawnSync(process.execPath, [script, '--profiles-only', '--apply'], { env, encoding: 'utf8' });
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(fs.readFileSync(path.join(install, 'kilo.jsonc'), 'utf8'), installed);
+  // A native-only install on a fresh directory must not reference a missing policy.
+  const fresh = path.join(temp, 'fresh-native'); fs.mkdirSync(fresh);
+  fs.writeFileSync(path.join(fresh, 'kilo.jsonc'), original);
+  const freshEnv = { ...env, CTO_INSTALL_DIR: fresh };
+  const freshApply = spawnSync(process.execPath, [script, '--profiles-only', '--apply'], { env: freshEnv, encoding: 'utf8' });
+  assert.equal(freshApply.status, 0, freshApply.stderr);
+  const goalPolicy = path.join(fresh, 'cto', 'goal-policy.md');
+  assert(JSON.parse(fs.readFileSync(path.join(fresh, 'kilo.jsonc'))).instructions.includes(goalPolicy));
+  assert.equal(fs.readFileSync(goalPolicy, 'utf8'), fs.readFileSync(fileURLToPath(new URL('../examples/cto/goal-policy.md', import.meta.url)), 'utf8'));
+  fs.writeFileSync(goalPolicy, 'Existing customized goal policy');
+  const freshAgain = spawnSync(process.execPath, [script, '--profiles-only', '--apply'], { env: freshEnv, encoding: 'utf8' });
+  assert.equal(freshAgain.status, 0, freshAgain.stderr);
+  assert.equal(fs.readFileSync(goalPolicy, 'utf8'), 'Existing customized goal policy');
+  assert(!fs.existsSync(path.join(fresh, 'cto', 'manager.mjs')));
   console.log('CTO checks passed: capacity, dependencies, scope quarantine, dirty snapshots, guarded acceptance, checks, cancellation, read-only results and installer rollback.');
 } finally {
   const jobs = (await m.status()).tasks;

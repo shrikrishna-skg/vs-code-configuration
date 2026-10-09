@@ -2,14 +2,14 @@
 
 The shared [goal-continuity policy and validation](goal-continuity.md) apply to both profiles and any selected Kilo model. Follow-ups preserve the current goal; Ponytail is forwarded to isolated workers.
 
-Two Kilo profiles share the policy in `examples/cto/policy.md`:
+Two Kilo profiles now share the [native multi-agent policy](../examples/cto/native-policy.md). See [native routing, UI and validation](cto-native.md). The earlier `examples/cto/policy.md` applies only to the separate MCP scheduler and coordinated terminal workflow.
 
-- **CTO (Recommended)**: local Claude Opus 5.5 High; direct execution for small tasks; bounded parallel workers for useful independent work.
+- **CTO (Recommended)**: your selected chat model; direct execution for small tasks; visible native workers for useful independent work. The installer preserves existing profile model defaults.
 - **CTO + JEV**: identical execution policy with selective TypeSafe/JEV advice. Advice is never proof of completion.
 
 The menu keeps **CTO (Recommended)** as the discoverable name. Its selected button displays **CTO**; **CTO + JEV** keeps its full name in both places. This is a display-only patch: stored agent names, prompts, permissions and model routing are unchanged.
 
-The worker service reads model routes from the installed specialist profiles. It does not replace working provider credentials or silently fall back to another model. At implementation time the live implementer and investigator used LithosAI DeepSeek V4.1 Flash Ultra and GLM 5.3 Flash Ultra, while the utility used GPT-5.6 Luna Fast.
+Native workers and the separate worker service read model routes from the installed specialist profiles. Installation preserves those routes and provider configuration. On this machine the implementer and investigator use LithosAI DeepSeek V4.1 Flash Ultra and GLM 5.3 Flash Ultra; the utility uses GPT-5.6 Luna Fast.
 
 ## Install and recovery
 
@@ -17,9 +17,11 @@ The worker service reads model routes from the installed specialist profiles. It
 node scripts/test-cto.mjs
 node scripts/install-cto.mjs          # inspect changes
 node scripts/install-cto.mjs --apply  # back up, then install
+# Upgrade just the native profiles without replacing a running MCP scheduler:
+node scripts/install-cto.mjs --profiles-only --apply
 ```
 
-The installer merges the live configuration, installs the two profiles and the `cto` MCP server, hides only the six retired custom profiles, and updates the default and remembered selection. Built-in modes, providers, credentials and unrelated settings are retained. Old definitions remain recoverable.
+The installer merges live configuration, installs both CTO profiles and three native specialist profiles, enables the shared agent board, hides the six retired custom profiles, and updates default/remembered selection. Full installation also installs the separate `cto` MCP server for terminal workflows; `--profiles-only` leaves that service untouched. Built-in modes, installed model routes, providers, credentials and unrelated settings are retained. Old definitions remain recoverable.
 
 Use **Kilo Code: Reload Config and Skills** in an idle Kilo window. Existing sessions can retain their previously selected agent; select the new CTO profile or start a new session. A whole VS Code reload is not required by the installer.
 
@@ -40,7 +42,7 @@ node scripts/install-cto.mjs --restore /absolute/path/to/printed/backup
 
 Restoration refuses to overwrite a file changed since installation. It retains task records and worker worktrees. Cancel active workers before restoring/removing their service.
 
-## Execution architecture
+## Separate MCP scheduler architecture (terminal workflow)
 
 ```text
 You / VS Code
@@ -61,7 +63,7 @@ These are role ceilings within one pool; they do not add up to twenty-one availa
 
 The scheduler starts dependency-ready work when capacity becomes available. It does not promise a fixed dispatch latency or completion time: provider queues, inference, repository size and checks affect elapsed time. Begin with the smallest useful team and measure accepted results before expanding it.
 
-The service provides `cto_submit`, `cto_status`, `cto_cancel`, and `cto_accept`. CTO native `task` delegation is denied so its normal delegation route uses the service. Fourteen simultaneous workers and six simultaneous worker writers are enforced in a shared on-disk registry across MCP processes. Role ceilings share this pool: six implementers, six investigators, four testers, three reviewers and two utility workers.
+The separate service provides `cto_submit`, `cto_status`, `cto_cancel`, and `cto_accept`. The coordinated terminal workflow uses this service; native CTO chat uses `task` instead and denies `cto_*` to avoid invisible delegation. Only the separate service enforces fourteen simultaneous workers and six simultaneous worker writers through its shared on-disk registry. Role ceilings share this pool: six implementers, six investigators, four testers, three reviewers and two utility workers. Native chat uses a scheduling policy with those ceilings, without a runtime admission gate.
 
 `cto_status` accepts an optional `waitMs` from 0 to 20000. With an active task ID, it returns on a state change or the deadline; it releases the registry lock between observations. This keeps the CTO in its working turn without rapid polling. The CTO profiles deny `schedule_wakeup` and require current-turn review and integration instead of handing unfinished workers to a later scheduled turn.
 

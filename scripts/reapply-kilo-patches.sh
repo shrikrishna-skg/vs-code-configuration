@@ -31,6 +31,7 @@ attempt() {
   local_dir=$(ls -d "$extensions"/shrikrishna-skg.kilo-code-local-*/ 2>/dev/null | sort -V | tail -1)
   if [ -n "$local_dir" ]; then
     ensure agent-manager-manual-open.mjs "${local_dir%/}/dist/extension.js" || return 1
+    ensure native-subagent-ready.mjs "${local_dir%/}/dist/extension.js" || return 1
     ensure cto-selected-label.mjs "${local_dir%/}/dist/webview.js" || return 1
     ensure cto-selected-label.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
     ensure clarify-goal.mjs "${local_dir%/}/dist/extension.js" || return 1

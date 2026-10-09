@@ -14,7 +14,7 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 
 **Prompt and context:** [Clarify goal](docs/clarify-goal.md) adds an editable preview using the selected model, supported attachments and recent chat. [Goal continuity](docs/goal-continuity.md) preserves the active objective and shares the canonical Ponytail policy.
 
-**Current Kilo setup:** [CTO (Recommended) and CTO + JEV](docs/cto-setup.md) replace the six older custom picker entries. They share an isolated worker service with a fourteen-worker ceiling and six concurrent writers. See the [implementation checklist and validation results](docs/cto-implementation-todo.md). The older engineering-lead documentation below remains for the previous setup and Copilot configuration.
+**Current Kilo setup:** [CTO (Recommended) and CTO + JEV](docs/cto-setup.md) replace the six older custom picker entries. [Native Kilo delegation](docs/cto-native.md) uses visible child agents and Agent Manager worktrees where isolation is needed. Fourteen workers / six writers is a scheduling policy in native chat; the separate isolated MCP scheduler enforces its own limits for terminal workflows. The older engineering-lead documentation below remains for the previous setup and Copilot configuration.
 
 **Small-edit experiment:** [Cross-test findings](docs/cto-small-changes.md) cover speed, ambiguity and incorrect edits. The proposed workflow is **not activated** because the ambiguous-image test failed.
 
