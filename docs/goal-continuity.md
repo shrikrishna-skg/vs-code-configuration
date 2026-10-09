@@ -43,3 +43,7 @@ Run `node scripts/test-goal-policy-live.mjs` for another opt-in paid-model test.
 ## Limits
 
 Follow-up behavior passed; the initial tab implementation still needed 23 model steps, including verification setup and rework. This is not a matched before/after benchmark and does not establish a percentage saving. Other models and larger tasks need their own evaluation. Existing history is not erased, cache remains enabled, and prompts cannot guarantee zero redundant work. Completion and correctness remain more important than token targets.
+
+## Small-change follow-up
+
+The proposed [small-change workflow](cto-small-changes.md) was cross-tested before rollout. Clear edits passed, but an ambiguous-image case produced an unrequested font change twice. The proposal remains experimental and is not activated; existing model, effort and instructions remain unchanged.

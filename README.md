@@ -16,6 +16,8 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 
 **Current Kilo setup:** [CTO (Recommended) and CTO + JEV](docs/cto-setup.md) replace the six older custom picker entries. They share an isolated worker service with a fourteen-worker ceiling and six concurrent writers. See the [implementation checklist and validation results](docs/cto-implementation-todo.md). The older engineering-lead documentation below remains for the previous setup and Copilot configuration.
 
+**Small-edit experiment:** [Cross-test findings](docs/cto-small-changes.md) cover speed, ambiguity and incorrect edits. The proposed workflow is **not activated** because the ambiguous-image test failed.
+
 **Shared computer tools:** [Computer control setup](docs/computer-control-setup.md) adds one coordinated desktop/browser operator across Kilo, Claude Code and Codex. See the [implementation and test checklist](docs/computer-control-todo.md).
 
 | I want to… | Go to |
