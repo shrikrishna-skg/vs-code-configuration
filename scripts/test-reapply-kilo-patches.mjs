@@ -90,5 +90,17 @@ assert.match(read(notes), /Kilo patch re-apply FAILED: jev-agent-order/)
 for (const marker of ["Xi.forget", "persistLastSelectedAgent"]) assert.ok(read(path.join(dist2, "webview.js")).includes(marker), marker)
 assert.match(read(path.join(dist2, "extension.js")), /persistLastSelectedAgent/)
 
+// The custom build must reapply the renderer recovery hook, with directory arguments.
+const customDist = path.join(tmp, "custom", "shrikrishna-skg.kilo-code-local-7.8.2", "dist")
+fs.mkdirSync(customDist, { recursive: true })
+const customPatches = path.join(tmp, "custom-patches"), customCalls = path.join(tmp, "custom-calls")
+fs.mkdirSync(customPatches)
+for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "clarify-goal", "native-webview-recovery"]) {
+  fs.writeFileSync(path.join(customPatches, name + ".mjs"), `import fs from 'node:fs';fs.appendFileSync(${JSON.stringify(customCalls)}, JSON.stringify({name:${JSON.stringify(name)},args:process.argv.slice(2)})+'\\n');`)
+}
+run("custom", customPatches)
+const customInvocations = read(customCalls).trim().split("\n").map(line => JSON.parse(line))
+assert(customInvocations.some(call => call.name === "native-webview-recovery" && call.args[0] === customDist && call.args[1] === "--check"), "Custom extension reapply must include renderer recovery")
+
 fs.rmSync(tmp, { recursive: true })
 console.log("reapply-kilo-patches checks passed")

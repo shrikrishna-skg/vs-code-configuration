@@ -19,6 +19,9 @@ node scripts/test-validate-long-run-plan.mjs
 node scripts/test-cto.mjs
 node scripts/test-cto-cleanup.mjs
 node scripts/test-native-subagent-ready.mjs
+node scripts/test-native-webview-recovery.mjs
+node examples/patches/native-webview-draft-recovery.mjs --test
+node --test examples/cto/validation/frontend/test.mjs
 node scripts/test-goal-policy.mjs
 node scripts/test-minimal-cto.mjs
 node scripts/test-adaptive-cto.mjs

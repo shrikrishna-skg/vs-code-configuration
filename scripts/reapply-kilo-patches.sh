@@ -37,6 +37,7 @@ attempt() {
     ensure clarify-goal.mjs "${local_dir%/}/dist/extension.js" || return 1
     ensure clarify-goal.mjs "${local_dir%/}/dist/webview.js" || return 1
     ensure clarify-goal.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
+    ensure native-webview-recovery.mjs "${local_dir%/}/dist" || return 1
   fi
   dir=$(ls -d "$extensions"/kilocode.kilo-code-*/ 2>/dev/null | sort -V | tail -1)
   [ -n "$dir" ] || { say "no Kilo extension under $extensions"; return 0; }

@@ -32,7 +32,9 @@ The earlier child-viewer startup fix therefore must not be described as a comple
 fix for this separate symptom. A replay of the actual three-child session retained
 rendered content and native cards across pending/running/completed states, history,
 resize, permission failure, usage expansion and reopening, without a JavaScript
-page error. Live rendering investigation continues separately.
+page error. The subsequent [renderer recovery patch](native-webview-recovery.md) passed real
+main-pane and child-pane crash tests while retaining their backend sessions.
+The spontaneous crash trigger remains unproven.
 
 Raw session histories, authentication, screenshots of private work, and provider
 logs are excluded from Git. Reported tokens are cumulative request accounting;
