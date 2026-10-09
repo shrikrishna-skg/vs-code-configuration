@@ -20,6 +20,8 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 
 **Minimal CTO pilot:** [Setup and results](docs/cto-minimal.md) describe an opt-in, single-agent VS Code terminal task that omits the extra workflow layers. The existing picker and default remain unchanged; ambiguity failures prevent promotion.
 
+**Adaptive CTO:** [Three VS Code task routes](docs/cto-adaptive.md) add coordinated CTO work, repeatable DeepSeek edits and Luna mechanical work. Routine changes use scoped snapshots, agreed verification and guarded publication; the premium CTO is consulted only when needed. These terminal tasks are separate from the native chat picker.
+
 **Shared computer tools:** [Computer control setup](docs/computer-control-setup.md) adds one coordinated desktop/browser operator across Kilo, Claude Code and Codex. See the [implementation and test checklist](docs/computer-control-todo.md).
 
 | I want to… | Go to |

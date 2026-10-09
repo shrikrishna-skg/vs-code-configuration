@@ -90,7 +90,7 @@ export function canStart(job, tasks) {
 export function reconcile(db) {
   for (const j of db.tasks) if (active(j) && !alive(j.pid) && Date.now() - j.startedAt > 15000) {
     // A surviving CLI process must continue to occupy its slot.
-    if (alive(j.childPid)) continue;
+    if (alive(j.childPid) || alive(j.executorPid)) continue;
     j.state = 'failed'; j.error = 'Runner interrupted; worktree retained for inspection.'; j.finishedAt = Date.now();
   }
 }
@@ -132,7 +132,7 @@ export async function cancel(id) {
     const j = db.tasks.find(t => t.id === id); if (!j) throw Error('Unknown task.');
     if (active(j)) {
       j.state = 'cancelling';
-      try { process.kill(-j.pid, 'SIGTERM'); } catch {}
+      try { process.kill(j.kind === 'interactive' ? j.pid : -j.pid, 'SIGTERM'); } catch {}
       // Do not release ownership until worker exit is observed.
     } else if (['queued', 'ready', 'failed'].includes(j.state)) { j.state = 'cancelled'; j.finishedAt = Date.now(); }
     else throw Error('Task already accepted or cancelled.');
@@ -151,13 +151,15 @@ export function snapshot(repo, dir) {
   return base;
 }
 export function fingerprint(repo, scopes) {
-  const files = git(repo, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']).split('\0').filter(Boolean).filter(f => inScope(f, scopes)).sort();
+  const files = [...new Set(git(repo, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']).split('\0').filter(Boolean))].filter(f => scopes === null || inScope(f, scopes)).sort();
   const h = crypto.createHash('sha256');
   for (const f of files) {
-    h.update(f + '\0');
     const full = path.join(repo, f);
-    if (!fs.existsSync(full)) { h.update('deleted'); continue; }
-    const st = fs.lstatSync(full); h.update(String(st.mode));
+    // Compare the actual source tree, including local deletions and broken links,
+    // using Git's executable bit rather than checkout-specific file permissions.
+    let st;
+    try { st = fs.lstatSync(full); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+    h.update(f + '\0'); h.update(String(st.mode & 0o111));
     h.update(st.isSymbolicLink() ? fs.readlinkSync(full) : fs.readFileSync(full));
   }
   return h.digest('hex');
@@ -204,6 +206,10 @@ export function workerConfig(j, live) {
   const permission = { ...Object.fromEntries(Object.keys(live.permission || {}).map(k => [k, 'deny'])), '*': 'deny', read: 'allow', glob: 'allow', grep: 'allow', list: 'allow', edit: j.writer ? edits : 'deny', bash: 'deny', task: 'deny', external_directory: 'deny' };
   return { model, config: {
     share: 'disabled', instructions: [], subagent_depth: 0,
+    // Workers have an isolated config home; custom routes must remain available.
+    ...(live.provider ? { provider: live.provider } : {}),
+    ...(live.disabled_providers ? { disabled_providers: live.disabled_providers } : {}),
+    ...(live.enabled_providers ? { enabled_providers: live.enabled_providers } : {}),
     mcp: Object.fromEntries(Object.keys(live.mcp || {}).map(k => [k, { enabled: false }])),
     permission,
     agent: { 'cto-worker': { mode: 'primary', model, steps: j.writer ? 75 : 25, permission,

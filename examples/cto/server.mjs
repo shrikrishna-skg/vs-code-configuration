@@ -20,7 +20,7 @@ export async function call(name, args = {}) {
   if (name === 'accept') return accept(args.id, args.evidence);
   throw Error('Unknown CTO tool.');
 }
-export function serve() {
+export function serve(handlers = { definitions, call, pump }) {
   const lines = createInterface({ input: process.stdin });
   const reply = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n');
   lines.on('line', async line => {
@@ -30,12 +30,12 @@ export function serve() {
     if (request.id === undefined) return;
     if (request.method === 'initialize') return reply(request.id, { protocolVersion: request.params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'cto-workers', version: '1.0.0' } });
     if (request.method === 'ping') return reply(request.id, {});
-    if (request.method === 'tools/list') return reply(request.id, { tools: definitions });
+    if (request.method === 'tools/list') return reply(request.id, { tools: handlers.definitions });
     if (request.method !== 'tools/call') return process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32601, message: 'Unknown method' } }) + '\n');
-    try { reply(request.id, { content: [{ type: 'text', text: JSON.stringify(await call(request.params.name, request.params.arguments)) }] }); }
+    try { reply(request.id, { content: [{ type: 'text', text: JSON.stringify(await handlers.call(request.params.name, request.params.arguments)) }] }); }
     catch (e) { reply(request.id, { content: [{ type: 'text', text: e.message }], isError: true }); }
   });
-  pump().catch(() => {});
+  handlers.pump().catch(() => {});
   // MCP restarts intentionally do not cancel detached, durably tracked jobs.
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) serve();

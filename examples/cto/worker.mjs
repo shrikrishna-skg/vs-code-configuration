@@ -62,7 +62,7 @@ export async function main(id) {
     await update(id, { base, worktree, scopeFingerprint, state: 'running', model: spec.model });
     const prompt = `Task: ${job.title}\n${job.task}\n\nAcceptance criteria:\n${job.acceptance}\n\nExclusive writable paths:\n${job.scopes.join('\n') || '(none; read only)'}\n\nSupervisor will run these checks:\n${JSON.stringify(job.checks)}\n\nThis is an isolated Git worktree. Do not change branches, commit, or edit .git. Do not claim success if the requested implementation is incomplete. Report precise files and limitations.`;
     const result = await run(discoverBinary(), ['run', '--pure', '--format', 'json', '--agent', 'cto-worker', '--model', spec.model, '--variant', 'high', '--dir', worktree], {
-      cwd: worktree, env: { ...process.env, KILO_CONFIG_CONTENT: JSON.stringify(spec.config) }, input: prompt, timeout: 1800000, signal: controller.signal,
+      cwd: worktree, env: { ...process.env, XDG_CONFIG_HOME: path.join(dir, 'config'), KILO_CONFIG: '', KILO_CONFIG_DIR: '', KILO_CONFIG_CONTENT: JSON.stringify(spec.config) }, input: prompt, timeout: 1800000, signal: controller.signal,
       outputFile: path.join(dir, 'events.jsonl'), errorFile: path.join(dir, 'stderr.log'),
       onStart: pid => { update(id, { childPid: pid }).catch(() => {}); },
     });
