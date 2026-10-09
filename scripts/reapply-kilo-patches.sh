@@ -36,6 +36,8 @@ attempt() {
     ensure cto-selected-label.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
     ensure subagent-default-open.mjs "${local_dir%/}/dist/webview.js" || return 1
     ensure subagent-default-open.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
+    ensure todos-both-locations.mjs "${local_dir%/}/dist/webview.js" || return 1
+    ensure todos-both-locations.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
     ensure clarify-goal.mjs "${local_dir%/}/dist/extension.js" || return 1
     ensure clarify-goal.mjs "${local_dir%/}/dist/webview.js" || return 1
     ensure clarify-goal.mjs "${local_dir%/}/dist/agent-manager.js" || return 1

@@ -29,6 +29,22 @@ is saved next to the bundle. The existing live `reapply-kilo-patches.sh` hook
 also applies this patch to custom local Kilo builds. Unknown bundle layouts
 fail without modification and need a reviewed patch update.
 
+## To-do list in both locations
+
+The native header checklist starts expanded, while `todowrite` entries remain
+in the conversation. Both the editor chat and Agent Manager use live to-do
+state when available. After reopening a chat before a live update arrives,
+they recover the latest completed `todowrite` list from that session's loaded
+messages using Kilo's existing history helper. Explicitly cleared live lists
+stay empty, and reverted updates are excluded. No checklist is invented for
+a conversation without one. Older conversation entries remain historical snapshots.
+
+The header arrow still collapses the list. This changes the header's initial
+display and shared to-do lookup, without submitting prompts or modifying tasks.
+`examples/patches/todos-both-locations.mjs` supports `--check` and surgical
+`--restore` on both JavaScript bundles. The patch reapply hook includes it.
+Reopen the Kilo view to load the change.
+
 ## Expanded subagent activity
 
 The local Kilo 7.8.2 task cards open by default in both the editor chat and
