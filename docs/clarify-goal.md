@@ -4,6 +4,8 @@ The existing Kilo wand is labeled **Clarify goal**. It sends the draft, supporte
 
 The clarification model must preserve scope, inspection-only requests, constraints and file references. It should leave a clear request nearly unchanged and ask one question when a materially ambiguous request cannot be resolved. A short approval needs a preceding assistant proposal; it must not create authorization from unrelated history. These are model instructions, not a guarantee of perfect interpretation, so the preview remains editable.
 
+While the request runs, the button displays **Clarifying goal…** beside the existing loading animation. It remains disabled to prevent duplicate requests, but its text uses the theme's input foreground rather than the generic disabled icon color. Light, dark, high-contrast and forced-color themes are supported; reduced-motion settings keep the status visible without animation. The normal label returns when the request finishes or fails.
+
 ## Implementation
 
 - `examples/patches/clarify-goal.cjs` uses the existing Kilo SDK and selected provider/model. One normal model response, no worker fan-out, no repository exploration. A temporary session and hidden `goal-clarifier` agent both deny every tool. Cleanup aborts and deletes only the temporary session.
@@ -33,5 +35,7 @@ bash scripts/verify.sh
 ```
 
 Checks cover denied tools, model selection, context limits, unsupported media, failed-provider cleanup, patch idempotence, installer preservation/rollback, editable preview, cancel, stale-draft protection, attachment retention, Escape, text injection and a narrow viewport.
+
+Loading-state checks use the installed Kilo stylesheet and cover reactive button redraws, four light/dark/high-contrast color pairs, 320px and 900px viewports, at least 4.5:1 text contrast in those pairs, animation, reduced motion, forced colors, keyboard focus and return to the idle label. These checks do not guarantee contrast for every custom theme palette.
 
 Real DeepSeek V4.1 Flash Ultra tests on 2026-10-09 preserved an inspection-only request, retained an explicit 12px requirement, and asked for clarification on an ambiguous “Sure.” Each corrected text case returned in about 3.1–3.3 seconds with zero tool calls. An image test correctly identified the screenshot's **Use this prompt** label, which was absent from the written request. This is a small functionality sample, not a general latency or accuracy guarantee. The installed button was also observed in a new Kilo window. Evidence is stored locally under `~/.local/state/kilo/validation/clarify-goal/`.

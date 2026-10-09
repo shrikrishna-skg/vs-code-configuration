@@ -43,13 +43,20 @@
     .kilo-goal-preview button:focus-visible{outline:2px solid var(--vscode-focusBorder);outline-offset:2px}
     .kilo-goal-preview .kilo-goal-use{background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
     .kilo-goal-preview button:disabled{opacity:.5;cursor:default}
-    button[aria-label="Clarify goal"]{width:auto!important;padding-inline:7px!important;gap:5px!important;white-space:nowrap}
-    .kilo-clarify-label{font-size:12px}
+    button[aria-label="Clarify goal"]{width:auto!important;max-width:100%;height:auto!important;min-height:24px;aspect-ratio:auto!important;padding:3px 7px!important;gap:5px!important;white-space:nowrap;color:var(--vscode-input-foreground,var(--text-strong,#cccccc))!important;background:var(--vscode-input-background,var(--input-base,#202020));}
+    button[aria-label="Clarify goal"]:is([aria-busy="true"],[data-loading="true"]){opacity:1!important;cursor:progress!important;transition:none!important;background:var(--vscode-input-background,var(--input-base,#202020))!important;border:1px solid var(--vscode-contrastBorder,transparent)}
+    button[aria-label="Clarify goal"]:focus-visible{outline:2px solid var(--vscode-focusBorder,Highlight)!important;outline-offset:2px}
+    button[aria-label="Clarify goal"] .icon-button-spinner{flex-shrink:0;color:inherit!important}
+    .kilo-clarify-label{font-size:12px;color:inherit;line-height:1.4}
+    @media(prefers-reduced-motion:reduce){button[aria-label="Clarify goal"] .icon-button-spinner *{animation:none!important;opacity:1!important}}
+    @media(forced-colors:active){button[aria-label="Clarify goal"]{color:ButtonText!important;background:ButtonFace!important;border:1px solid ButtonText!important}}
   `;
   document.head.append(style);
   const label=()=>document.querySelectorAll('button[aria-label="Clarify goal"]').forEach(b=>{
-    if(b.querySelector('.kilo-clarify-label'))return;
-    const span=document.createElement('span');span.className='kilo-clarify-label';span.textContent='Clarify goal';b.append(span);
+    let span=b.querySelector('.kilo-clarify-label');
+    if(!span){span=document.createElement('span');span.className='kilo-clarify-label';span.setAttribute('role','status');span.setAttribute('aria-live','polite');span.setAttribute('aria-atomic','true');b.append(span);}
+    const text=b.getAttribute('aria-busy')==='true'||b.getAttribute('data-loading')==='true'?'Clarifying goal…':'Clarify goal';
+    if(span.textContent!==text)span.textContent=text;
   });
-  new MutationObserver(label).observe(document.documentElement,{childList:true,subtree:true});label();
+  new MutationObserver(label).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['aria-busy','data-loading']});label();
 })();
