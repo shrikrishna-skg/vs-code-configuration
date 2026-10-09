@@ -1,0 +1,40 @@
+{
+  "objective": "Ship the long-run plan validator pilot",
+  "requirements": [
+    { "id": "R1", "text": "CLI validates a plan file and reports every error" },
+    { "id": "R2", "text": "Focused test covers the plan invariants" }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "state": "active",
+      "writer": true,
+      "owner": "deepseek-implementer",
+      "exclusiveScopes": ["scripts/validate-long-run-plan.mjs"],
+      "requirements": ["R1"]
+    },
+    {
+      "id": "T2",
+      "state": "waiting",
+      "writer": true,
+      "owner": "lead",
+      "exclusiveScopes": ["scripts/test-validate-long-run-plan.mjs"],
+      "requirements": ["R2"]
+    },
+    {
+      "id": "T3",
+      "state": "queued",
+      "writer": false,
+      "owner": "glm-investigator",
+      "requirements": ["R1", "R2"]
+    },
+    {
+      "id": "T4",
+      "state": "completed",
+      "writer": true,
+      "owner": "lead",
+      "exclusiveScopes": ["scripts/validate-long-run-plan.mjs"],
+      "requirements": ["R1"]
+    }
+  ]
+}

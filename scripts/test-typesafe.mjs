@@ -14,7 +14,7 @@ assert.deepEqual(orderAgents(['Astra + Jev Engineering Lead','Opus + Jev Enginee
 // Only the Jev leads may allow the globally denied TypeSafe tools.
 const allowed=fs.readdirSync('examples/agent').filter(f=>/^\s*TypeSafe_[\w*]*:\s*allow\b/m.test(fs.readFileSync(path.join('examples/agent',f),'utf8'))).sort();
 assert.deepEqual(allowed,['Astra + Jev Engineering Lead.md','Fable + Jev Engineering Lead.md','Opus + Jev Engineering Lead.md']);
-const kilo=JSON.parse(fs.readFileSync('examples/kilo.jsonc','utf8'));
+const kilo=JSON.parse(fs.readFileSync('examples/kilo.jsonc','utf8').replace(/^\s*\/\/.*$/gm,''));
 assert.equal(kilo.permission['TypeSafe_*'],'deny');assert.equal(kilo.mcp.TypeSafe.enabled,true);
 assert.throws(()=>patch('unknown bundle'));
 const anchor='if(ne.type!=="agentsLoaded")return;et(ne.agents),He(ne.allAgents??ne.agents)';

@@ -11,14 +11,23 @@ node --check examples/bridges/typesafe-mcp.mjs
 node scripts/test-typesafe.mjs
 node --check examples/bridges/peekaboo-runner.mjs
 node scripts/test-peekaboo-runner.mjs
+node --test scripts/test-computer-control.mjs
+node scripts/test-computer-install.mjs
 node scripts/test-reapply-kilo-patches.mjs
+node --check scripts/validate-long-run-plan.mjs
+node scripts/test-validate-long-run-plan.mjs
+node scripts/test-cto.mjs
+node scripts/test-goal-policy.mjs
+node scripts/test-clarify-goal.mjs
+node scripts/test-cto-label.mjs
+node scripts/test-cto-concurrency.mjs
 node --check examples/patches/codex-thinking-status.mjs
 node examples/patches/check-codex-thinking-status.mjs
 node examples/patches/check-per-agent-model.mjs
 node examples/mockups/check-thinking-card.mjs
 node --check claude-code/scripts/validate.mjs
 node claude-code/scripts/validate.mjs
-python3 -m json.tool examples/kilo.jsonc >/dev/null
+sed '/^[[:space:]]*\/\//d' examples/kilo.jsonc | python3 -m json.tool >/dev/null
 # Sanitized examples only; the inline --claude file stands in for ~/.claude.json.
 node examples/patches/check-peekaboo-mcp.mjs examples/kilo.jsonc --vscode copilot-chat/config/mcp.json \
   --claude-settings claude-code/config/settings.json --codex copilot-chat/config/config.peekaboo.toml \

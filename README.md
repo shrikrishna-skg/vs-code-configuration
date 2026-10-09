@@ -2,7 +2,7 @@
 
 ![Kilo Code multi-agent configuration](assets/hero.svg)
 
-A reproducible, security-conscious blueprint for the VS Code workflows used on this machine. It includes the Kilo Code Astra/Fable/Opus setup, a native Claude Code extension setup where Fable supervises bounded Opus and Sonnet agents, and a VS Code Chat (Copilot) setup that mirrors the Kilo agents.
+A reproducible, security-conscious blueprint for the VS Code workflows used on this machine. The current Kilo setup includes CTO agents, isolated workers, shared computer control and prompt clarification. Earlier Astra/Fable/Opus configurations, native Claude Code and VS Code Chat (Copilot) examples remain available.
 
 > This repository contains sanitized examples only. API keys, OAuth tokens, account identifiers, logs, chat history, and machine-specific credentials are deliberately excluded.
 
@@ -10,19 +10,27 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 
 ## Start here
 
+**Latest snapshot: [2026-10-09](docs/updates/2026-10-09.md)** · Git tag `config-2026-10-09` · [Dated change index](docs/configuration-history.md).
+
+**Prompt and context:** [Clarify goal](docs/clarify-goal.md) adds an editable preview using the selected model, supported attachments and recent chat. [Goal continuity](docs/goal-continuity.md) preserves the active objective and shares the canonical Ponytail policy.
+
+**Current Kilo setup:** [CTO (Recommended) and CTO + JEV](docs/cto-setup.md) replace the six older custom picker entries. They share an isolated worker service with a fourteen-worker ceiling and six concurrent writers. See the [implementation checklist and validation results](docs/cto-implementation-todo.md). The older engineering-lead documentation below remains for the previous setup and Copilot configuration.
+
+**Shared computer tools:** [Computer control setup](docs/computer-control-setup.md) adds one coordinated desktop/browser operator across Kilo, Claude Code and Codex. See the [implementation and test checklist](docs/computer-control-todo.md).
+
 | I want to… | Go to |
 |---|---|
-| Use the recommended setup | [Recommended setup: Opus + Jev Engineering Lead](#recommended-setup-opus--jev-engineering-lead) |
+| Use the recommended Kilo setup | [CTO setup](docs/cto-setup.md) |
 | Install everything on a new Mac | [Quick start](#quick-start), then [Installation and recovery](docs/installation.md) |
 | Set up VS Code Copilot Chat | [`copilot-chat/README.md`](copilot-chat/README.md) |
 | Restore the setup from a past date | [Configuration history](docs/configuration-history.md) |
 | Understand how requests are routed | [Architecture](docs/architecture.md) and [Task routing](docs/task-routing.md) |
-| Drive the screen or a browser | [Agent vision](agent-vision/README.md) and [`peekaboo-runner.mjs`](examples/bridges/peekaboo-runner.mjs) |
+| Drive the screen or a browser | [Shared computer control](docs/computer-control-setup.md); [older agent-vision setup](agent-vision/README.md) |
 | Set up the Claude Code extension | [`claude-code/README.md`](claude-code/README.md) |
 | Run Hermes Agent in VS Code (ACP) | [`hermes/README.md`](hermes/README.md) |
 | Check the repository | `bash scripts/verify.sh` |
 
-## Recommended setup: Opus + Jev Engineering Lead
+## Previous setup: Opus + Jev Engineering Lead
 
 **What it is.** The engineering lead used day to day, in both VS Code Copilot Chat and Kilo Code. It runs on Claude Opus 5.5 High through the authenticated local Claude CLI (Claude Local CLI provider, `127.0.0.1:32123`) and consults Jev (TypeSafe) only as an advisory evidence check.
 

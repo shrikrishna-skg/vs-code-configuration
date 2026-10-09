@@ -14,6 +14,21 @@ The sanitized settings are in `examples/vscode/settings.jsonc`. Merge those keys
 
 The VS Code Chat (Copilot) keys and the accessibility sound-off keys are in `copilot-chat/config/settings.jsonc`; `copilot-chat/scripts/install.sh` merges them. See [`copilot-chat/README.md`](../copilot-chat/README.md).
 
+## Agent Manager opening automatically
+
+The local Kilo 7.8.1 build opens Agent Manager on Integrated Browser `starting`
+and `loading` events and can restore the panel after a VS Code restart. The
+`examples/patches/agent-manager-manual-open.mjs` patch disables those two paths
+while preserving browser state delivery, explicit Agent Manager commands, and
+worktree actions. It does not cancel sessions or disable browser automation.
+
+Apply it to the installed local extension's `dist/extension.js`, then reload VS
+Code when current tasks can be interrupted. `--check` verifies the patch;
+`--restore` reverses only these edits. A `.pre-agent-manager-manual-open` backup
+is saved next to the bundle. The existing live `reapply-kilo-patches.sh` hook
+also applies this patch to custom local Kilo builds. Unknown bundle layouts
+fail without modification and need a reviewed patch update.
+
 ## Auto-approval boundary
 
 `kilo-code.new.autoApprove.enabled` is intentionally preserved because it is part of the observed setup. It increases autonomy and also increases risk. Pair it with:

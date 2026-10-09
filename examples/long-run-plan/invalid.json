@@ -1,0 +1,20 @@
+{
+  "objective": "  ",
+  "requirements": [
+    { "id": "R1", "text": "First requirement" },
+    { "id": "R1", "text": "Duplicate requirement ID" }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "state": "active",
+      "writer": true,
+      "owner": "deepseek-implementer",
+      "exclusiveScopes": ["src/app.mjs"],
+      "requirements": ["R1"]
+    },
+    { "id": "T1", "state": "running", "writer": false, "requirements": ["R9"] },
+    { "id": "T3", "state": "waiting", "writer": true, "owner": "", "exclusiveScopes": ["src/app.mjs"] },
+    { "id": "T4", "state": "queued", "writer": true, "owner": "glm-investigator", "exclusiveScopes": [] }
+  ]
+}

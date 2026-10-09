@@ -4,7 +4,8 @@ Each dated configuration has a Git tag named `config-YYYY-MM-DD`. Check out a ta
 
 | Date | Tag | Commit | Headline |
 |---|---|---|---|
-| 2026-09-26 | `config-2026-09-26` | latest on main | Opus + Jev Engineering Lead (recommended), Peekaboo runner |
+| 2026-10-09 | `config-2026-10-09` | resolve the dated tag | [CTO, shared computer control, goal continuity and Clarify goal](updates/2026-10-09.md) |
+| 2026-09-26 | `config-2026-09-26` | `fae6ae5` | Opus + Jev Engineering Lead (recommended), Peekaboo runner |
 | 2026-09-23 | `config-2026-09-23` | `70a37a0` | VS Code Copilot Chat mirror, speed proxy, Astra + Jev |
 | 2026-09-22 | `config-2026-09-22` | `1063d67` | Fast Fable bridge, Kilo patches, Fable + Jev |
 | 2026-09-21 | `config-2026-09-21` | `2e12452` | Codex router, agent-vision docs |
@@ -29,9 +30,20 @@ Return to the current setup with `git checkout main`, then reinstall the same wa
 
 **Version-sensitive patches:** the Kilo bundle patches under `examples/patches/` match specific Kilo builds (7.7.x on 2026-09-22, 7.8.1 on 2026-09-26). An older tag's patches may not apply to a newer Kilo; leave Kilo unpatched if the check fails. Never restore auth files from any tag; sign in again through each provider.
 
+## 2026-10-09
+
+Tag `config-2026-10-09`. See the [complete dated change index](updates/2026-10-09.md) for source files, installation guides, verification and remaining limits.
+
+- **CTO and CTO + JEV:** isolated workers, fourteen-worker/six-writer limits, guarded integration and compact selected label.
+- **Shared computer control:** coordinated native desktop and browser tools, with automated and live model checks.
+- **Goal continuity and Ponytail:** bounded follow-ups, retained acceptance criteria and shared coding policy.
+- **Clarify goal:** the existing wand uses the selected model, supported attachments and recent chat, then opens an editable preview.
+- **Supporting work:** manual Agent Manager opening, test repairs, the long-run plan validator and earlier Claude Desktop lead integration captured in this snapshot.
+- **Repository protection:** disabled and removed a pre-existing workflow that sent credential matches and history to an external endpoint; no raw credentials, session history or unrelated screenshots are included.
+
 ## 2026-09-26
 
-Tag `config-2026-09-26` → latest on main.
+Tag `config-2026-09-26` → `fae6ae5`.
 
 - **Opus + Jev Engineering Lead** added for Kilo and Copilot Chat: Claude Opus 5.5 High through the local Claude CLI, the same workers and Jev rules as Fable + Jev, and background-first screen control. Picker order: Fable, Fable + Jev, Opus + Jev, Astra + Jev. This is the recommended lead.
 - **`peekaboo-runner.mjs`** runs a whole JSON UI plan through the Peekaboo CLI with a check after each step and a confirm gate for destructive buttons. It always passes `--no-remote`.

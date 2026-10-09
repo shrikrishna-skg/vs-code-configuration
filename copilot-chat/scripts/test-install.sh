@@ -14,11 +14,11 @@ printf '{\n    "editor.fontSize": 13,\n    "chat.useClaudeMdFile": true\n}\n' > 
 printf '[{"name": "OpenRouter", "vendor": "openrouter", "apiKey": "${input:x}"}, {"name": "OpenRouter (Speed)", "vendor": "customendpoint", "models": []}]' > "$u/chatLanguageModels.json"
 printf '{"servers": {"other": {"command": "x"}}}' > "$u/mcp.json"
 
-expect '21 file(s) would change' --dry-run
+expect '22 file(s) would change' --dry-run
 [ "$(ls "$u")" = "$(printf 'chatLanguageModels.json\nmcp.json\nsettings.json')" ]
-expect '21 file(s) changed'
+expect '22 file(s) changed'
 [ "$(ls "$u"/*.bak-* | wc -l)" -eq 3 ]
-[ "$(ls "$u/prompts" | wc -l)" -eq 18 ]
+[ "$(ls "$u/prompts" | wc -l)" -eq 19 ]
 python3 - "$u" <<'PY'
 import json, sys
 u = sys.argv[1]
