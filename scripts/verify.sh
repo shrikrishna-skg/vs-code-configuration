@@ -34,6 +34,7 @@ node scripts/test-composer-orange-actions.mjs
 node scripts/test-permission-modes.mjs
 node examples/patches/skim-mode.test.mjs
 node examples/patches/chat-font.test.mjs
+node examples/patches/composer-chevrons.test.mjs
 node examples/patches/predict-next.test.mjs
 node examples/patches/predict-next.test.cjs
 # Its test needs the installed dist/webview.js, so only the syntax is checked here.

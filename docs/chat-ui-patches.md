@@ -1,6 +1,6 @@
-# Chat reading and composer patches (2026-10-13)
+# Chat reading and composer patches (2026-10-13, updated 2026-10-14)
 
-Four patches change how Kilo chat replies read and how the composer behaves, plus one small selector tweak. They target the local Kilo build `kilo-code-local-7.8.2` and are version-sensitive: each one matches exact text in the installed bundle and makes no change when that text is not found.
+Five patches change how Kilo chat replies read and how the composer behaves, plus one small selector tweak. They target the local Kilo build `kilo-code-local-7.8.2` and are version-sensitive: each one matches exact text in the installed bundle and makes no change when that text is not found.
 
 | Patch | What it does | Bundles it touches |
 |---|---|---|
@@ -8,6 +8,7 @@ Four patches change how Kilo chat replies read and how the composer behaves, plu
 | Chat font | Sets Hanken Grotesk for chat and Agent Manager; code and terminal text stay monospace | `dist/webview.css`, `dist/agent-manager.css` |
 | Predicted next message | Suggests the user's likely next message as the composer placeholder | `dist/extension.js`, `dist/webview.js` |
 | Provider save fix | Lets a custom provider form save through the native webview bridge | `dist/webview.js` |
+| Composer chevrons | Puts Continue 6px from Prompts and gives every composer dropdown one centred chevron | `dist/webview.css`, `dist/agent-manager.css`, `dist/webview.js` |
 | Permission selector icon | Shows the shield only beside Full access; the trigger shows text only | `examples/patches/permission-mode-ui.js` (part of the existing permission-modes patch) |
 
 ## Skim mode
@@ -45,6 +46,17 @@ Known limits, as marked in the code:
 - **Problem:** provider forms hold Solid store proxies, and the native webview bridge only accepts plain JSON.
 - **Fix:** the request helper sends a plain JSON copy of the message and reports a failure to the caller. The first apply keeps a `.pre-provider-save-message` backup.
 
+## Composer chevrons
+
+Added 2026-10-14 (Variant A of `examples/mockups/chatbox-controls/index.html`).
+
+- **Files:** `examples/patches/composer-chevrons.mjs`, `composer-chevrons.test.mjs`.
+- **Spacing:** Continue sits 6px to the left of Prompts. The Continue launcher is placed with CSS anchor positioning against the Prompts button (`anchor-name: --kilo-prompts`, scoped to each composer). Without anchor support it keeps the old 96px offset.
+- **Chevron:** the agent, model and reasoning pickers keep their own 10px svg, redrawn by CSS (`d: path(...)`) as a 12px stroked chevron. Continue and the permission picker get the same shape as a `::after` mask, and the permission picker's text arrow is hidden. Every chevron is centred on its label, 4px from it, dimmed until hover, and turned over while its menu is open.
+- **Bundle change:** in `dist/webview.js` the Continue button text loses its `▾` character (one exact match). The marked CSS block (`kilo-composer-chevrons:v1`) goes into both CSS files.
+- **Modes:** `--apply` (default), `--check` and `--restore`. The first apply keeps a `.pre-composer-chevrons` backup of each file.
+- **Scope:** the Continue and Prompts buttons exist only in the sidebar chat, so Agent Manager gets the chevrons but not the spacing change.
+
 ## Installing and checking
 
 `scripts/reapply-kilo-patches.sh` applies every patch to the local build in a fixed order and re-checks each one with `--check`. Run **Developer: Reload Window** afterwards, when running work can safely be interrupted.
@@ -52,12 +64,13 @@ Known limits, as marked in the code:
 ```bash
 node examples/patches/skim-mode.test.mjs
 node examples/patches/chat-font.test.mjs
+node examples/patches/composer-chevrons.test.mjs
 node examples/patches/predict-next.test.mjs
 node examples/patches/predict-next.test.cjs
 node scripts/test-reapply-kilo-patches.mjs
 ```
 
-- These five run inside `bash scripts/verify.sh` and need no installed extension.
+- These six run inside `bash scripts/verify.sh` and need no installed extension.
 - `node examples/patches/provider-save-message.test.mjs <path to dist/webview.js>` needs the installed bundle, so `verify.sh` only checks that patch's syntax.
 - `node examples/patches/predict-next.live.mjs` calls the real model with canned chat endings. It needs the local build's `kilo` binary (override with `KILO_BIN`) and spends provider usage.
 
@@ -67,3 +80,4 @@ node scripts/test-reapply-kilo-patches.mjs
 - `examples/instructions/mockup-preview.md` now requires the copyable `file://` link in the final reply.
 - `examples/mockups/chat-fonts/index.html` compares chat fonts. It loads Atkinson Hyperlegible and Inter from Google Fonts, so it needs a network connection.
 - `examples/mockups/fast-reading/index.html` compares fast-reading treatments of a chat reply.
+- `examples/mockups/chatbox-controls/index.html` compares three chat box layouts; Variant A is the one implemented by `composer-chevrons.mjs`.

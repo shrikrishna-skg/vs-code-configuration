@@ -58,6 +58,10 @@ attempt() {
     ensure provider-save-message.mjs "${local_dir%/}/dist/webview.js" || return 1
     ensure chat-font.mjs "${local_dir%/}/dist/webview.css" || return 1
     ensure chat-font.mjs "${local_dir%/}/dist/agent-manager.css" || return 1
+    ensure composer-chevrons.mjs "${local_dir%/}/dist/webview.css" || return 1
+    ensure composer-chevrons.mjs "${local_dir%/}/dist/agent-manager.css" || return 1
+    # Needs the Continue quick-action button, which not every build has; a miss is logged, not fatal.
+    ensure composer-chevrons.mjs "${local_dir%/}/dist/webview.js"
   fi
   dir=$(ls -d "$extensions"/kilocode.kilo-code-*/ 2>/dev/null | sort -V | tail -1)
   [ -n "$dir" ] || { say "no Kilo extension under $extensions"; return 0; }

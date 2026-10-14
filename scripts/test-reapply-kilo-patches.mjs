@@ -95,7 +95,7 @@ const customDist = path.join(tmp, "custom", "shrikrishna-skg.kilo-code-local-7.8
 fs.mkdirSync(customDist, { recursive: true })
 const customPatches = path.join(tmp, "custom-patches"), customCalls = path.join(tmp, "custom-calls")
 fs.mkdirSync(customPatches)
-for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "subagent-default-open", "todos-both-locations", "composer-orange-actions", "permission-modes", "clarify-goal", "native-webview-recovery", "predict-next", "skim-mode", "provider-save-message", "chat-font"]) {
+for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "subagent-default-open", "todos-both-locations", "composer-orange-actions", "permission-modes", "clarify-goal", "native-webview-recovery", "predict-next", "skim-mode", "provider-save-message", "chat-font", "composer-chevrons"]) {
   fs.writeFileSync(path.join(customPatches, name + ".mjs"), `import fs from 'node:fs';fs.appendFileSync(${JSON.stringify(customCalls)}, JSON.stringify({name:${JSON.stringify(name)},args:process.argv.slice(2)})+'\\n');`)
 }
 run("custom", customPatches)
@@ -108,7 +108,7 @@ for (const file of ["webview.js", "agent-manager.js", "webview.css", "agent-mana
 
 for (const file of ["extension.js", "webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]) assert(customInvocations.some(call => call.name === "permission-modes" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must retain permission modes")
 
-for (const [name, files] of [["predict-next", ["extension.js", "webview.js"]], ["skim-mode", ["webview.js", "agent-manager.js"]], ["provider-save-message", ["webview.js"]], ["chat-font", ["webview.css", "agent-manager.css"]]]) {
+for (const [name, files] of [["predict-next", ["extension.js", "webview.js"]], ["skim-mode", ["webview.js", "agent-manager.js"]], ["provider-save-message", ["webview.js"]], ["chat-font", ["webview.css", "agent-manager.css"]], ["composer-chevrons", ["webview.css", "agent-manager.css", "webview.js"]]]) {
   for (const file of files) assert(customInvocations.some(call => call.name === name && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), `Custom extension reapply must include ${name} for ${file}`)
 }
 
