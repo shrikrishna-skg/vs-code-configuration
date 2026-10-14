@@ -62,7 +62,7 @@ python3 -m json.tool .vscode/extensions.json >/dev/null
 for f in examples/vscode/settings.jsonc copilot-chat/config/settings.jsonc; do
   sed '/^[[:space:]]*\/\//d' "$f" | python3 -m json.tool >/dev/null
 done
-xmllint --noout assets/hero.svg
+xmllint --noout assets/hero.svg assets/claude-cli-latency.svg
 
 printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \

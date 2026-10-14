@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="780" viewBox="0 0 900 780" role="img" aria-labelledby="title desc">
+  <title id="title">Faster Claude steps in Kilo</title>
+  <desc id="desc">Top: one chat step before and after the 2026-10-13 bridge changes. Before, every step started a new Claude CLI process (about 0.45 s), then the model thought and wrote, then the bridge waited about 0.5 s for the process to exit before replying, and the screen stayed blank for 10 s before showing a status line. After, the chat's process is already running, the reply is sent as soon as the decision arrives, and a status line or the model's thinking text appears after 1.5 s. The model time itself is unchanged. Middle: the life of a warm process: the first step starts it, later steps reuse it, and it ends after 10 minutes idle, when four are alive, when the tool list, model or effort changes, on an error result or when the user presses Stop. If it dies before any output the step reruns the old way; if it dies after output the step fails in about 2.5 s and the next step starts fresh. Bottom: first day of real use, 379 Claude steps: 285 reused a process, 54 started one and 40 used the old one-shot path; the median step took about 7 s either way.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e2e8f0; }
+    .h1 { font-size: 21px; font-weight: 700; fill: #f8fafc; }
+    .sub { font-size: 13px; fill: #94a3b8; }
+    .head { font-size: 12px; font-weight: 700; letter-spacing: 1.2px; fill: #7dd3fc; }
+    .name { font-size: 14px; font-weight: 600; }
+    .seg { font-size: 12px; font-weight: 600; }
+    .small { font-size: 12px; fill: #a8b5c8; }
+    .note { font-size: 12px; fill: #94a3b8; }
+    .gain { font-size: 13px; font-weight: 700; fill: #7dd3fc; }
+    .big { font-size: 22px; font-weight: 700; fill: #f8fafc; }
+    .panel { fill: #111a2e; stroke: #22304a; }
+    .box { fill: #16223a; stroke: #33476a; }
+    .waste { fill: #2a1f0a; stroke: #f59e0b; stroke-width: 1.5; }
+    .reply { fill: #0c2a3a; stroke: #7dd3fc; stroke-width: 1.5; }
+    .gone { fill: none; stroke: #475569; stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .arrow { stroke: #64748b; stroke-width: 2; fill: none; marker-end: url(#tip); }
+  </style>
+  <defs>
+    <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Solid background so the diagram reads the same in GitHub light and dark themes. -->
+  <rect width="900" height="780" rx="18" fill="#0b1220"/>
+
+  <text x="32" y="42" class="h1">Faster Claude steps in Kilo</text>
+  <text x="32" y="64" class="sub">Same model, same High effort, same answers. Only the wait around each step changed (2026-10-13).</text>
+
+  <!-- Panel 1: one step before and after -->
+  <rect x="24" y="84" width="852" height="270" rx="14" class="panel"/>
+  <text x="44" y="110" class="head">ONE CHAT STEP, BEFORE AND AFTER</text>
+
+  <text x="44" y="146" class="name">Before</text>
+  <text x="44" y="164" class="small">new CLI process every step</text>
+  <rect x="250" y="128" width="104" height="40" rx="7" class="waste"/>
+  <text x="302" y="145" class="seg" text-anchor="middle">Start CLI</text>
+  <text x="302" y="161" class="small" text-anchor="middle">about 0.45 s</text>
+  <rect x="358" y="128" width="320" height="40" rx="7" class="box"/>
+  <text x="518" y="145" class="seg" text-anchor="middle">Model thinks and writes</text>
+  <text x="518" y="161" class="small" text-anchor="middle">unchanged, about 95 tokens/s</text>
+  <rect x="682" y="128" width="104" height="40" rx="7" class="waste"/>
+  <text x="734" y="145" class="seg" text-anchor="middle">Wait for exit</text>
+  <text x="734" y="161" class="small" text-anchor="middle">about 0.5 s</text>
+  <rect x="790" y="128" width="58" height="40" rx="7" class="reply"/>
+  <text x="819" y="153" class="seg" text-anchor="middle">Reply</text>
+  <text x="250" y="190" class="note">You see: a blank wait for 10 s, then “is working…”</text>
+
+  <text x="44" y="230" class="name">After</text>
+  <text x="44" y="248" class="small">one process reused per chat</text>
+  <rect x="250" y="212" width="104" height="40" rx="7" class="gone"/>
+  <text x="302" y="229" class="seg" text-anchor="middle" fill="#94a3b8">No start</text>
+  <text x="302" y="245" class="small" text-anchor="middle">already running</text>
+  <rect x="358" y="212" width="320" height="40" rx="7" class="box"/>
+  <text x="518" y="229" class="seg" text-anchor="middle">Model thinks and writes</text>
+  <text x="518" y="245" class="small" text-anchor="middle">unchanged, about 95 tokens/s</text>
+  <rect x="682" y="212" width="58" height="40" rx="7" class="reply"/>
+  <text x="711" y="237" class="seg" text-anchor="middle">Reply</text>
+  <text x="752" y="229" class="gain">about 1 s</text>
+  <text x="752" y="245" class="gain">sooner</text>
+  <text x="250" y="274" class="note">You see: “is working…” after 1.5 s, or the model’s thinking text as it arrives</text>
+
+  <rect x="44" y="304" width="12" height="12" rx="3" class="waste"/>
+  <text x="62" y="314" class="small">time removed</text>
+  <rect x="160" y="304" width="12" height="12" rx="3" class="box"/>
+  <text x="178" y="314" class="small">model time, unchanged</text>
+  <rect x="330" y="304" width="12" height="12" rx="3" class="reply"/>
+  <text x="348" y="314" class="small">reply to Kilo</text>
+  <text x="44" y="338" class="note">Not to scale. The model segment is usually 3 to 60 s, so the saving is small next to thinking time.</text>
+
+  <!-- Panel 2: life of a warm process -->
+  <rect x="24" y="372" width="852" height="254" rx="14" class="panel"/>
+  <text x="44" y="398" class="head">LIFE OF A WARM PROCESS (ONE PER CHAT)</text>
+
+  <rect x="44" y="414" width="210" height="58" rx="9" class="box"/>
+  <text x="60" y="438" class="name">First step</text>
+  <text x="60" y="458" class="small">a process starts (spawned)</text>
+  <path d="M256 443 L290 443" class="arrow"/>
+  <rect x="294" y="414" width="210" height="58" rx="9" class="box"/>
+  <text x="310" y="438" class="name">Next steps</text>
+  <text x="310" y="458" class="small">same process (reused)</text>
+  <path d="M506 443 L540 443" class="arrow"/>
+  <rect x="544" y="414" width="312" height="58" rx="9" class="box"/>
+  <text x="560" y="438" class="name">Ends after 10 minutes idle</text>
+  <text x="560" y="458" class="small">or when 4 are alive: oldest idle one first</text>
+  <text x="44" y="496" class="note">Also ends when the tool list, model or effort changes, on an error result, or when you press Stop.</text>
+
+  <text x="44" y="526" class="head">IF IT DIES IN THE MIDDLE OF A STEP</text>
+  <rect x="44" y="540" width="404" height="62" rx="9" class="box"/>
+  <text x="60" y="565" class="name">Before any output</text>
+  <text x="60" y="586" class="small">the step quietly reruns the old way (one-shot --resume)</text>
+  <rect x="456" y="540" width="400" height="62" rx="9" class="box"/>
+  <text x="472" y="565" class="name">After output started</text>
+  <text x="472" y="586" class="small">a clear error in about 2.5 s; the next step starts fresh</text>
+
+  <!-- Panel 3: first day of real use -->
+  <rect x="24" y="644" width="852" height="116" rx="14" class="panel"/>
+  <text x="44" y="670" class="head">FIRST DAY OF REAL USE (379 CLAUDE STEPS)</text>
+  <rect x="44" y="684" width="196" height="60" rx="9" class="reply"/>
+  <text x="58" y="712" class="big">285</text>
+  <text x="112" y="710" class="name">reused</text>
+  <text x="58" y="733" class="small">three in four steps</text>
+  <rect x="252" y="684" width="196" height="60" rx="9" class="box"/>
+  <text x="266" y="712" class="big">54</text>
+  <text x="306" y="710" class="name">started fresh</text>
+  <text x="266" y="733" class="small">first step of a chat</text>
+  <rect x="460" y="684" width="196" height="60" rx="9" class="box"/>
+  <text x="474" y="712" class="big">40</text>
+  <text x="514" y="710" class="name">old path</text>
+  <text x="474" y="733" class="small">images, other requests</text>
+  <text x="672" y="702" class="name">Median step: about 7 s</text>
+  <text x="672" y="722" class="small">either way. Thinking time,</text>
+  <text x="672" y="740" class="small">not startup, dominates.</text>
+</svg>

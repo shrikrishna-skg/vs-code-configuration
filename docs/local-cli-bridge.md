@@ -50,6 +50,58 @@ Three changes shorten the wait around each Claude step. None of them changes the
 - **Visible progress.** Non-empty `thinking_delta` text is forwarded as `reasoning_content`. When a step produces neither thinking text nor answer text, the single status line (`<model> is working...`) now appears after 1.5 s instead of 10 s. In a sample of 1,260 Opus 5.5 thinking blocks, 1,019 arrived with empty text, so most steps show the status line.
 - **Warm process.** Consecutive tool-mode steps of one chat reuse one long-lived CLI process started with `--input-format stream-json`; each step is one user line on stdin and one `result` line back.
 
+### How it looks
+
+![One chat step before and after the latency changes, the life of a warm process, and the first day of real use](../assets/claude-cli-latency.svg)
+
+**Worked example.** You ask Kilo to fix a small bug, and the chat takes four steps.
+
+1. **Step 1 (Kilo asks to read a file).** No process exists for this chat yet, so the bridge starts one. The log line ends in `"warm":"spawned"`.
+2. **Steps 2 to 4.** Kilo sends each tool result back. The bridge writes it into the same running process instead of starting a new one, and replies as soon as the decision arrives. Each log line ends in `"warm":"reused"`.
+3. **While a step thinks.** Kilo shows the model's thinking text when the model provides it, otherwise `Claude Opus 5.5 High is working...` after 1.5 s.
+4. **Afterwards.** The process waits. A new message within 10 minutes reuses it again; otherwise it ends by itself.
+
+Bridge log lines from a real check run on 2026-10-13, trimmed to the relevant fields:
+
+```text
+{"event":"session_started", ..., "ttftMs":1511, "warm":"spawned"}
+{"event":"session_resumed", ..., "ttftMs":1017, "warm":"reused"}
+{"event":"session_resumed", ..., "ttftMs":1623, "warm":"spawned"}   <- the check had just killed the process
+{"event":"session_resumed", ..., "ttftMs":1041, "warm":"reused"}
+```
+
+What `curl -s http://127.0.0.1:32123/health` shows while two chats are open (process ids and folders vary):
+
+```json
+"warm": {
+  "enabled": true, "limit": 4, "idleMs": 600000,
+  "processes": [
+    { "pid": 33610, "cwd": "/path/to/project", "busy": false, "idleForMs": 8613 },
+    { "pid": 35277, "cwd": "/path/to/other-project", "busy": true, "idleForMs": 966 }
+  ]
+}
+```
+
+Output of `node examples/bridges/check-claude-warm-process.mjs` against the live bridge:
+
+```text
+step1: ttft=1507ms done=1730ms PASS: warm pid 35225
+step2: ttft=1073ms done=1202ms PASS: reused pid 35225
+step3: ttft=1506ms done=1701ms PASS: recovered after killing pid 35225
+step4: ttft=1157ms done=1280ms PASS: new warm pid 35277
+PASS
+```
+
+**First day of real use** (bridge log, 2026-10-13 to 2026-10-14, 379 Claude steps):
+
+| How the step ran | Steps | Median step time |
+|---|---:|---:|
+| Reused a running process | 285 | 7.4 s |
+| Started a process | 54 | 7.0 s |
+| Old one-shot path (images, other requests, fallbacks) | 40 | 14.7 s |
+
+Three in four steps reused a process. The medians are about the same because almost all of a step is the model thinking and writing; the half second or so saved per step is too small to show next to that.
+
 ### Warm process rules
 
 | Setting | Default | Meaning |
