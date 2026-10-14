@@ -57,6 +57,19 @@ Added 2026-10-14 (Variant A of `examples/mockups/chatbox-controls/index.html`).
 - **Modes:** `--apply` (default), `--check` and `--restore`. The first apply keeps a `.pre-composer-chevrons` backup of each file.
 - **Scope:** the Continue and Prompts buttons exist only in the sidebar chat, so Agent Manager gets the chevrons but not the spacing change.
 
+## Saved chat settings and update recovery
+
+- Permission choices are stored per chat in VS Code workspace state under `kilo.chatPermissionModes.v1`. Explicit Full access choices survive restart and include Kilo configuration edits, including requests marked `configProtected`. Auto still asks for these edits. Explicitly denied tools, sandbox escalation and skill-shell consent retain their checks.
+- Opening a saved chat processes its eligible pending permission requests again, so a request that arrived before the extension reconnected does not remain waiting for a new event. Responses remain limited to that chat and its inherited worker permissions.
+- **Outside-folder prompts are intentional in Auto.** A shell command that changes from the project into its parent directory can trigger `external_directory` before the command runs, even when `ls` or `grep` itself is allowed. For a chat that needs to work across repositories or edit Kilo configuration, select **Full access** in that chat. Changing the mode processes its existing eligible permission request; do not resend the task. This does not change other chats or bypass denied tools, sandbox escalation, or skill-shell consent.
+- Effort choices are stored under session-specific keys in the extension's `variantSelections` global state. Loading a chat restores its saved value instead of changing a shared agent preference.
+- To-do expansion starts closed and is saved per chat in localStorage (`kilo.todo.expanded.v2:`). VS Code persists this extension's webview origin across restarts; both open and closed choices are retained.
+- The local `ai.kilo.reapply-patches` LaunchAgent runs at login and watches the extensions directory. Patch scripts and helper sources live outside the extension under `~/.config/kilo/patches`.
+- Scroll recovery can recreate its helper from the supported build's original native code, so it does not depend on a previous patched bundle. Custom patches run independently: an incompatible patch is reported without preventing the remaining patches from running.
+- These patches still target known bundle anchors. A future incompatible Kilo build is reported as a failure and needs adaptation; the reapply job does not claim success or rewrite unknown code.
+
+`node scripts/test-chat-restart.mjs` checks permission and native effort persistence across fresh Node processes, and to-do choices across a full restart of an isolated headless Chromium profile. `node scripts/test-chat-ui-state.mjs` checks chat isolation and rebuilding the scroll patch from the locally preserved native bundle. Neither restarts the user's VS Code window or sends model requests.
+
 ## Installing and checking
 
 `scripts/reapply-kilo-patches.sh` applies every patch to the local build in a fixed order and re-checks each one with `--check`. Run **Developer: Reload Window** afterwards, when running work can safely be interrupted.

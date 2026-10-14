@@ -38,7 +38,10 @@ const webview = [
 const extension = 'let{visible,defaultAgent}=filterVisibleAgents(agents),message6={type:"agentsLoaded",agents:visible.map(mapAgent),allAgents:agents.map(mapAgent),defaultAgent};switch(x){case"t":break;case"persistVariant":{let stored2=0;break}/*case"requestFavorites":{let favorites=validateFavorites(this.extensionContext?.globalState.get("favoriteModels"));this.postMessage({type:"favoritesLoaded",favorites});break}*/}/*async toggleFavorite(message6){let current=validateFavorites(this.extensionContext?.globalState.get("favoriteModels")),key6=`${message6.providerID}/${message6.modelID}`,exists6=current.some(f2=>`${f2.providerID}/${f2.modelID}`===key6),favorites=message6.action==="add"&&!exists6?[...current,{providerID:message6.providerID,modelID:message6.modelID}]:message6.action==="remove"&&exists6?current.filter(f2=>`${f2.providerID}/${f2.modelID}`!==key6):current;await this.extensionContext?.globalState.update("favoriteModels",favorites),this.connectionService.notifyFavoritesChanged(favorites)}initializeConnection()*/'
 // Trimmed Kilo 7.8.1 active-tab rules (plain and .session-tab-bar), see examples/patches/active-tab-blue.mjs.
 const tab = "am-tab-active{color:var(--text-base);border-bottom-color:var(--surface-interactive-base);background:color-mix(in srgb,var(--surface-interactive-base) 10%,transparent)}"
-const css = `.${tab}.session-tab-bar .${tab}.model-selector-group-label{}`
+// Plus the compact and wide Settings navigation anchors active-tab-blue also recolours.
+const css = `.${tab}.session-tab-bar .${tab}.model-selector-group-label{}` +
+  ".nav{&[data-active=true]{background-color:var(--surface-interactive-base);border-left:2px solid var(--border-focus)}}" +
+  ".wide{&:has([data-selected]){background-color:var(--surface-base-active);color:var(--text-strong);[data-component=icon]{color:var(--icon-strong-base)}&:hover:not(:disabled){background-color:var(--surface-base-active)}}}"
 const dist = install("ext")
 
 // Fake osascript records notifications instead of showing them.
@@ -95,7 +98,7 @@ const customDist = path.join(tmp, "custom", "shrikrishna-skg.kilo-code-local-7.8
 fs.mkdirSync(customDist, { recursive: true })
 const customPatches = path.join(tmp, "custom-patches"), customCalls = path.join(tmp, "custom-calls")
 fs.mkdirSync(customPatches)
-for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "subagent-default-open", "todos-both-locations", "composer-orange-actions", "permission-modes", "clarify-goal", "native-webview-recovery", "predict-next", "skim-mode", "provider-save-message", "chat-font", "composer-chevrons"]) {
+for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "subagent-default-open", "todos-both-locations", "composer-orange-actions", "permission-modes", "chat-effort-isolation", "chat-scroll-stability", "clarify-goal", "native-webview-recovery", "predict-next", "skim-mode", "provider-save-message", "chat-font", "composer-chevrons", "session-map", "pinned-append"]) {
   fs.writeFileSync(path.join(customPatches, name + ".mjs"), `import fs from 'node:fs';fs.appendFileSync(${JSON.stringify(customCalls)}, JSON.stringify({name:${JSON.stringify(name)},args:process.argv.slice(2)})+'\\n');`)
 }
 run("custom", customPatches)
@@ -108,9 +111,18 @@ for (const file of ["webview.js", "agent-manager.js", "webview.css", "agent-mana
 
 for (const file of ["extension.js", "webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]) assert(customInvocations.some(call => call.name === "permission-modes" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must retain permission modes")
 
-for (const [name, files] of [["predict-next", ["extension.js", "webview.js"]], ["skim-mode", ["webview.js", "agent-manager.js"]], ["provider-save-message", ["webview.js"]], ["chat-font", ["webview.css", "agent-manager.css"]], ["composer-chevrons", ["webview.css", "agent-manager.css", "webview.js"]]]) {
+for (const [name, files] of [["chat-effort-isolation", ["webview.js", "agent-manager.js"]], ["chat-scroll-stability", ["webview.js"]], ["predict-next", ["extension.js", "webview.js"]], ["skim-mode", ["webview.js", "agent-manager.js"]], ["provider-save-message", ["webview.js"]], ["chat-font", ["webview.css", "agent-manager.css"]], ["composer-chevrons", ["webview.css", "agent-manager.css", "webview.js"]], ["session-map", ["extension.js", "webview.js", "webview.css"]], ["pinned-append", ["webview.js"]]]) {
   for (const file of files) assert(customInvocations.some(call => call.name === name && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), `Custom extension reapply must include ${name} for ${file}`)
 }
+
+// An incompatible scroll patch must be reported without blocking permission/effort recovery.
+fs.writeFileSync(path.join(customPatches, 'chat-scroll-stability.mjs'), "process.exit(1)\n")
+fs.writeFileSync(customCalls, '')
+assert.throws(() => run("custom", customPatches), e => e.status === 1)
+const afterFailure = read(customCalls).trim().split("\n").map(line => JSON.parse(line))
+assert(afterFailure.some(call => call.name === "permission-modes"), "Independent permission recovery must still run")
+assert(afterFailure.some(call => call.name === "chat-effort-isolation"), "Independent effort recovery must still run")
+assert.match(read(path.join(tmp, "log")), /FAILED chat-scroll-stability/)
 
 fs.rmSync(tmp, { recursive: true })
 console.log("reapply-kilo-patches checks passed")

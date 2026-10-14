@@ -14,7 +14,7 @@ const PORT = Number.parseInt(process.env.CLAUDE_BRIDGE_PORT, 10) || 32123;
 // only be denied, yet their schemas cost ~24K prompt tokens per step. Skill is
 // absent because skills are disabled; Kilo supplies its own.
 const ALLOWED_TOOLS = "Bash,Edit,Write,Read,Glob,Grep,WebFetch,WebSearch,NotebookEdit,Agent";
-const DEFAULT_DIRECTORY = "/Users/shri/Documents/Codex";
+const DEFAULT_DIRECTORY = resolve(homedir(), "Documents/Codex");
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 24 * 1024 * 1024;
 const MAX_SCHEMA_DESCRIPTION_CHARS = 320;
@@ -28,6 +28,11 @@ const SESSION_STATE_FILE = process.env.CLAUDE_BRIDGE_STATE_FILE || (process.argv
   : resolve(homedir(), ".local/state/kilo/claude-cli-provider-state.json"));
 const TOOL_SYSTEM_PROMPT_FILE = resolve(homedir(), ".config/kilo/bridges/fable-lead-system.md");
 const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=\r\n]+)$/i;
+const PDF_DATA_URL = /^data:(application\/pdf);base64,([A-Za-z0-9+/=\r\n]+)$/i;
+// Anthropic API limits (base64 characters) for attachments sent inside the message; larger ones use temp files + Read.
+const INLINE_IMAGE_CHARS = 5 * 1024 * 1024;
+const INLINE_PDF_CHARS = 24 * 1024 * 1024;
+const INLINE_TOTAL_CHARS = 24 * 1024 * 1024;
 const EMBEDDED_DATA_URL = /data:([^;,]+);base64,[A-Za-z0-9+/=\r\n]+/g;
 // "You've hit your session limit · resets 9:30pm", "hit your 5-hour limit", "5-hour limit reached ∙ resets 3pm",
 // "usage limit reached". Not "Output token limit reached" or "rate limit reached".
@@ -414,10 +419,10 @@ function conversationAnchor(hashes, messages = null) {
   return vscodeContext && messages[first + 1]?.role === "user" ? `${hashes[first]}:${hashes[first + 1]}` : hashes[first];
 }
 
-function matchingClaudeSession(model, cwd, hashes, anchor = conversationAnchor(hashes)) {
+function matchingClaudeSession(model, cwd, hashes, anchor = conversationAnchor(hashes), effort) {
   const candidates = claudeSessions.filter((session) => session.model === model && session.cwd === cwd);
   const exact = candidates.find((session) => sameHashes(session.hashes, hashes));
-  if (exact?.result && Date.now() - exact.resultAt <= REQUEST_CACHE_MS) {
+  if (exact?.result && (effort === undefined || exact.effort === effort) && Date.now() - exact.resultAt <= REQUEST_CACHE_MS) {
     return { session: exact, cached: true, start: hashes.length };
   }
   const continued = anchor ? candidates
@@ -494,14 +499,15 @@ async function readJson(request) {
 }
 
 function imageSource(part) {
-  const value = part?.image_url?.url || part?.image_url || part?.url;
+  const value = part?.image_url?.url || part?.image_url || part?.url || part?.file?.file_data;
   return typeof value === "string" ? value : null;
 }
 
+// Images, plus PDFs that Kilo sends as OpenAI "file" parts ({ file: { file_data: "data:application/pdf;base64,..." } }).
 function imageParts(messages) {
   return (Array.isArray(messages) ? messages : []).flatMap((message) =>
     Array.isArray(message?.content) ? message.content : []
-  ).filter((part) => ["image", "image_url", "input_image"].includes(part?.type));
+  ).filter((part) => ["image", "image_url", "input_image"].includes(part?.type) || (part?.type === "file" && Boolean(imageSource(part)?.startsWith("data:application/pdf"))));
 }
 
 async function materializeImageAttachments(messages) {
@@ -512,15 +518,16 @@ async function materializeImageAttachments(messages) {
     for (const part of imageParts(messages)) {
       const source = imageSource(part);
       if (!source || !source.startsWith("data:")) continue;
-      const match = source.match(IMAGE_DATA_URL);
-      if (!match) throw new Error("Unsupported image attachment. Use PNG, JPEG, GIF, or WEBP.");
+      const match = source.match(IMAGE_DATA_URL) || source.match(PDF_DATA_URL);
+      if (!match) throw new Error("Unsupported attachment. Use PNG, JPEG, GIF, WEBP or PDF.");
       const image = Buffer.from(match[2], "base64");
       if (!image.length) throw new Error("Attached image is empty.");
       totalBytes += image.length;
       if (totalBytes > MAX_IMAGE_BYTES) throw new Error("Attached images exceed the 24 MB bridge limit.");
       directory ||= await mkdtemp(join(tmpdir(), "kilo-claude-images-"));
-      const extension = match[1].toLowerCase() === "image/jpeg" ? "jpg" : match[1].slice("image/".length).toLowerCase();
-      const file = join(directory, `image-${files.length + 1}.${extension}`);
+      const type = match[1].toLowerCase();
+      const extension = type === "image/jpeg" ? "jpg" : type.slice(type.indexOf("/") + 1);
+      const file = join(directory, `${type === "application/pdf" ? "document" : "image"}-${files.length + 1}.${extension}`);
       await writeFile(file, image, { mode: 0o600 });
       files.push(file);
     }
@@ -538,8 +545,8 @@ async function removeImageAttachments(attachments) {
 function imageAttachmentPrompt(files) {
   if (!files.length) return "";
   return [
-    "IMAGE ATTACHMENTS",
-    "The user supplied the image files below. Use the Read tool to inspect every image relevant to this request before answering or making a tool-call decision. Do not say an image is unavailable merely because it is a local path.",
+    "ATTACHMENTS",
+    "The user supplied the image and PDF files below. Use the Read tool to inspect every file relevant to this request before answering or making a tool-call decision; read a long PDF in page ranges. Do not say a file is unavailable merely because it is a local path.",
     ...files.map((file, index) => `${index + 1}. ${file}`)
   ].join("\n");
 }
@@ -550,9 +557,38 @@ function codexImagePrompt(files) {
 }
 
 const CLAUDE_IMAGE_NOTE = "[Embedded image attachment is available to the Claude Read tool.]";
+const CLAUDE_PDF_NOTE = "[Embedded PDF attachment is available to the Claude Read tool.]";
 
 function codexTranscript(messages) {
-  return conversationTranscript(messages).replaceAll(CLAUDE_IMAGE_NOTE, "[Embedded image attachment: attached to this message.]");
+  return conversationTranscript(messages).replaceAll(CLAUDE_IMAGE_NOTE, "[Embedded image attachment: attached to this message.]")
+    .replaceAll(CLAUDE_PDF_NOTE, "[PDF attachment: not supported for Codex models.]");
+}
+
+// Inline attachments travel inside the message, so the transcript must not send Claude to Read.
+function inlineTranscriptNotes(prompt) {
+  return prompt.replaceAll(CLAUDE_IMAGE_NOTE, "[Embedded image attachment: included in this message.]")
+    .replaceAll(CLAUDE_PDF_NOTE, "[Embedded PDF attachment: included in this message.]");
+}
+
+// Images and PDFs as native content blocks inside the stream-json user message: one model round,
+// no Read call, and the turn keeps the warm process. Null when there is nothing to inline or
+// anything exceeds the API limits; the caller then uses temp files + Read.
+function inlineAttachments(messages) {
+  const blocks = [];
+  let total = 0;
+  for (const part of imageParts(messages)) {
+    const source = imageSource(part);
+    if (!source?.startsWith("data:")) continue;
+    const match = source.match(IMAGE_DATA_URL) || source.match(PDF_DATA_URL);
+    if (!match) return null;
+    const data = match[2].replace(/[\r\n]/g, "");
+    const type = match[1].toLowerCase();
+    total += data.length;
+    // ponytail: size caps only; a PDF over the API page limit fails that turn instead of falling back to Read.
+    if (!data.length || data.length > (type === "application/pdf" ? INLINE_PDF_CHARS : INLINE_IMAGE_CHARS) || total > INLINE_TOTAL_CHARS) return null;
+    blocks.push({ type: type === "application/pdf" ? "document" : "image", source: { type: "base64", media_type: type, data } });
+  }
+  return blocks.length ? blocks : null;
 }
 
 function compactText(text) {
@@ -584,6 +620,7 @@ function contentText(content) {
       if (typeof url === "string" && !url.startsWith("data:")) return `[Image attachment: ${url.slice(0, 2048)}]`;
       return CLAUDE_IMAGE_NOTE;
     }
+    if (part?.type === "file" && imageSource(part)?.startsWith("data:application/pdf")) return CLAUDE_PDF_NOTE;
     return jsonForPrompt(part);
   }).join("\n");
 }
@@ -676,8 +713,8 @@ function kiloToolPrompt(messages, tools, imageFiles = [], knownCatalog = "", cod
     "Return one decision: a final answer, or one or more client tool calls. Batch independent calls (several reads or searches, edits to different files) into one decision; a call that needs another call's result waits for a later turn. Never claim a tool ran until its result appears in a later TOOL message.",
     "For a final answer, set kind to final, put the answer in content, and set tool_calls to an empty array.",
     codex
-      ? "For tool calls, set kind to tool_call, content to an empty string, and tool_calls to a list of { tool_name, arguments_json } where tool_name is an available tool and arguments_json is a JSON-encoded object matching its parameters."
-      : "For tool calls, set kind to tool_call, content to an empty string, and tool_calls to a list of { tool_name, arguments } where tool_name is an available tool and arguments is a valid object matching its parameters.",
+      ? "For tool calls, set kind to tool_call, content to one short plain sentence telling the user what these calls do and why (shown as progress, never as the answer), and tool_calls to a list of { tool_name, arguments_json } where tool_name is an available tool and arguments_json is a JSON-encoded object matching its parameters."
+      : "For tool calls, set kind to tool_call, content to one short plain sentence telling the user what these calls do and why (shown as progress, never as the answer), and tool_calls to a list of { tool_name, arguments } where tool_name is an available tool and arguments is a valid object matching its parameters.",
     codex
       ? "Never run shell commands, patches, searches or any tool of your own: every action is a client tool call in this decision. Your own sandbox applies only to your disabled built-in tools; the listed client tools have full write and execute access granted by the user, so make edits and run commands through them. Use the client's own subagent tool (Kilo's task tool) when the engineering-lead policy calls for delegation."
       : "Use the client's own subagent tool (Kilo's task tool) when the engineering-lead policy calls for delegation; do not substitute Claude CLI background agents.",
@@ -851,6 +888,8 @@ function claudeArgs(profile, tools, session, imageDirectory = null, streaming = 
     "-p",
     "--model", profile.model,
     "--effort", profile.effort,
+    // Explicitly turn workflows off again when leaving Ultracode in a resumed chat.
+    "--settings", JSON.stringify({ ultracode: profile.effort === "ultracode" }),
     "--name", `Kilo Favorite - ${profile.name}`,
     // stream-json still ends with the same result line as --output-format json,
     // so the decision, usage and error handling below are unchanged. The CLI
@@ -862,13 +901,35 @@ function claudeArgs(profile, tools, session, imageDirectory = null, streaming = 
     session.resume ? "--resume" : "--session-id", session.id
   ];
   if (imageDirectory) args.push("--add-dir", imageDirectory);
-  if (tools.length) {
-    if (toolSystemPrompt) args.push("--system-prompt", toolSystemPrompt);
-    args.push(
-      "--safe-mode",
-      "--tools", imageDirectory ? "Read" : "",
-      "--json-schema", JSON.stringify(toolDecisionSchema(tools))
-    );
+  if (tools.length || profile.effort === "ultracode") {
+    const ultracode = profile.effort === "ultracode";
+    args.push("--system-prompt-snapshot", "off");
+    if (tools.length && toolSystemPrompt) args.push("--system-prompt", toolSystemPrompt + (ultracode ? `
+
+Ultracode is enabled. Use the native Workflow tool for substantive reasoning,
+planning and independent checks over the context supplied in this conversation.
+Workflow agents have no filesystem, shell or network permissions: all workspace
+reads, edits, commands and external actions must still be returned as Kilo tool
+calls using the decision schema. Request missing evidence from Kilo, then reason
+over its results. Native workflows are reasoning helpers, not a way to execute the client's tools.
+Wait for the actual workflow completion before returning a final Kilo decision.
+` : ""));
+    if (ultracode) {
+      // Keep native workflows, but isolate all native agents from workspace actions.
+      // Kilo remains the permission boundary and executor, including in plan mode.
+      args.push(
+        "--setting-sources", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+        "--permission-mode", "dontAsk", "--tools", "Workflow,Agent",
+        "--allowedTools", "Workflow,Agent",
+        "--settings", JSON.stringify({ ultracode: true, permissions: {
+          allow: ["Workflow", "Agent"],
+          deny: ["Bash", "PowerShell", "Read", "Edit", "Write", "Glob", "Grep", "NotebookEdit", "WebFetch", "WebSearch", "mcp__*"]
+        } })
+      );
+    } else {
+      args.push("--safe-mode", "--tools", imageDirectory ? "Read" : "");
+    }
+    if (tools.length) args.push("--json-schema", JSON.stringify(toolDecisionSchema(tools)));
   } else {
     // Tool mode gets the same trimming from --safe-mode, which would also drop
     // the user's hooks (guard-secrets) that conversation mode's tools need.
@@ -1342,6 +1403,12 @@ async function runWarmStep(profile, prompt, cwd, signal, tools, session, signatu
 // Returns { output, mode } where mode is "reused" | "spawned" | "off".
 async function runClaudeStep(profile, prompt, cwd, signal, tools, session, imageDirectory, onText, onReasoning) {
   if (signal.aborted) throw cancellationError();
+  // ponytail: workflow follow-up results need the full CLI lifecycle, not the
+  // first warm result. Upgrade by tracking native workflow completion in warm mode.
+  if (profile.effort === "ultracode") {
+    await retireWarm(session.id);
+    return { output: await runClaude(profile, prompt, cwd, signal, tools, session, imageDirectory, onText, onReasoning), mode: "off" };
+  }
   if (!warmEligible(tools, imageDirectory, onText, onReasoning)) {
     return { output: await runClaude(profile, prompt, cwd, signal, tools, session, imageDirectory, onText, onReasoning), mode: "off" };
   }
@@ -1361,7 +1428,13 @@ async function runClaudeStep(profile, prompt, cwd, signal, tools, session, image
 function spawnClaude(profile, prompt, cwd, signal, tools = [], session, imageDirectory = null, onText = null, onReasoning = null) {
   return new Promise((resolveResult, reject) => {
     if (signal.aborted) return reject(cancellationError());
-    const args = claudeArgs(profile, tools, session, imageDirectory, Boolean(onText || onReasoning));
+    // An array prompt carries inline attachment blocks, so it goes in as one stream-json user message.
+    const blocks = Array.isArray(prompt);
+    const args = claudeArgs(profile, tools, session, imageDirectory, Boolean(onText || onReasoning) || blocks || profile.effort === "ultracode");
+    if (blocks) {
+      args.push("--input-format", "stream-json");
+      prompt = `${JSON.stringify({ type: "user", message: { role: "user", content: prompt } })}\n`;
+    }
     const child = spawn(claudeBinary, args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -1374,7 +1447,7 @@ function spawnClaude(profile, prompt, cwd, signal, tools = [], session, imageDir
     let streamedPayload = null;
     let settled = false;
     let exitTimer = null;
-    const decisionStream = onText ? createDecisionStream() : null;
+    const decisionStream = onText && profile.effort !== "ultracode" ? createDecisionStream() : null;
     const cancel = () => child.kill("SIGTERM");
     signal.addEventListener("abort", cancel, { once: true });
     const finish = (fn) => {
@@ -1409,7 +1482,7 @@ function spawnClaude(profile, prompt, cwd, signal, tools = [], session, imageDir
         try { event = JSON.parse(line); } catch { continue; }
         if (event.type === "result") {
           streamedPayload = event;
-          if (!event.is_error || event.result) {
+          if (profile.effort !== "ultracode" && (!event.is_error || event.result)) {
             exitTimer = setTimeout(() => child.kill("SIGTERM"), 5000);
             exitTimer.unref?.();
             settlePayload(event, 0);
@@ -1496,6 +1569,10 @@ function sendError(response, error) {
 // footer is "" (Kilo) or a text suffix for final answers; tool calls never get one.
 function streamCompletion(writer, result, footer = "") {
   if (result.decision?.kind === "tool_call") {
+    // The decision's one-line note shows as reasoning, so every step says what
+    // it is doing; Kilo's transcript never forwards reasoning back to the CLI.
+    const note = typeof result.decision.content === "string" ? result.decision.content.trim() : "";
+    if (note) writer.chunk({ reasoning_content: `\n\n${note}` });
     writer.chunk({ tool_calls: openAiToolCalls(result.decision) });
     writer.chunk({}, "tool_calls", result.usage);
     return writer.finish();
@@ -1602,7 +1679,7 @@ const server = createServer(async (request, response) => {
     const anchor = conversationAnchor(hashes, body.messages);
     const result = await withConversationLock(conversationLockKey(body.model, cwd, anchor), async () => {
       if (controller.signal.aborted) throw cancellationError();
-      const matched = matchingClaudeSession(body.model, cwd, hashes, anchor);
+      const matched = matchingClaudeSession(body.model, cwd, hashes, anchor, profile.effort);
       // A repeat of a just-finished request never waits behind other chats.
       if (matched?.cached) {
         matched.session.lastUsed = Date.now();
@@ -1628,6 +1705,8 @@ const server = createServer(async (request, response) => {
       let deltaMessages = matched ? sessionDelta(matched.session, body.messages, hashes) : body.messages;
       const unseenMessages = matched ? Math.max(0, hashes.length - matched.start) : hashes.length;
       let attachments = { directory: null, files: [] };
+      // Native image/document blocks for this step, when every attachment fits the API limits.
+      let inline = null;
       let prompt = "";
       let firstReasoningAt = 0;
       let statusSent = false;
@@ -1661,14 +1740,18 @@ const server = createServer(async (request, response) => {
       // warm process, a freshly spawned one, or the one-shot path.
       let warmField = "off";
       const run = async (text, target) => {
-        if (codex) return runCodex(profile, text, cwd, controller.signal, tools, target, attachments.files);
-        const step = await runClaudeStep(profile, text, cwd, controller.signal, tools, target, attachments.directory, onText, onReasoning);
+        if (codex) return runCodex(profile, text, cwd, controller.signal, tools, target, attachments.files.filter((file) => !file.endsWith(".pdf")));
+        // Only the step's own prompt carries the inline blocks; a corrective resend goes into a session that already has them.
+        const content = inline && text === prompt ? [...inline, { type: "text", text }] : text;
+        const step = await runClaudeStep(profile, content, cwd, controller.signal, tools, target, attachments.directory, onText, onReasoning);
         warmField = step.mode;
         return step.output;
       };
       try {
-        attachments = await materializeImageAttachments(deltaMessages);
+        inline = codex ? null : inlineAttachments(deltaMessages);
+        if (!inline) attachments = await materializeImageAttachments(deltaMessages);
         prompt = tools.length ? kiloToolPrompt(deltaMessages, tools, attachments.files, knownCatalog, codex) : conversationPrompt(deltaMessages, attachments.files, codex);
+        if (inline) prompt = inlineTranscriptNotes(prompt);
         let recoveredSession = false;
         let output;
         try {
@@ -1688,8 +1771,10 @@ const server = createServer(async (request, response) => {
             session.hashes = [];
             deltaMessages = body.messages;
             await removeImageAttachments(attachments);
-            attachments = await materializeImageAttachments(deltaMessages);
+            inline = codex ? null : inlineAttachments(deltaMessages);
+            attachments = inline ? { directory: null, files: [] } : await materializeImageAttachments(deltaMessages);
             prompt = tools.length ? kiloToolPrompt(deltaMessages, tools, attachments.files, "", codex) : conversationPrompt(deltaMessages, attachments.files, codex);
+            if (inline) prompt = inlineTranscriptNotes(prompt);
             resumed = false;
             recoveredSession = true;
             process.stdout.write(`${JSON.stringify({ event: "session_missing", session: missingSession, replacement: session.id })}\n`);
@@ -1702,16 +1787,20 @@ const server = createServer(async (request, response) => {
         session.toolsHash = catalogHash;
         session.hashes = hashes;
         session.anchor = anchor;
+        session.effort = profile.effort;
         session.result = output;
         session.resultAt = Date.now();
         rememberClaudeSession(session);
         process.stdout.write(`${JSON.stringify({
           event: recoveredSession ? "session_recovered" : resumed ? "session_resumed" : "session_started",
           session: session.id,
+          model: profile.model,
+          effort: profile.effort,
           messages: hashes.length,
           deltaMessages: deltaMessages.length,
           rewrittenMessages: Math.max(0, deltaMessages.length - unseenMessages),
           imageFiles: attachments.files.length,
+          inlineAttachments: inline?.length || 0,
           promptChars: prompt.length,
           // First streamed delta, else the finished result (sent right after this line).
           ttftMs: (firstOutputAt || Date.now()) - startedAt,
@@ -1983,13 +2072,17 @@ if (process.argv.includes("--self-test")) {
   // Several independent Kilo tool calls in one decision become one OpenAI
   // assistant turn with one tool_calls entry each, so Kilo runs them together.
   const multiTools = [...decisionTools, { type: "function", function: { name: "grep", parameters: { type: "object" } } }];
-  const multiDecision = parseDecision({ result: JSON.stringify({ kind: "tool_call", content: "", tool_calls: [{ tool_name: "read", arguments: { filePath: "a.js" } }, { tool_name: "grep", arguments: { pattern: "x" } }] }) }, multiTools);
+  const multiDecision = parseDecision({ result: JSON.stringify({ kind: "tool_call", content: "Reading a.js and searching for x.", tool_calls: [{ tool_name: "read", arguments: { filePath: "a.js" } }, { tool_name: "grep", arguments: { pattern: "x" } }] }) }, multiTools);
   const streamed = { headersSent: false, writeHead() { this.headersSent = true; }, write(body) { this.body = (this.body || "") + body; }, end(body) { this.body += body; } };
   streamCompletion(createStreamWriter(streamed, "id", "fable-5-1-high"), { decision: multiDecision });
   const emitted = streamed.body.split("\n\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)).choices[0]);
   const emittedCalls = emitted.flatMap((choice) => choice.delta.tool_calls || []);
   if (emittedCalls.map((call) => `${call.index}:${call.function.name}:${call.function.arguments}`).join() !== `0:read:{"filePath":"a.js"},1:grep:{"pattern":"x"}` || new Set(emittedCalls.map((call) => call.id)).size !== 2 || emitted.at(-1).finish_reason !== "tool_calls") {
     throw new Error("A multi-call Kilo decision was not emitted as separate OpenAI tool_calls");
+  }
+  const noteIndex = emitted.findIndex((choice) => choice.delta.reasoning_content?.trim() === "Reading a.js and searching for x.");
+  if (noteIndex < 0 || noteIndex > emitted.findIndex((choice) => choice.delta.tool_calls) || emitted.some((choice) => choice.delta.content)) {
+    throw new Error("A tool-call decision's note was not shown as reasoning before its calls");
   }
   // The tok/s footer: VS Code only, final answers only, never fed back to the CLI.
   const footer = `\n\n${throughputFooter(300, 10000, 10000)}`;
@@ -2521,6 +2614,27 @@ if (process.argv.includes("--self-test")) {
     claudeBinary = null;
     await rm(warmStubDir, { recursive: true, force: true });
   }
+  // Inline attachments: PDFs and images become native blocks; oversized ones fall back to Read files.
+  {
+    const pdfPart = { type: "file", file: { filename: "a.pdf", file_data: `data:application/pdf;base64,${Buffer.from("%PDF-1.4 test").toString("base64")}` } };
+    const blocks = inlineAttachments([{ role: "user", content: [{ type: "text", text: "read" }, pdfPart, { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgo=" } }] }]);
+    if (blocks?.length !== 2 || blocks[0].type !== "document" || blocks[0].source.media_type !== "application/pdf" || blocks[1].type !== "image") {
+      throw new Error("Inline attachments were not built as document and image blocks");
+    }
+    if (inlineAttachments([{ content: [{ type: "image_url", image_url: { url: `data:image/png;base64,${"A".repeat(INLINE_IMAGE_CHARS + 4)}` } }] }]) !== null) {
+      throw new Error("An oversized image was inlined instead of falling back to Read");
+    }
+    if (inlineAttachments([{ content: [{ type: "text", text: "no attachments" }] }]) !== null) throw new Error("A plain message produced inline blocks");
+    if (contentText([pdfPart]) !== CLAUDE_PDF_NOTE || inlineTranscriptNotes(contentText([pdfPart])).includes("Read tool")) {
+      throw new Error("The PDF transcript note is wrong");
+    }
+    const pdfFiles = await materializeImageAttachments([{ content: [pdfPart] }]);
+    try {
+      if (pdfFiles.files.length !== 1 || !pdfFiles.files[0].endsWith(".pdf")) throw new Error("The PDF fallback file was not written");
+    } finally {
+      await removeImageAttachments(pdfFiles);
+    }
+  }
   process.stdout.write("Claude prompt compaction self-test passed.\n");
 } else {
   claudeBinary = await resolveClaudeBinary();
@@ -2554,8 +2668,15 @@ async function zcodeLeadMessages(messages, profile, read = readFile) {
 
 function zcodeEffort(profile, effort) {
   if (!profile || effort === undefined) return profile;
-  const levels = profile.model === 'fable' ? ['medium', 'high', 'max'] : profile.model === 'gpt-6-astra' ? ['high', 'xhigh'] : [];
+  const claude = profile.model === "fable" || /^claude-(?:opus|sonnet)-5-5$/.test(profile.model);
+  const levels = claude ? ["low", "medium", "high", "xhigh", "max", "ultracode"]
+    : profile.model === "gpt-6-astra" ? ["high", "xhigh"] : [];
   if (!levels.length) return profile;
-  if (!levels.includes(effort)) throw Error('Unsupported reasoning effort');
+  if (!levels.includes(effort)) {
+    const error = new Error(`Unsupported reasoning effort for ${profile.model}: ${String(effort)}`);
+    error.status = 400;
+    error.type = "invalid_request_error";
+    throw error;
+  }
   return { ...profile, effort };
 }

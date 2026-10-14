@@ -1,4 +1,5 @@
 ---
+hidden: true
 description: Routes coding work to local Claude Opus 5.5 with high reasoning effort
 mode: primary
 ---

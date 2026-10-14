@@ -16,6 +16,7 @@ const HOST = "127.0.0.1";
 const PORT = Number(process.env.OPENROUTER_SPEED_PROXY_PORT || 32126);
 const UPSTREAM = "https://openrouter.ai/api";
 const DEEPSEEK = "https://api.deepseek.com";
+const LITHOS = "https://api.lithosai.cloud";
 const DEEPSEEK_MODELS = { "deepseek/deepseek-v4.1-flash": "deepseek-flash" }; // VS Code id -> DeepSeek API id
 const KILO_AUTH = process.env.KILO_AUTH_FILE || `${homedir()}/.local/share/kilo/auth.json`;
 const FORWARD_HEADERS = ["authorization", "content-type", "accept", "http-referer", "x-title"];
@@ -29,7 +30,8 @@ const deepseekKey = () => {
 // Picks the upstream for a parsed chat request. DeepSeek: upstream model id, proxy-held key
 // (the client's OpenRouter key is never sent there) and no OpenRouter-only fields.
 // GLM on OpenRouter gets Kilo's throughput sort unless the client chose its own provider.
-function route(json, headers, readKey = deepseekKey) {
+function route(json, headers, readKey = deepseekKey, lithos = false) {
+  if (lithos) return { base: LITHOS, name: "lithos", headers };
   if (/^z-ai\/glm-/.test(json?.model || "")) json.provider ??= { sort: "throughput" };
   if (!/^deepseek\//.test(json?.model || "")) return { base: UPSTREAM, name: "openrouter", headers };
   json.model = DEEPSEEK_MODELS[json.model] ?? json.model.slice("deepseek/".length);
@@ -127,20 +129,22 @@ let active = 0, served = 0;
 async function proxy(request, response) {
   const startedAt = Date.now();
   const url = new URL(request.url || "/", `http://${HOST}:${PORT}`);
+  const lithos = url.pathname.startsWith("/lithos/v1/");
+  if (lithos) url.pathname = url.pathname.slice("/lithos".length);
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   let body = Buffer.concat(chunks);
   let json = null, footer = false, model = null;
-  let target = { base: UPSTREAM, name: "openrouter", headers: Object.fromEntries(FORWARD_HEADERS.filter((name) => request.headers[name]).map((name) => [name, request.headers[name]])) };
+  let target = { base: lithos ? LITHOS : UPSTREAM, name: lithos ? "lithos" : "openrouter", headers: Object.fromEntries(FORWARD_HEADERS.filter((name) => request.headers[name]).map((name) => [name, request.headers[name]])) };
   if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
     try { json = JSON.parse(body.toString("utf8")); } catch {}
     if (json) {
       model = json.model ?? null;
       stripFooters(json.messages);
       if (json.stream) json.stream_options = { ...json.stream_options, include_usage: true };
-      target = route(json, target.headers);
+      target = route(json, target.headers, deepseekKey, lithos);
       body = Buffer.from(JSON.stringify(json));
-      footer = wantsThroughputFooter(request.headers);
+      footer = lithos || wantsThroughputFooter(request.headers);
     }
   }
   const controller = new AbortController();
@@ -184,6 +188,11 @@ async function proxy(request, response) {
 }
 
 if (process.argv.includes("--self-test")) {
+  const lithosBody = { model: "deepseek-ai/DeepSeek-V4.1-Flash-ultra", reasoning_effort: "high" };
+  assert.deepEqual(route(lithosBody, { authorization: "Bearer test-key" }, () => { throw Error("wrong credential source"); }, true), {
+    base: LITHOS, name: "lithos", headers: { authorization: "Bearer test-key" }
+  });
+  assert.deepEqual(lithosBody, { model: "deepseek-ai/DeepSeek-V4.1-Flash-ultra", reasoning_effort: "high" });
   const at = new Date(2026, 8, 23, 15, 44, 5);
   assert.equal(throughputFooter(9786, 48000, 48000, at), "203.9 t/s\u00a0\u00a0\u00a03:44 PM · 48s");
   assert.equal(throughputFooter(10, 0, 72400, new Date(2026, 0, 1, 0, 5)), "0 t/s\u00a0\u00a0\u00a012:05 AM · 1m 12s");

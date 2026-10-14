@@ -13,7 +13,7 @@ assert.deepEqual(orderAgents(['Astra + Jev Engineering Lead','Opus + Jev Enginee
   ['astra-engineering-lead','Fable Engineering Lead','Fable + Jev Engineering Lead','Opus + Jev Engineering Lead','Astra + Jev Engineering Lead','Other']);
 // Only the Jev leads may allow the globally denied TypeSafe tools.
 const allowed=fs.readdirSync('examples/agent').filter(f=>/^\s*TypeSafe_[\w*]*:\s*allow\b/m.test(fs.readFileSync(path.join('examples/agent',f),'utf8'))).sort();
-assert.deepEqual(allowed,['Astra + Jev Engineering Lead.md','Fable + Jev Engineering Lead.md','Opus + Jev Engineering Lead.md']);
+assert.deepEqual(allowed,['Astra + Jev Engineering Lead.md','CTO + JEV.md','Fable + Jev Engineering Lead.md','Opus + Jev Engineering Lead.md']);
 const kilo=JSON.parse(fs.readFileSync('examples/kilo.jsonc','utf8').replace(/^\s*\/\/.*$/gm,''));
 assert.equal(kilo.permission['TypeSafe_*'],'deny');assert.equal(kilo.mcp.TypeSafe.enabled,true);
 assert.throws(()=>patch('unknown bundle'));
@@ -106,6 +106,20 @@ assert.equal(r.reason,'timeout_or_cancelled');assert.ok(r.elapsed_ms<500);
 const controller=new AbortController();controller.abort();
 r=await evaluate(input,{key,signal:controller.signal,fetcher:async(_u,{signal})=>{signal.throwIfAborted();}});
 assert.equal(r.reason,'timeout_or_cancelled');
+// A valid response arriving just beyond the old deadline must now succeed.
+const delayed = ms => async (_url, {signal}) => new Promise((resolve,reject) => {
+  const timer=setTimeout(()=>resolve(Response.json(payload)),ms);
+  const abort=()=>{clearTimeout(timer);reject(signal.reason)};
+  signal.addEventListener('abort',abort,{once:true});
+  if(signal.aborted)abort();
+});
+assert.equal((await evaluate(input,{key,timeoutMs:1000,fetcher:delayed(1200)})).reason,'timeout_or_cancelled');
+assert.equal((await evaluate(input,{key,fetcher:delayed(1200)})).status,'advice','The new default must tolerate responses slower than one second');
+const midflight=new AbortController();const abortTimer=setTimeout(()=>midflight.abort(),30);
+const cancelled=await evaluate(input,{key,signal:midflight.signal,fetcher:delayed(1200)});clearTimeout(abortTimer);
+assert.equal(cancelled.reason,'timeout_or_cancelled');assert(cancelled.elapsed_ms<500,'User cancellation must not wait for the longer deadline');
+const configText=fs.readFileSync('examples/kilo.jsonc','utf8').replace(/^\s*\/\/.*$/gm,'');
+assert.equal(JSON.parse(configText).mcp.TypeSafe.timeout,10000,'MCP deadline leaves room for credentials and the API call');
 const messages=[
  {jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}},
  {jsonrpc:'2.0',id:2,method:'tools/list'},

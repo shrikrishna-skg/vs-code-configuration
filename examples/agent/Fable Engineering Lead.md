@@ -1,4 +1,5 @@
 ---
+hidden: true
 description: Engineering lead using Claude Fable 5.1 High through the authenticated local Claude CLI. Uses Kilo workers only when scale or risk justifies the overhead.
 mode: primary
 model: claude-local-cli/fable-5-1-high

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Kilo 7.8.x: the selected session tab (.am-tab-active / .session-tab-bar .am-tab-active)
-// gets a blue bottom bar and faint blue tint instead of the theme's grey
-// --surface-interactive-base (list selection background). High-contrast rules are untouched.
+// Kilo 7.8.x: selected session tabs and Settings navigation items get a clear,
+// theme-aware blue active state instead of the theme's subtle grey selection.
+// High-contrast rules are untouched.
 // Usage: active-tab-blue.mjs <webview.css> [agent-manager.css ...] [--check]
 
 import fs from "node:fs"
@@ -11,12 +11,30 @@ const blue = "var(--vscode-focusBorder, #3794ff)"
 const before = "am-tab-active{color:var(--text-base);border-bottom-color:var(--surface-interactive-base);background:color-mix(in srgb,var(--surface-interactive-base) 10%,transparent)}"
 const after = `am-tab-active{color:var(--text-base);border-bottom-color:${blue};background:color-mix(in srgb,${blue} 10%,transparent)}`
 const expected = 2 // plain .am-tab-active and .session-tab-bar .am-tab-active
+const compactSettingsBefore = "&[data-active=true]{background-color:var(--surface-interactive-base);border-left:2px solid var(--border-focus)}"
+const compactSettingsLegacy = `&[data-active=true]{background-color:color-mix(in srgb,${blue} 18%,transparent);border-left:3px solid ${blue};color:var(--text-strong)}&[data-active=true] [data-slot=settings-nav-icon]{color:${blue}}`
+const compactSettingsAfter = `&[data-active=true]{background-color:color-mix(in srgb,${blue} 22%,transparent);border-left:3px solid ${blue};color:${blue}}&[data-active=true] [data-slot=settings-nav-icon]{color:${blue}}`
+const wideSettingsBefore = "&:has([data-selected]){background-color:var(--surface-base-active);color:var(--text-strong);[data-component=icon]{color:var(--icon-strong-base)}&:hover:not(:disabled){background-color:var(--surface-base-active)}}"
+const wideSettingsLegacy = `&:has([data-selected]){background-color:color-mix(in srgb,${blue} 22%,transparent);color:${blue};box-shadow:inset 3px 0 0 ${blue};[data-component=icon]{color:${blue}}&:hover:not(:disabled){background-color:color-mix(in srgb,${blue} 28%,transparent)}}`
+const wideSettingsThemeSelection = `&:has([data-selected]){background-color:var(--vscode-list-activeSelectionBackground, #094771);color:var(--vscode-list-activeSelectionForeground, #fff);box-shadow:inset 3px 0 0 ${blue};[data-component=icon]{color:var(--vscode-list-activeSelectionForeground, #fff)}&:hover:not(:disabled){background-color:var(--vscode-list-activeSelectionBackground, #094771)}}`
+const wideSettingsMixedSelection = `&:has([data-selected]){background-color:color-mix(in srgb,${blue} 45%,var(--background-base));color:#fff;box-shadow:inset 3px 0 0 ${blue};[data-component=icon]{color:#fff}&:hover:not(:disabled){background-color:color-mix(in srgb,${blue} 55%,var(--background-base))}}`
+const wideSettingsAfter = `&:has([data-selected]){background-color:#0e639c;color:#fff;box-shadow:inset 3px 0 0 ${blue},inset 0 -2px 0 ${blue};[data-component=icon]{color:#fff}&:hover:not(:disabled){background-color:#1177bb}}`
 
 export function patch(source) {
   const pending = source.split(before).length - 1
   const applied = source.split(after).length - 1
   if (pending + applied !== expected) throw new Error(`active-tab-blue: expected ${expected} active-tab anchors, found ${pending} unpatched + ${applied} patched; no changes made.`)
-  return source.replaceAll(before, after)
+  const compactPending = source.split(compactSettingsBefore).length - 1
+  const compactLegacy = source.split(compactSettingsLegacy).length - 1
+  const compactApplied = source.split(compactSettingsAfter).length - 1
+  if (compactPending + compactLegacy + compactApplied !== 1) throw new Error(`active-tab-blue: expected 1 compact settings-nav anchor, found ${compactPending} unpatched + ${compactLegacy} legacy + ${compactApplied} patched; no changes made.`)
+  const widePending = source.split(wideSettingsBefore).length - 1
+  const wideLegacy = source.split(wideSettingsLegacy).length - 1
+  const wideThemeSelection = source.split(wideSettingsThemeSelection).length - 1
+  const wideMixedSelection = source.split(wideSettingsMixedSelection).length - 1
+  const wideApplied = source.split(wideSettingsAfter).length - 1
+  if (widePending + wideLegacy + wideThemeSelection + wideMixedSelection + wideApplied !== 1) throw new Error(`active-tab-blue: expected 1 wide settings-nav anchor, found ${widePending} unpatched + ${wideLegacy + wideThemeSelection + wideMixedSelection} legacy + ${wideApplied} patched; no changes made.`)
+  return source.replaceAll(before, after).replace(compactSettingsBefore, compactSettingsAfter).replace(compactSettingsLegacy, compactSettingsAfter).replace(wideSettingsBefore, wideSettingsAfter).replace(wideSettingsLegacy, wideSettingsAfter).replace(wideSettingsThemeSelection, wideSettingsAfter).replace(wideSettingsMixedSelection, wideSettingsAfter)
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

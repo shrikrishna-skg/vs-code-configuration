@@ -126,8 +126,9 @@ was added.
 - Default zero consultations; normally at most two per task, with extra calls
   justified by materially changed evidence. This is a lead instruction, not a
   tamper-proof server budget (the MCP input has no trusted task identity).
-- One-second API deadline; no automatic retries. MCP timeout is five seconds,
-  allowing initialization and credential retrieval separately from API latency.
+- Five-second API deadline (tuned October 14, 2026); no automatic retries. MCP
+  timeout is ten seconds, leaving room for initialization and credential retrieval.
+  Cancellation still aborts promptly rather than waiting for the deadline.
 - Maximum 24 KB input, eight evidence requirements, two concurrent calls per
   bridge, and 64 KB response. Responses are validated before returning advice.
 - Explicit `no_delegation` bypasses the API for next-step advice. Existing

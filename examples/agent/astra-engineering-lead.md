@@ -1,7 +1,8 @@
 ---
-description: Direct-first engineering lead using GPT-6 Astra Fast. Handles ordinary work itself and activates delegation only when scale or risk justifies the overhead.
+hidden: true
+description: Direct-first engineering lead using GPT-6 Astra Ultrafast. Handles ordinary work itself and activates delegation only when scale or risk justifies the overhead.
 mode: primary
-model: openai/gpt-6-astra-fast
+model: openai/gpt-6-astra-ultrafast
 color: primary
 steps: 50
 permission:

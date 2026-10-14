@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs';
-import {patch} from '../examples/patches/todos-both-locations.mjs';
+import {patch,todoState} from '../examples/patches/todos-both-locations.mjs';
 
 const variants = [
   {getter:'ZIn', store:'Mt', parts:'me', fallback:'Tnt', state:'ye', open:'D', set:'R', start:'sFn', end:'Lnt', original:'let ZIn=()=>{let ne=o();return ne?Mt.todos[ne]||[]:[]};let [D,R]=ye(!1),[F,z]=ye(),P=()=>{if(e.readonly)return;};'},
@@ -17,12 +17,12 @@ function check(variant, source, nativeHelpers = '') {
   // The most recent part may live in Kilo's existing part cache, not the store.
   const partCache = {m2:[part('p2', saved)]};
   const context = {
-    [variant.store]:data, o:()=>session, [variant.parts]:{peek:id=>partCache[id]},
+    [variant.store]:data, o:()=>session, t:{currentSessionID:()=>session}, localStorage:{getItem:()=>null,setItem:()=>{}}, [variant.parts]:{peek:id=>partCache[id]},
     [variant.state]:(value)=>[()=>value, next=>{value=typeof next==='function'?next(value):next;}],
     [variant.fallback]:args=>{calls++;if(!args.messages.length)return [];assert.equal(args.messages,messages);assert.equal(args.parts('m2'),partCache.m2);return saved;},
   };
-  const api = vm.runInNewContext(`${nativeHelpers}${source};({todos:${variant.getter},open:${variant.open},toggle:()=>${variant.set}(x=>!x)})`,context);
-  assert.equal(api.open(),true);api.toggle();assert.equal(api.open(),false);api.toggle();assert.equal(api.open(),true);
+  const api = vm.runInNewContext(`globalThis.__kiloTodoState=${todoState.toString()};${nativeHelpers}${source};({todos:${variant.getter},open:${variant.open},toggle:()=>${variant.set}(x=>!x)})`,context);
+  assert.equal(api.open(),false);api.toggle();assert.equal(api.open(),true);api.toggle();assert.equal(api.open(),false);
   assert.equal(api.todos(),saved,'Reopened chat recovers the most recent saved checklist');
   const live = [{content:'Live update',status:'pending'}];data.todos.main=live;
   assert.equal(api.todos(),live,'Live updates take priority over saved history');
@@ -51,7 +51,7 @@ for (const file of process.argv.slice(2)) {
   const patchedHeader=patch(variant.original).slice(patch(variant.original).indexOf(';let ')+1);
   const helpers=source.slice(source.indexOf(`function ${variant.start}(`),source.indexOf(`function ${variant.end}(`));
   check(variant,getter+';'+patchedHeader,helpers);
-  assert(source.includes(`[${variant.open},${variant.set}]=${variant.state}(/* todos-header-expanded:v1 */!0)`));
+  assert(source.includes(`[${variant.open},${variant.set}]=globalThis.__kiloTodoState(${variant.state},()=>t.currentSessionID())`));
   assert(source.includes('name:"todowrite"'),'Inline checklist renderer must remain installed');
 }
-console.log('To-do views passed: header starts expanded, manual toggle, live priority, saved fallback, explicit clearing, session isolation, idempotence and restoration.');
+console.log('To-do views passed: header starts collapsed, manual toggle, live priority, saved fallback, explicit clearing, session isolation, idempotence and restoration.');

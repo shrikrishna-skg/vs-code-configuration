@@ -9,6 +9,7 @@ node --check examples/bridges/claude-cli-mcp.mjs
 node examples/bridges/claude-cli-provider.mjs --self-test
 node --check examples/bridges/typesafe-mcp.mjs
 node scripts/test-typesafe.mjs
+node scripts/test-typesafe-persistence.mjs
 node --check examples/bridges/peekaboo-runner.mjs
 node scripts/test-peekaboo-runner.mjs
 node --test scripts/test-computer-control.mjs
@@ -37,6 +38,10 @@ node examples/patches/chat-font.test.mjs
 node examples/patches/composer-chevrons.test.mjs
 node examples/patches/predict-next.test.mjs
 node examples/patches/predict-next.test.cjs
+node examples/patches/session-map.test.cjs
+node examples/patches/pinned-append.test.mjs
+# smooth-follow.test.mjs reads the installed webview.js, so it is run on the machine, not here.
+node --check examples/patches/smooth-follow.test.mjs
 # Its test needs the installed dist/webview.js, so only the syntax is checked here.
 node --check examples/patches/provider-save-message.mjs
 # The warm-process check needs a running bridge and spends plan usage; syntax only here.
@@ -68,7 +73,7 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
   | node examples/bridges/claude-cli-mcp.mjs /usr/bin/true \
-  | python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin if line.strip()]; assert len(rows)==2; assert rows[0]["result"]["serverInfo"]["name"]=="kilo-claude-cli-bridge"; assert len(rows[1]["result"]["tools"])==4'
+  | python3 -c 'import json,sys; rows=[json.loads(line) for line in sys.stdin if line.strip()]; assert len(rows)==2; assert rows[0]["result"]["serverInfo"]["name"]=="kilo-claude-cli-bridge"; assert len(rows[1]["result"]["tools"])==6'
 
 git diff --check
 echo "Configuration verification passed."

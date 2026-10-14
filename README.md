@@ -10,7 +10,7 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 
 ## Start here
 
-**Latest snapshot: [2026-10-14](docs/updates/2026-10-14.md)** · Git tag `config-2026-10-14` · [Dated change index](docs/configuration-history.md).
+**Latest snapshot: [2026-10-14b](docs/updates/2026-10-14b.md)** · Git tag `config-2026-10-14b` · [Dated change index](docs/configuration-history.md).
 
 **Speed and reading:** [Local CLI bridge latency](docs/local-cli-bridge.md#response-latency-2026-10-13) replies on the result line, shows progress after 1.5 s and reuses one CLI process per chat. [Chat UI patches](docs/chat-ui-patches.md) add skim mode, the Hanken Grotesk chat font and a predicted next message.
 

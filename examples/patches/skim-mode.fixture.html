@@ -41,6 +41,19 @@ code{font:12px ui-monospace,Menlo,monospace;background:#2a2a2a;padding:1px 5px;b
 <p data-case="last block of a finished reply" data-detail="No further action is needed after that.">Reload the window to load the new patch now. No further action is needed after that.</p>
 </div></div></div>
 
+<div data-component="text-part"><div data-slot="text-part-body"><div data-component="markdown" id="decide">
+<h2>Answer</h2>
+<p id="d-answer">The fix is ready, but one check is still missing. The patch is applied and the live view has not been reloaded.</p>
+<ul>
+<li id="d-risk"><strong>Risk:</strong> a Kilo update can overwrite the patch. The reapply script puts it back after a reload.</li>
+<li id="d-plain"><strong>Spacing:</strong> Continue and Prompts now sit 6px apart. Before the fix they were much further apart.</li>
+</ul>
+<h2>Verification</h2>
+<ul><li id="d-failed"><strong>Failed:</strong> the live chat box was not checked. It needs a reload, which interrupts running chats.</li></ul>
+<h2>Next step</h2>
+<p id="d-next">Reload the window when your chats can be interrupted. Then check the Continue button and the five chevrons.</p>
+</div></div></div>
+
 <div id="stream-host"></div>
 
 <script>
@@ -62,6 +75,18 @@ code{font:12px ui-monospace,Menlo,monospace;background:#2a2a2a;padding:1px 5px;b
     check('reply DOM is not modified', document.getElementById('root').innerHTML === before);
     const rule = [...document.querySelectorAll('style')].map(s => s.textContent).find(t => t.includes('kilo-skim-detail')) || '';
     check('dim colour rule derived from the text colour', /color-mix\(in srgb,rgb\(242, 242, 242\) 55%,transparent\)/.test(rule), rule);
+
+    const decide = document.getElementById('decide'), dNext = document.getElementById('d-next');
+    const rangesIn = el => [...highlight()].filter(r => el.contains(r.startContainer)).map(r => norm(String(r))).join(' ');
+    check('#d-next is marked as the decision', dNext.hasAttribute('data-kilo-decision'));
+    check('no dimmed detail starts inside #d-next', ![...highlight()].some(r => dNext.contains(r.startContainer)));
+    check('flagged points carry warn and bad', document.getElementById('d-risk').getAttribute('data-kilo-flag') === 'warn' && document.getElementById('d-failed').getAttribute('data-kilo-flag') === 'bad' && !document.getElementById('d-plain').hasAttribute('data-kilo-flag'));
+    check('d-answer detail is dimmed', rangesIn(document.getElementById('d-answer')) === 'The patch is applied and the live view has not been reloaded.', rangesIn(document.getElementById('d-answer')));
+    const strip = decide.previousElementSibling;
+    check('bottom line strip is inserted above the reply', !!strip && strip.classList.contains('kilo-bottom-line') && strip.getAttribute('aria-hidden') === 'true');
+    const rows = [...(strip ? strip.querySelectorAll('.kilo-bottom-line-row') : [])].map(row => norm(row.querySelector('.kilo-bottom-line-chip').textContent) + ' | ' + norm(row.lastElementChild.textContent));
+    const wantRows = ['Answer | The fix is ready, but one check is still missing.', 'Do | Reload the window when your chats can be interrupted.', 'Failed | The live chat box was not checked.', 'Risk | A Kilo update can overwrite the patch.'];
+    check('bottom line rows repeat the reply', rows.length === wantRows.length && rows.every((row, i) => row === wantRows[i]), JSON.stringify(rows));
 
     const host = document.getElementById('stream-host');
     host.innerHTML = '<div data-component="text-part"><div data-component="markdown" id="stream"><p id="s1">First streamed paragraph has a long first sentence. Its detail is dimmed once another block follows it.</p></div></div>';
@@ -89,9 +114,11 @@ code{font:12px ui-monospace,Menlo,monospace;background:#2a2a2a;padding:1px 5px;b
     toggle();
     await frame();
     check('Ctrl+Option+S turns skim mode off', highlight().size === 0 && localStorage.getItem('kilo.skimMode') === 'off', 'size ' + highlight().size);
+    check('skim off clears the bottom line and decision mark', !document.querySelector('.kilo-bottom-line') && !dNext.hasAttribute('data-kilo-decision'));
     toggle();
     await frame();
     check('Ctrl+Option+S turns it back on', highlight().size === total && localStorage.getItem('kilo.skimMode') === 'on', highlight().size + ' vs ' + total);
+    check('skim on restores the bottom line and decision mark', !!document.querySelector('.kilo-bottom-line') && dNext.hasAttribute('data-kilo-decision'));
 
     document.body.classList.add('vscode-high-contrast');
     await frame();

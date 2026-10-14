@@ -118,6 +118,7 @@ try {
     assert.match(worker, new RegExp('^steps: ' + { 'deepseek-implementer': 150, 'glm-investigator': 60, 'luna-utility': 20 }[name] + '$', 'm'));
     assert(worker.includes(process.env.CTO_PONYTAIL_FILE));
   }
+  assert.match(fs.readFileSync(path.join(install, 'agent', 'deepseek-implementer.md'), 'utf8'), /If a tool denies access, stop/);
   const reviewer = fs.readFileSync(path.join(install, 'agent', 'glm-investigator.md'), 'utf8');
   assert.match(reviewer, /background_process: deny/);
   assert.match(reviewer, /the CTO runs executable tests/);

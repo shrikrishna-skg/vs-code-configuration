@@ -70,7 +70,7 @@
       "type": "local",
       "command": ["<ABSOLUTE_PATH_TO_NODE>", "<ABSOLUTE_PATH_TO_TYPESAFE_BRIDGE_MJS>"],
       "enabled": true,
-      "timeout": 5000
+      "timeout": 10000
     },
     "Claude Code Local": {
       "type": "local",

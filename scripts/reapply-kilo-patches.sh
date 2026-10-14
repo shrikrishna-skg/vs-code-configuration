@@ -27,49 +27,58 @@ ensure() {
 
 attempt() {
   local dir local_dir
+  failed=""
   # The custom Kilo build has an independent, fail-closed UI opening patch.
   local_dir=$(ls -d "$extensions"/shrikrishna-skg.kilo-code-local-*/ 2>/dev/null | sort -V | tail -1)
   if [ -n "$local_dir" ]; then
-    ensure agent-manager-manual-open.mjs "${local_dir%/}/dist/extension.js" || return 1
-    ensure native-subagent-ready.mjs "${local_dir%/}/dist/extension.js" || return 1
-    ensure cto-selected-label.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure cto-selected-label.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
-    ensure subagent-default-open.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure subagent-default-open.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
-    ensure todos-both-locations.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure todos-both-locations.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
-    ensure clarify-goal.mjs "${local_dir%/}/dist/extension.js" || return 1
-    ensure clarify-goal.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure clarify-goal.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
-    ensure predict-next.mjs "${local_dir%/}/dist/extension.js" || return 1
-    ensure predict-next.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure skim-mode.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure skim-mode.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
-    ensure composer-orange-actions.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure composer-orange-actions.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
-    ensure composer-orange-actions.mjs "${local_dir%/}/dist/webview.css" || return 1
-    ensure composer-orange-actions.mjs "${local_dir%/}/dist/agent-manager.css" || return 1
-    ensure permission-modes.mjs "${local_dir%/}/dist/extension.js" || return 1
-    ensure permission-modes.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure permission-modes.mjs "${local_dir%/}/dist/agent-manager.js" || return 1
-    ensure permission-modes.mjs "${local_dir%/}/dist/webview.css" || return 1
-    ensure permission-modes.mjs "${local_dir%/}/dist/agent-manager.css" || return 1
-    ensure native-webview-recovery.mjs "${local_dir%/}/dist" || return 1
-    ensure provider-save-message.mjs "${local_dir%/}/dist/webview.js" || return 1
-    ensure chat-font.mjs "${local_dir%/}/dist/webview.css" || return 1
-    ensure chat-font.mjs "${local_dir%/}/dist/agent-manager.css" || return 1
-    ensure composer-chevrons.mjs "${local_dir%/}/dist/webview.css" || return 1
-    ensure composer-chevrons.mjs "${local_dir%/}/dist/agent-manager.css" || return 1
+    ensure agent-manager-manual-open.mjs "${local_dir%/}/dist/extension.js"
+    ensure native-subagent-ready.mjs "${local_dir%/}/dist/extension.js"
+    ensure cto-selected-label.mjs "${local_dir%/}/dist/webview.js"
+    ensure cto-selected-label.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure subagent-default-open.mjs "${local_dir%/}/dist/webview.js"
+    ensure subagent-default-open.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure todos-both-locations.mjs "${local_dir%/}/dist/webview.js"
+    ensure todos-both-locations.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure clarify-goal.mjs "${local_dir%/}/dist/extension.js"
+    ensure clarify-goal.mjs "${local_dir%/}/dist/webview.js"
+    ensure clarify-goal.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure predict-next.mjs "${local_dir%/}/dist/extension.js"
+    ensure predict-next.mjs "${local_dir%/}/dist/webview.js"
+    ensure skim-mode.mjs "${local_dir%/}/dist/webview.js"
+    ensure skim-mode.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure composer-orange-actions.mjs "${local_dir%/}/dist/webview.js"
+    ensure composer-orange-actions.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure composer-orange-actions.mjs "${local_dir%/}/dist/webview.css"
+    ensure composer-orange-actions.mjs "${local_dir%/}/dist/agent-manager.css"
+    ensure chat-effort-isolation.mjs "${local_dir%/}/dist/webview.js"
+    ensure chat-effort-isolation.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure chat-scroll-stability.mjs "${local_dir%/}/dist/webview.js"
+    ensure permission-modes.mjs "${local_dir%/}/dist/extension.js"
+    ensure permission-modes.mjs "${local_dir%/}/dist/webview.js"
+    ensure permission-modes.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure permission-modes.mjs "${local_dir%/}/dist/webview.css"
+    ensure permission-modes.mjs "${local_dir%/}/dist/agent-manager.css"
+    ensure native-webview-recovery.mjs "${local_dir%/}/dist"
+    ensure provider-save-message.mjs "${local_dir%/}/dist/webview.js"
+    ensure chat-font.mjs "${local_dir%/}/dist/webview.css"
+    ensure chat-font.mjs "${local_dir%/}/dist/agent-manager.css"
+    ensure composer-chevrons.mjs "${local_dir%/}/dist/webview.css"
+    ensure composer-chevrons.mjs "${local_dir%/}/dist/agent-manager.css"
     # Needs the Continue quick-action button, which not every build has; a miss is logged, not fatal.
     ensure composer-chevrons.mjs "${local_dir%/}/dist/webview.js"
+    # Session map: button left of ✦ Prompts plus the overlay; host block, call site, CSS.
+    ensure session-map.mjs "${local_dir%/}/dist/extension.js"
+    ensure session-map.mjs "${local_dir%/}/dist/webview.js"
+    ensure session-map.mjs "${local_dir%/}/dist/webview.css"
+    # Footer pin button: appends pinned Prompts-panel prompts to typed messages.
+    ensure pinned-append.mjs "${local_dir%/}/dist/webview.js"
   fi
   dir=$(ls -d "$extensions"/kilocode.kilo-code-*/ 2>/dev/null | sort -V | tail -1)
-  [ -n "$dir" ] || { say "no Kilo extension under $extensions"; return 0; }
+  [ -n "$dir" ] || { say "Custom Kilo patch check finished; no separate marketplace Kilo under $extensions"; [ -z "$failed" ]; return $?; }
   local dist="${dir%/}/dist"
   local wv="$dist/webview.js" ext="$dist/extension.js" am="$dist/agent-manager.js"
   for f in "$wv" "$ext" "$am"; do [ -s "$f" ] || { say "missing $f (still extracting?)"; return 1; }; done
   # Each patch is attempted independently: one failing anchor must not block the others.
-  failed=""
   ensure jev-agent-order.mjs "$wv"
   ensure per-agent-model.mjs "$wv" "$am"
   ensure global-last-agent.mjs "$wv" "$ext" "$am"

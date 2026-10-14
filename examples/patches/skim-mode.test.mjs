@@ -18,7 +18,7 @@ for (const base of [plain, withPredict]) {
   assert.equal(patch(once, true), base, 'restore exact');
   assert.equal(patch(base, true), base, 'restore without patch is a no-op');
 }
-assert.ok(patch(plain).startsWith('top();/* skim-mode-ui:v1 */'), 'before clarify marker');
+assert.ok(patch(plain).startsWith('top();/* skim-mode-ui:v2 */'), 'before clarify marker');
 assert.ok(patch(withPredict).indexOf('/* end skim-mode-ui */\n/* predict-next-ui:v2 */') > 0, 'before predict-next block, which owns the span up to clarify');
 const older = plain.replace('/* clarify-goal-patch:v1 */', '/* skim-mode-ui:v0 */\nOLD();\n/* end skim-mode-ui */\n/* clarify-goal-patch:v1 */');
 assert.equal(patch(older), patch(plain), 'older installed version is replaced');
@@ -56,5 +56,16 @@ const cases = [
   ['', null],
 ];
 for (const [text, expected] of cases) assert.equal(lead(text), expected, text);
+
+// --- decision highlight and bottom-line helpers ---
+const { flagKind, isDecisionHeading, lead: firstSentence } = sandbox.__kiloSkim;
+for (const [label, kind] of [['Risk:', 'warn'], ['Not checked:', 'warn'], ['Failed:', 'bad'], ['Blocked', 'bad'], ['Spacing:', null], ['Riskless:', null]]) assert.equal(flagKind(label), kind, label);
+assert.ok(isDecisionHeading(' Next step ') && isDecisionHeading('Next steps') && !isDecisionHeading('Next'));
+assert.equal(firstSentence(': the live chat box was not checked. It needs a reload of the window first.'), 'The live chat box was not checked.');
+const long = firstSentence('x'.repeat(300));
+assert.ok(long.length === 180 && long.endsWith('…'), 'long rows are capped');
+const inCode = 'npm install. Then step';
+const raw = `Run the ${inCode} in a code span first. After that the checks run again on every file.`;
+assert.equal(firstSentence(raw, raw.replace(inCode, M.repeat(inCode.length))), `Run the ${inCode} in a code span first.`, 'a full stop inside code never ends the row');
 
 console.log(`PASS: skim-mode patch placement/idempotent/upgrade/restore/mismatch and ${cases.length} sentence cases.`);

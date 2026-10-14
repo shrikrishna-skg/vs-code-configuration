@@ -1,12 +1,12 @@
 /* permission-mode-ui:v1 */
 ;(function(){
   const choices=[
-    ['ask','Ask','Keep permission prompts enabled'],
-    ['auto','Auto','Approve ordinary requests; ask to leave the sandbox'],
-    ['full','Full access','Approve tool and sandbox requests for this window'],
+    ['ask','Ask','Review tool approval requests'],
+    ['auto','Auto','Approve tools; ask for outside folders'],
+    ['full','Full access','Approve tools, outside folders and config edits'],
   ];
-  globalThis.__kiloPermissionMenu=function(port,onCleanup){
-    let mode,requestID,pending=false,timer,disposed=false;
+  globalThis.__kiloPermissionMenu=function(port,onCleanup,getSessionID,watch){
+    let mode,sessionID,requestID,pending=false,timer,disposed=false;
     const root=document.createElement('span');root.className='kilo-permission-control';
     const trigger=document.createElement('button');trigger.type='button';trigger.className='kilo-permission-trigger';trigger.disabled=true;
     trigger.innerHTML='<span>Loading…</span><span aria-hidden="true">⌄</span>';
@@ -16,24 +16,28 @@
     const title=document.createElement('div');title.className='kilo-permission-title';title.textContent='Permissions';menu.append(title);
     const buttons=choices.map(([value,label,description])=>{
       const button=document.createElement('button');button.type='button';button.setAttribute('role','menuitemradio');button.dataset.mode=value;button.tabIndex=-1;
-      const symbol=document.createElement('span');symbol.className='kilo-permission-symbol';
-      if(value==='full'){symbol.textContent='⚠';symbol.classList.add('kilo-permission-warning');}
       const text=document.createElement('span'),name=document.createElement('strong'),detail=document.createElement('small'),check=document.createElement('span');
       name.textContent=label;detail.textContent=description;check.textContent='✓';check.className='kilo-permission-check';check.setAttribute('aria-hidden','true');
-      text.append(name,detail);button.append(text,check);if(value==='full')button.insertBefore(symbol,text);button.onclick=()=>select(value);menu.append(button);return button;
+      if(value==='full'){
+        const badge=document.createElementNS('http://www.w3.org/2000/svg','svg');badge.setAttribute('class','kilo-permission-warning');badge.setAttribute('aria-hidden','true');badge.setAttribute('focusable','false');badge.setAttribute('width','12');badge.setAttribute('height','12');badge.setAttribute('viewBox','0 0 24 24');badge.setAttribute('fill','none');badge.setAttribute('stroke','currentColor');badge.setAttribute('stroke-width','2');
+        for(const d of ['M12 3l10 18H2z','M12 10v5M12 18h.01']){const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',d);badge.append(path);}
+        name.append(badge);
+      }
+      text.append(name,detail);button.append(text,check);button.onclick=()=>select(value);menu.append(button);return button;
     });
-    const footer=document.createElement('div');footer.className='kilo-permission-footer';footer.textContent='Shared across Kilo chats in this window. Denied tools and system permissions still apply.';menu.append(footer);
+    const footer=document.createElement('div');footer.className='kilo-permission-footer';footer.textContent='This chat only. Denied tools stay blocked; sandbox escalation and skill-shell consent still ask.';menu.append(footer);
     const error=document.createElement('div');error.className='kilo-permission-error';error.setAttribute('role','alert');error.hidden=true;root.append(error);
     function render(){
       const label=choices.find(x=>x[0]===mode)?.[1]??'Loading…';
       trigger.children[0].textContent=pending?'Changing…':label;trigger.disabled=!mode||pending;
       trigger.dataset.mode=mode??'';trigger.setAttribute('aria-label','Permissions: '+label);trigger.setAttribute('aria-busy',String(pending));
+      trigger.title='Saved for this chat. Other chats keep their own permissions.';
       for(const b of buttons){b.disabled=pending;b.setAttribute('aria-checked',String(b.dataset.mode===mode));}
     }
     function position(){
       if(menu.hidden)return;
       const rect=trigger.getBoundingClientRect(),gap=8;
-      menu.style.width=Math.min(360,window.innerWidth-16)+'px';
+      menu.style.width=Math.min(300,window.innerWidth-16)+'px';
       menu.style.left=Math.max(8,Math.min(rect.right-menu.offsetWidth,window.innerWidth-menu.offsetWidth-8))+'px';
       const top=rect.top-menu.offsetHeight-gap;
       menu.style.top=Math.max(8,top>=8?top:Math.min(rect.bottom+gap,window.innerHeight-menu.offsetHeight-8))+'px';
@@ -44,15 +48,15 @@
     function select(next){
       if(pending||next===mode){close(true);return;}
       pending=true;error.hidden=true;requestID='permission-'+crypto.getRandomValues(new Uint32Array(4)).join('-');render();close(true);
-      timer=setTimeout(()=>{pending=false;requestID=undefined;render();showError('No confirmation received. Reopen Permissions to check the current mode.');port.postMessage({type:'requestAutoApproveState'});},15000);
-      port.postMessage({type:'setPermissionMode',mode:next,requestID});
+      timer=setTimeout(()=>{pending=false;requestID=undefined;render();showError('No confirmation received. Reopen Permissions to check the current mode.');port.postMessage({type:'requestAutoApproveState',sessionID});},15000);
+      port.postMessage({type:'setPermissionMode',mode:next,requestID,sessionID});
     }
     const subscription=port.onMessage(message=>{
       if(disposed)return;
-      if(message.type==='autoApproveState'){
+      if(message.type==='autoApproveState'&&message.sessionID===sessionID){
         mode=['ask','auto','full'].includes(message.mode)?message.mode:(message.active?'auto':'ask');render();
       }
-      if(message.type==='permissionModeResult'&&message.requestID===requestID){
+      if(message.type==='permissionModeResult'&&message.sessionID===sessionID&&message.requestID===requestID){
         clearTimeout(timer);requestID=undefined;pending=false;
         if(message.error)showError(message.error);
         if(['ask','auto','full'].includes(message.mode))mode=message.mode;
@@ -75,7 +79,12 @@
     const scroll=()=>close();
     document.addEventListener('pointerdown',outside);window.addEventListener('resize',position);window.addEventListener('scroll',scroll,true);
     onCleanup(()=>{disposed=true;clearTimeout(timer);subscription?.dispose?.();if(typeof subscription==='function')subscription();document.removeEventListener('pointerdown',outside);window.removeEventListener('resize',position);window.removeEventListener('scroll',scroll,true);menu.remove();});
-    render();port.postMessage({type:'requestAutoApproveState'});return root;
+    function sync(){
+      const next=getSessionID();if(next===sessionID)return;
+      clearTimeout(timer);requestID=undefined;pending=false;mode=undefined;sessionID=next;error.hidden=true;close();render();
+      if(sessionID)port.postMessage({type:'requestAutoApproveState',sessionID});
+    }
+    watch(sync);sync();render();return root;
   };
 })();
 /* end permission-mode-ui */

@@ -1,7 +1,8 @@
 ---
+hidden: true
 description: Astra engineering lead with selective Jev evidence screening. Tiny tasks stay direct; bounded implementation goes to DeepSeek; GLM investigates unknown causes.
 mode: primary
-model: openai/gpt-6-astra-fast
+model: openai/gpt-6-astra-ultrafast
 color: success
 steps: 50
 permission:

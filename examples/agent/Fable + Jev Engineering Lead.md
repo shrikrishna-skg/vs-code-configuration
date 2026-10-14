@@ -1,4 +1,5 @@
 ---
+hidden: true
 description: Fable engineering lead with selective Jev evidence screening. Claude Fable 5.1 High through the authenticated local Claude CLI; uses Kilo workers only when scale or risk justifies the overhead.
 mode: primary
 model: claude-local-cli/fable-5-1-high

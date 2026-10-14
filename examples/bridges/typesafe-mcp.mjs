@@ -61,7 +61,7 @@ export async function readKey() {
   } catch { return ''; }
 }
 
-export async function evaluate(input, { key = '', fetcher = fetch, timeoutMs = 1000, signal } = {}) {
+export async function evaluate(input, { key = '', fetcher = fetch, timeoutMs = 5000, signal } = {}) {
   const started = performance.now();
   const unavailable = reason => ({ status: 'unavailable', reason, fallback: 'lead_judgment', elapsed_ms: Math.round(performance.now() - started) });
   let serialized;

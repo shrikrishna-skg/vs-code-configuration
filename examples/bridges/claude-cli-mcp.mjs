@@ -26,6 +26,18 @@ const profiles = {
     effort: "high",
     description: "Run a complete coding task through the authenticated local Claude CLI using Opus 5.5 with high reasoning effort."
   },
+  sonnet_5_5_medium: {
+    title: "Sonnet 5.5 Medium",
+    model: "claude-sonnet-5-5",
+    effort: "medium",
+    description: "Run a complete coding task through the authenticated local Claude CLI using Sonnet 5.5 with medium reasoning effort."
+  },
+  sonnet_5_5_high: {
+    title: "Sonnet 5.5 High",
+    model: "claude-sonnet-5-5",
+    effort: "high",
+    description: "Run a complete coding task through the authenticated local Claude CLI using Sonnet 5.5 with high reasoning effort."
+  },
   fable_5_1_high: {
     title: "Fable 5.1 High",
     model: "fable",

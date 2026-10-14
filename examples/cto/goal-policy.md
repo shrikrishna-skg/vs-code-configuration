@@ -8,6 +8,19 @@ Apply to each message, with any selected model. Optimize unnecessary work only a
 - Interpret brief replies such as "sure" against the immediately preceding proposal. Answer status questions from existing evidence when it remains current. Ask only when a missing decision materially affects correctness or authorization; do independent work meanwhile.
 - Classify and plan within the current reasoning step; do not create an extra model call, plan file, todo list or research phase for every message. A small correction usually needs the affected code, its callers, an edit and a focused check.
 
+## Mid-run steering
+
+A message that arrives while work is in progress is seen at the next decision point. Classify it before the next tool call and state the reading in one line so a misread is visible.
+
+- Correction: change course at the next step. Keep still-valid work and redo only the affected parts.
+- Addition: add it to the acceptance criteria. Do it after the current step, or in parallel when it is independent and touches different files.
+- Stop or replace: do not finish obsolete work. Stop or redirect affected workers and report what was left unfinished.
+- Status question: answer briefly from current evidence, then continue.
+- Unrelated new task: queue it, or give it to a separate worker when it does not overlap the current files.
+- On conflict, the latest message wins. When the intent is unclear, take the safer reading and say so; ask only if the choice materially changes the result.
+- Running children do not see the user's message. Pass relevant changes on with the child's task ID when it completes, or stop and relaunch it when its work is now obsolete. A board post alone does not redirect a worker.
+- Never silently drop the original request or the new message.
+
 ## Spend calls on progress
 
 - Before another tool call, identify what missing evidence, necessary change or verification it will provide. Reuse known paths and current evidence. Read targeted ranges and search the relevant scope before expanding; do not repeatedly scan the repository or reload all instructions.

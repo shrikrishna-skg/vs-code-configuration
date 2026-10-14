@@ -1,4 +1,5 @@
 ---
+hidden: true
 description: Opus engineering lead with selective Jev evidence screening. Claude Opus 5.5 High through the authenticated local Claude CLI; uses Kilo workers only when scale or risk justifies the overhead.
 mode: primary
 model: claude-local-cli/opus-5-5-high

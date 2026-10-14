@@ -60,6 +60,21 @@ A third native test deliberately denied the GLM child access to `test.mjs`. Exac
 
 No 100% accuracy, exhaustive scenario coverage, or maximum-concurrency stress result is implied.
 
+## Worker regression — October 14, 2026
+
+The installed CTO + JEV profile completed a disposable native-worker pipeline using its configured Claude lead, LithosAI DeepSeek implementer, and LithosAI GLM reviewer. GLM first diagnosed an intentionally broken parser; DeepSeek edited only its assigned module; a fresh GLM worker reviewed the result without writing files or executing tests. The CTO ran the fixed 18-assertion check, then obtained a three-requirement JEV evidence check. An independent post-run check confirmed all assertions, unchanged test/spec files, actual worker model routes, and no direct CTO implementation. The normal run took 82.8 seconds; this is one small synthetic example, not a performance guarantee or maximum-concurrency stress test.
+
+An initial harness mistakenly denied shell/file operations that the normal Auto configuration permits. It was retained as a failed restricted run, then the normal run used the installed permission policy with test-session auto-approval. That restrictive test also exposed repeated attempts after denials. The DeepSeek worker now explicitly stops and returns a blocked handoff after an access denial, without attempting the same write through another tool or command. A separate denied-write check confirmed one failed edit, no alternative write attempts, an unchanged project and an honest blocked report. A rejected status-board post was excluded from the mutation-retry count when correcting the test oracle.
+
+Reproduce with explicit provider-usage consent:
+
+```sh
+node scripts/test-cto-workers-live.mjs --run --report /absolute/path/normal.json
+node scripts/test-cto-workers-live.mjs --run --deny-write --report /absolute/path/blocked.json
+```
+
+These tests keep generated projects and raw test evidence in a temporary directory (or the directory supplied with `--work`). They copy only the required provider credentials into restricted test state and remove that credential file when the run ends. They do not use the shared desktop or change the user's active chats. The denied-write test invokes the real worker profile in a standalone test process; the normal test uses actual native child tasks. Existing Kilo instances may need **Kilo Code: Reload Config and Skills** when idle to load an updated worker prompt.
+
 ## References
 
 Checked against the installed Kilo executable and official [task tool documentation](https://kilo.ai/docs/automate/tools), [custom subagents](https://kilo.ai/docs/customize/custom-subagents), and [Agent Manager workflows](https://kilo.ai/docs/automate/agent-manager-workflows). The native background scheduler starts jobs without the separate service's admission lock. Agent Manager's per-call batch maximum is not a concurrent-worker cap.

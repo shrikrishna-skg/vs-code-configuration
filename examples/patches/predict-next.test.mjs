@@ -21,7 +21,8 @@ assert.equal(patch(extPatched, 'extension.js', true), extBase, 'extension restor
 const webBase = 'aaa;/* clarify-goal-patch:v1 */\n/* clarify-goal-ui:v1 */\n(()=>{})();\n\n"use strict";let x=1,let Be=dBn(p,U,()=>r.isConnected()),Ve=uBn();zzz';
 const webPatched = patch(webBase, 'webview.js');
 assert.notEqual(webPatched, webBase, 'webview patch must change source');
-assert.ok(webPatched.indexOf('/* predict-next-ui:v2 */') >= 0 && webPatched.indexOf('/* predict-next-ui:v2 */') < webPatched.indexOf('/* clarify-goal-patch:v1 */'), 'helper block before clarify marker');
+const uiAt = webPatched.search(/\/\* predict-next-ui:v\d+ \*\//);
+assert.ok(uiAt >= 0 && uiAt < webPatched.indexOf('/* clarify-goal-patch:v1 */'), 'helper block before clarify marker');
 assert.ok(webPatched.includes('globalThis.__kiloNext.attach('), 'call site inserted');
 assert.ok(webPatched.includes('__kiloNextStop.sync()'), 'session-change sync wired');
 assert.equal(patch(webPatched, 'webview.js'), webPatched, 'webview patch idempotent');
@@ -133,6 +134,26 @@ receive({ type: 'sessionStatus', sessionID: 's1', status: 'busy' });
 assert.equal(input.placeholder, 'original');
 result('s1', 'late', sent.at(-1).requestId);
 assert.equal(input.placeholder, 'original', 'late result after a new turn ignored');
+
+// manual generate (the wand button): fresh request, no double request, regenerate, refused while a reply runs
+receive({ type: 'sessionStatus', sessionID: 's1', status: 'idle' });
+const beforeManual = sent.length;
+assert.equal(stop.generate(), true);
+assert.equal(sent.length, beforeManual + 1);
+assert.equal(sent.at(-1).sessionID, 's1');
+assert.equal(stop.generate(), false, 'second click while generating is ignored');
+result('s1', 'manual one');
+assert.equal(input.placeholder, 'manual one');
+assert.equal(stop.generate(), true, 'regenerate allowed once the result arrived');
+assert.equal(input.placeholder, 'original', 'old suggestion hidden while regenerating');
+result('s1', '');
+assert.equal(input.placeholder, 'original', 'empty result shows nothing');
+receive({ type: 'sessionStatus', sessionID: 's1', status: 'busy' });
+assert.equal(stop.generate(), false, 'refused while a reply is running');
+receive({ type: 'sessionStatus', sessionID: 's1', status: 'idle' });
+assert.equal(stop.generate(), true, 'allowed again when idle');
+result('s1', 'after idle');
+assert.equal(input.placeholder, 'after idle');
 
 // dispose restores and unsubscribes
 closed('s1', { eventID: 'e4' });

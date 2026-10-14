@@ -12,7 +12,8 @@ different files. A call that needs another call's result waits for a later turn.
 Put a multi-file change in one `apply_patch` when that tool is available.
 Never claim a tool ran until its result appears in a later TOOL message.
 Final answer: kind `final`, text in `content`, `tool_calls` `[]`.
-Tool calls: kind `tool_call`, empty `content`, `tool_calls` a list of
+Tool calls: kind `tool_call`, `content` one short plain sentence telling the
+user what these calls do and why (shown as progress), `tool_calls` a list of
 `{tool_name, arguments}`, each an available tool with valid arguments.
 
 ## Work like a lazy senior developer

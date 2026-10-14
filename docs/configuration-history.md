@@ -4,6 +4,7 @@ Each dated configuration has a Git tag named `config-YYYY-MM-DD`. Check out a ta
 
 | Date | Tag | Commit | Headline |
 |---|---|---|---|
+| 2026-10-14 | `config-2026-10-14b` | resolve the dated tag | [Session map, pinned prompts, reasoning notes, CTO agents and skills](updates/2026-10-14b.md) |
 | 2026-10-14 | `config-2026-10-14` | resolve the dated tag | [Chat box: closer Continue and Prompts, one centred chevron](updates/2026-10-14.md) |
 | 2026-10-13 | `config-2026-10-13` | resolve the dated tag | [Faster local CLI bridge, skim mode, chat font and predicted next message](updates/2026-10-13.md) |
 | 2026-10-09 | `config-2026-10-09` | resolve the dated tag | [CTO, shared computer control, goal continuity and Clarify goal](updates/2026-10-09.md) |

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Suggest button browser check</title>
+<style>
+body{margin:0;padding:90px 24px 24px;background:#181818;color:#cccccc;font:13px -apple-system,sans-serif}
+.composer{position:relative;max-width:700px}
+.session-map-trigger{position:absolute;left:0;bottom:calc(100% + 6px);font:inherit;font-size:11px;line-height:1.2;padding:5px 9px;border:1px solid #454545;border-radius:6px;background:transparent;color:#cccccc}
+.prompt-suggestion-launcher{position:absolute;right:0;bottom:calc(100% + 6px)}
+.prompt-suggestion-launcher button{font:inherit;font-size:11px;padding:5px 9px;border:1px solid #454545;border-radius:6px;background:transparent;color:#cccccc}
+textarea{width:100%;min-height:60px;background:#1f1f1f;color:#cccccc;border:1px solid #3c3c3c}
+#report{white-space:pre-wrap;font:12px ui-monospace,Menlo,monospace;margin:0 0 50px}
+</style>
+<script src="./predict-next-ui.js"></script>
+</head>
+<body>
+<div id="report">Running checks</div>
+<div class="composer" id="composer">
+  <button class="session-map-trigger" type="button">Session map</button>
+  <div class="prompt-suggestion-launcher"><button type="button">&#10022; Prompts</button></div>
+  <textarea id="input" aria-label="Message" placeholder="Type a message"></textarea>
+</div>
+<script>
+(async () => {
+  const failures = [], passed = [];
+  const check = (name, ok, info = '') => (ok ? passed : failures).push(name + (ok || !info ? '' : ' -> ' + info));
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const input = document.getElementById('input'), replies = ['Yes, deploy it and test Generate.', '', 'Deploy first, then show me the result.'], sent = [];
+  let receive;
+  const stop = __kiloNext.attach({
+    input: () => input, session: () => 's1', apply: value => { input.value = value; },
+    on: fn => { receive = fn; return () => {}; },
+    post: m => { sent.push(m); const text = replies[(sent.length - 1) % replies.length]; setTimeout(() => receive({ type: 'nextPromptResult', sessionID: m.sessionID, requestId: m.requestId, text }), 300); }
+  });
+  try {
+    await wait(50);
+    const button = document.querySelector('.next-suggest-trigger'), map = document.querySelector('.session-map-trigger');
+    check('button is added to the input area', !!button);
+    const b = button.getBoundingClientRect(), m = map.getBoundingClientRect();
+    check('button sits right after Session map', Math.abs(b.left - (m.right + 6)) <= 1 && Math.abs(b.bottom - m.bottom) <= 1, `button ${b.left},${b.bottom} map right ${m.right} bottom ${m.bottom}`);
+    check('button has an accessible name and tooltip', button.getAttribute('aria-label') === 'Suggest next message' && button.title.includes('Ctrl+Option+N'));
+    check('style injected once', document.querySelectorAll('#next-suggest-style').length === 1);
+    button.click();
+    check('click shows the spinner', button.getAttribute('aria-busy') === 'true' && getComputedStyle(button.querySelector('.kns-spin')).display !== 'none');
+    check('click sends one request', sent.length === 1 && sent[0].type === 'requestNextPrompt' && sent[0].sessionID === 's1');
+    button.click();
+    check('second click while generating is ignored', sent.length === 1, 'sent ' + sent.length);
+    await wait(400);
+    check('suggestion shows as grey text', input.placeholder === replies[0], input.placeholder);
+    check('spinner stops', !button.hasAttribute('aria-busy'));
+    button.click();
+    check('regenerate clears the old suggestion', input.placeholder === 'Type a message', input.placeholder);
+    await wait(400);
+    const note = button.querySelector('.next-suggest-note');
+    check('empty result shows "No suggestion"', !!note && note.textContent === 'No suggestion');
+    await wait(2400);
+    check('note disappears', !button.querySelector('.next-suggest-note'));
+    input.focus();
+    dispatchEvent(new KeyboardEvent('keydown', { ctrlKey: true, altKey: true, code: 'KeyN', bubbles: true, cancelable: true }));
+    check('Ctrl+Option+N generates', sent.length === 3, 'sent ' + sent.length);
+    await wait(400);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    check('Tab inserts the suggestion', input.value === replies[2], input.value);
+    input.value = 'my own draft';
+    button.click();
+    await wait(400);
+    check('typed text is never replaced', input.value === 'my own draft', input.value);
+    input.value = '';
+    receive({ type: 'sessionStatus', sessionID: 's1', status: 'busy' });
+    check('disabled while a reply is running', button.disabled === true);
+    button.click();
+    check('disabled click sends nothing', sent.length === 4, 'sent ' + sent.length);
+    receive({ type: 'sessionStatus', sessionID: 's1', status: 'idle' });
+    check('enabled again when idle', button.disabled === false);
+    map.remove();
+    await wait(1100);
+    check('falls back to the left edge without Session map', Math.abs(button.getBoundingClientRect().left - document.getElementById('composer').getBoundingClientRect().left) <= 1);
+    stop();
+    check('dispose removes the button', !document.querySelector('.next-suggest-trigger'));
+  } catch (error) {
+    failures.push('exception: ' + error.message);
+  }
+  window.__result = { pass: failures.length === 0, passed: passed.length, failures };
+  document.getElementById('report').textContent = (failures.length ? 'FAIL\n' + failures.join('\n') : 'PASS') + `\n${passed.length} checks passed`;
+})();
+</script>
+</body>
+</html>

@@ -4,73 +4,65 @@ import path from 'node:path';
 import os from 'node:os';
 import vm from 'node:vm';
 import {createRequire} from 'node:module';
-import {patch,extensionAnchors,uiAnchors,css} from '../examples/patches/permission-modes.mjs';
+import {patch,extensionAnchors,uiAnchors,css,promotionAnchor} from '../examples/patches/permission-modes.mjs';
 const require=createRequire(import.meta.url);
-const {createPermissionController}=require('../examples/patches/permission-modes.cjs');
+const {createPermissionController,createPermissionBridge}=require('../examples/patches/permission-modes.cjs');
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
-const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
-function fixture(enabled=true){
-  let configListener,fail=false,wait;const calls=[],subscriptions=[],errors=[];
-  const event=(id,escape=false)=>({properties:{id,sessionID:'session',metadata:{sandboxEscalation:escape}}});
-  const api={event,calls,errors,get enabled(){return enabled;},fail(){fail=true;},wait(value){wait=value;},
-    external(value){enabled=value;configListener({affectsConfiguration:()=>true});}};
-  api.ctrl=createPermissionController({context:{subscriptions},readActive:()=>enabled,
-    async writeActive(value){if(wait)await wait.promise;if(fail)throw Error('disk full');enabled=value;configListener({affectsConfiguration:()=>true});},
-    onConfiguration(fn){configListener=fn;return{dispose(){}};},registerCommand(){return{dispose(){}};},
-    client:()=>({permission:{list:async()=>({data:[]})}}),directories:()=>[],resolve:()=>'/repo',retry:fn=>fn(),showError:message=>errors.push(message),
-    async replyOnce(client,id,dir,guard){await flush();if(!guard())return false;calls.push({id,dir});return true;}});
-  return api;
+function fixture(saved={}){
+ let enabled=true,fail=false,listener;const calls=[],errors=[],requests=[],storage={...saved};
+ const sdk={session:{get:async({sessionID})=>({data:{parentID:sessionID==='childA'?'A':undefined}})},permission:{list:async()=>({data:requests.slice()})}};
+ const context={subscriptions:[],workspaceState:{get:()=>storage.modes,update:async(_,m)=>{if(fail)throw Error('disk full');storage.modes=structuredClone(m);}}};
+ const ctrl=createPermissionController({context,readActive:()=>enabled,writeActive:()=>{throw Error('A chat must never change the window setting');},onConfiguration:fn=>(listener=fn,{dispose(){}}),registerCommand:()=>({dispose(){}}),client:()=>sdk,directories:()=>['/repo'],resolve:()=>'/repo',retry:fn=>fn(),showError:e=>errors.push(e),replyOnce:async(_,id,dir,guard)=>{await flush();if(!guard())return false;calls.push(id);const index=requests.findIndex(p=>p.id===id);if(index>=0)requests.splice(index,1);return true;}});
+ return{ctrl,storage,calls,requests,fail:()=>fail=true,event:(sessionID,id,extra={})=>({properties:{sessionID,id,...extra}}),external:value=>{enabled=value;listener({affectsConfiguration:()=>true});}};
 }
 {
- const f=fixture();assert.equal(f.ctrl.mode(),'auto');
- assert.equal(await f.ctrl.approve(f.event('normal')),true);
- assert.equal(await f.ctrl.approve(f.event('escape',true)),false);
- await f.ctrl.select('full');assert.equal(f.ctrl.mode(),'full');
- assert.equal(await f.ctrl.approve(f.event('escape',true)),true);
- await f.ctrl.select('ask');assert.equal(f.enabled,false);assert.equal(await f.ctrl.approve(f.event('no')),false);
- await f.ctrl.toggle();assert.equal(f.ctrl.mode(),'auto');
- f.external(false);assert.equal(f.ctrl.mode(),'ask');f.external(true);assert.equal(f.ctrl.mode(),'auto');
- await f.ctrl.select('full');assert.equal(fixture(f.enabled).ctrl.mode(),'auto','Full access must not survive window reload');
- await assert.rejects(f.ctrl.select('everything'),/Unknown/);
- const a=f.ctrl.approve(f.event('duplicate')),b=f.ctrl.approve(f.event('duplicate'));assert.equal(await a,true);assert.equal(await b,true);
- assert.equal(f.calls.filter(x=>x.id==='duplicate').length,1,'Do not reply twice to duplicate events');
- const pending=f.ctrl.approve(f.event('race'));await f.ctrl.select('ask');assert.equal(await pending,false,'Ask cancels pending reply retries');
- const wait=deferred();f.wait(wait);const first=f.ctrl.select('full'),last=f.ctrl.select('ask');wait.resolve();await Promise.all([first,last]);assert.equal(f.ctrl.mode(),'ask','Latest selection wins');
- await f.ctrl.select('full');f.fail();await assert.rejects(f.ctrl.select('ask'),/paused/);assert.equal(f.ctrl.mode(),'ask','Persistence failure must fail closed');
+ const f=fixture({modes:{A:'full',B:'ask',C:'auto'}});
+ for(const [sessionID,id]of [['A','config-restored'],['B','other-chat'],['C','auto-config']])f.requests.push({sessionID,id,permission:'edit',metadata:{configProtected:true}});
+ await Promise.all([f.ctrl.state('A'),f.ctrl.state('A')]);
+ assert.deepEqual(f.calls,['config-restored'],'Reopening a saved Full access chat drains its existing request once');
+ await f.ctrl.state('B');await f.ctrl.state('C');assert.deepEqual(f.calls,['config-restored'],'Other chat modes still govern their own pending requests');
 }
-// Exercise the exact extension adapters with the real controller and mocked VS Code.
 {
- let enabled=true,onConfig,registered;const replies=[];
- const normal={id:'pending',sessionID:'s'},escape={id:'sandbox',sessionID:'s',metadata:{sandboxEscalation:true}};
- const sdk={permission:{list:async()=>({data:[normal,escape]})}};
- const space={getConfiguration:()=>({get:()=>enabled,inspect:()=>({}),update:async(_,value)=>{enabled=value;onConfig({affectsConfiguration:()=>true});}}),onDidChangeConfiguration:fn=>(onConfig=fn,{dispose(){}})};
- const ctx={require:createRequire(path.resolve('examples/patches/test-entry.cjs')),__dirname:path.resolve('examples/patches'),CONFIG2:'kilo-code.new.autoApprove',KEY6:'enabled',
-  vscode84:{workspace:space,commands:{registerCommand:(name,fn)=>(registered=fn,{dispose(){}})},window:{showErrorMessage(){}}},
-  readActive:()=>enabled,target4:()=>1,tryGetClient:()=>sdk,retry:fn=>fn(),replyOnce:async(client,id,dir,guard)=>{if(!guard())return false;replies.push({id,dir});return true;}};
- vm.runInNewContext(extensionAnchors.map(x=>x[1]).join(';'),ctx);
- const ctrl=ctx.registerToggleAutoApprove({subscriptions:[]},{getPermissionDirectory:()=>'/repo'},()=>'/repo',()=>['/repo']);
- const messages=[],pass=[];const bridge=ctx.createAutoApproveBridge(ctrl,m=>messages.push(m),m=>(pass.push(m),m));
- await bridge.handle({type:'webviewReady'});assert.equal(messages.at(-1).mode,'auto');
- await bridge.handle({type:'setPermissionMode',mode:'full',requestID:'1'});await flush();
- assert.equal(messages.at(-1).type,'permissionModeResult');assert.equal(messages.at(-1).mode,'full');
- assert.deepEqual(replies.map(x=>x.id),['pending','sandbox']);
- replies.length=0;await bridge.handle({type:'setPermissionMode',mode:'auto',requestID:'2'});await flush();assert.deepEqual(replies.map(x=>x.id),['pending']);
- await bridge.handle({type:'setPermissionMode',mode:'bad',requestID:'3'});assert.match(messages.at(-1).error,/Unknown/);
- await registered();assert.equal(ctrl.mode(),'ask');bridge.dispose();
- assert.equal(pass.length,1,'Unrelated messages continue to the native handler');
+ const f=fixture();await f.ctrl.state('A');await f.ctrl.state('B');
+ await f.ctrl.select('full','A');await f.ctrl.select('ask','B');
+ assert.equal(f.ctrl.mode('A'),'full');assert.equal(f.ctrl.mode('B'),'ask');
+ assert.equal(await f.ctrl.approve(f.event('A','a')),true);assert.equal(await f.ctrl.approve(f.event('B','b')),false);
+ assert.equal(await f.ctrl.approve(f.event('childA','child')),true,'Unconfigured children inherit only their own parent');
+ await f.ctrl.select('ask','A');assert.equal(await f.ctrl.approve(f.event('childA','child-ask')),false);
+ await f.ctrl.select('full','A');
+ for(const metadata of [{sandboxEscalation:true},{skillShell:true}])assert.equal(await f.ctrl.approve(f.event('A','protected',{metadata})),false);
+ for(const permission of ['external_directory','edit','bash'])assert.equal(await f.ctrl.approve(f.event('A','config-'+permission,{permission,metadata:{configProtected:true,disableAlways:true}})),true,'Full access includes protected config requests');
+ assert.equal(await f.ctrl.approve(f.event('A','escape',{permission:'sandbox_escalation'})),false);
+ assert.equal(await f.ctrl.approve(f.event('A','outside',{permission:'external_directory'})),true);
+ await f.ctrl.select('auto','A');assert.equal(await f.ctrl.approve(f.event('A','outside-auto',{permission:'external_directory'})),false);
+ assert.equal(await f.ctrl.approve(f.event('A','config-auto',{permission:'edit',metadata:{configProtected:true}})),false,'Auto still asks before config edits');
+ const duplicate=f.ctrl.approve(f.event('A','duplicate')),same=f.ctrl.approve(f.event('A','duplicate'));assert.equal(await duplicate,true);assert.equal(await same,true);assert.equal(f.calls.filter(x=>x==='duplicate').length,1);
+ const pending=f.ctrl.approve(f.event('A','cancel'));await f.ctrl.select('ask','A');assert.equal(await pending,false);
+ await f.ctrl.select('auto','A');const unaffected=f.ctrl.approve(f.event('A','unaffected'));await f.ctrl.select('full','B');assert.equal(await unaffected,true,'Other chats do not cancel this chat approval');
+ await Promise.all([f.ctrl.select('full','A'),f.ctrl.select('auto','B')]);assert.equal(f.ctrl.mode('A'),'full');assert.equal(f.ctrl.mode('B'),'auto');
+ f.external(false);assert.equal(f.ctrl.mode('A'),'full');assert.equal(f.ctrl.mode('B'),'auto');assert.equal(await f.ctrl.state('new'),'ask');
+ const reopened=fixture(f.storage);assert.equal(await reopened.ctrl.state('A'),'full');assert.equal(await reopened.ctrl.state('B'),'auto');
+ await f.ctrl.select('full','pending:draft-a');await f.ctrl.promote('draft-a','created');assert.equal(f.ctrl.mode('created'),'full');
+ await f.ctrl.select('ask','existing');await f.ctrl.select('full','pending:draft-b');await f.ctrl.promote('draft-b','existing');assert.equal(f.ctrl.mode('existing'),'ask','Opening an existing chat cannot promote draft permissions over it');
+ await assert.rejects(f.ctrl.select('full'),/chat/);await assert.rejects(f.ctrl.select('bad','A'),/Unknown/);
+ f.fail();await assert.rejects(f.ctrl.select('full','B'),/paused for this chat/);assert.equal(f.ctrl.mode('B'),'ask');assert.equal(f.ctrl.mode('A'),'full');
+}
+{
+ const f=fixture(),a=[],b=[];const one=createPermissionBridge(f.ctrl,m=>a.push(m)),two=createPermissionBridge(f.ctrl,m=>b.push(m));
+ await one.handle({type:'requestAutoApproveState',sessionID:'A'});await two.handle({type:'requestAutoApproveState',sessionID:'B'});
+ await one.handle({type:'setPermissionMode',sessionID:'A',mode:'full',requestID:'1'});await flush();
+ assert.equal(a.at(-1).mode,'full');assert(b.every(m=>m.sessionID==='B'&&m.mode==='auto'));
+ await two.handle({type:'setPermissionMode',sessionID:'B',mode:'ask',requestID:'2'});await flush();assert.equal(f.ctrl.mode('A'),'full');assert.equal(f.ctrl.mode('B'),'ask');
+ one.dispose();two.dispose();
 }
 for(const [kind,source]of Object.entries({
- 'extension.js':extensionAnchors.map(x=>x[0]).join(';'),
+ 'extension.js':extensionAnchors.map(x=>x[0]).join(';')+';'+promotionAnchor,
  ...Object.fromEntries(Object.entries(uiAnchors).map(([kind,a])=>[kind,a.before])),
- 'webview.css':'.prompt-input-container{}', 'agent-manager.css':'.prompt-input-container{}',
+ 'webview.css':'.prompt-input-container{}','agent-manager.css':'.prompt-input-container{}',
 })){
- const changed=patch(source,kind);assert.equal(patch(changed,kind),changed,kind+' idempotence');
- assert.equal(patch(changed,kind,true),source,kind+' surgical restoration');
- assert.throws(()=>patch('unknown',kind),/Unsupported|ambiguous/);
- if(kind.endsWith('.js'))assert.throws(()=>patch(source+source,kind),/ambiguous/);
+ const changed=patch(source,kind);assert.equal(patch(changed,kind),changed,kind+' idempotence');assert.equal(patch(changed,kind,true),source,kind+' restoration');assert.throws(()=>patch('unknown',kind),/Unsupported|ambiguous/);
 }
-assert.throws(()=>patch('.prompt-input-container{}\n'+css+css,'webview.css'),/ambiguous/);
-console.log('Permission modes passed: native adapters, Ask/Auto/Full behavior, escalation distinction, pending approvals, race cancellation, deduplication, failed writes, external changes, window-only Full access, patch restoration and version guards.');
+console.log('Permission modes passed: independent chats, persistence, drafts, children, protected actions, concurrent changes, deduplication and failure isolation.');
 
 if(process.argv.includes('--ui')){
  const runtime=createRequire(path.join(os.homedir(),'.config/shared-computer/runtime/package.json'));
@@ -84,28 +76,41 @@ if(process.argv.includes('--ui')){
    await page.addStyleTag({content:patch(fs.readFileSync(path.join(dist,name+'.css'),'utf8'),name+'.css')});
    await page.addScriptTag({path:path.resolve('examples/patches/permission-mode-ui.js')});
    await page.evaluate(()=>{
-    window.messages=[];window.cleanup=[];window.handlers=[];
+    window.messages=[];window.cleanup=[];window.handlers=[];window.chat='A';window.watchers=[];
     window.emit=m=>window.handlers.forEach(fn=>fn(m));
     const port={onMessage(fn){window.handlers.push(fn);return()=>window.handlers.splice(window.handlers.indexOf(fn),1);},postMessage(m){window.messages.push(m);}};
-    document.querySelector('#composer').append(window.__kiloPermissionMenu(port,fn=>window.cleanup.push(fn)));
-    window.emit({type:'autoApproveState',active:true,mode:'auto'});
+    document.querySelector('#composer').append(window.__kiloPermissionMenu(port,fn=>window.cleanup.push(fn),()=>window.chat,fn=>{window.watchers.push(fn);fn();}));
+    window.emit({type:'autoApproveState',sessionID:window.chat,active:true,mode:'auto'});
    });
+   await page.evaluate(()=>{window.chat='B';window.watchers.forEach(fn=>fn());window.emit({type:'autoApproveState',sessionID:'A',mode:'full'});});
+   assert.equal(await page.getByRole('button',{name:'Permissions: Loading…'}).isDisabled(),true);
+   await page.evaluate(()=>window.emit({type:'autoApproveState',sessionID:'B',mode:'ask'}));
+   await page.getByRole('button',{name:'Permissions: Ask'}).waitFor();
+   await page.evaluate(()=>{window.chat='A';window.watchers.forEach(fn=>fn());window.emit({type:'autoApproveState',sessionID:'A',mode:'auto'});});
    const trigger=page.getByRole('button',{name:'Permissions: Auto'});
    await trigger.click();const menu=page.getByRole('menu',{name:'Permissions'});await menu.waitFor();
    assert.equal(await page.getByRole('menuitemradio',{name:/Auto/}).getAttribute('aria-checked'),'true');
+   assert.equal(await page.locator('.kilo-permission-check').first().evaluate(e=>getComputedStyle(e).color),'rgb(240, 165, 143)','Selection check uses the coral accent');
+   await page.keyboard.press('ArrowUp');await page.keyboard.press('ArrowDown');
+   assert.equal(await page.locator(':focus').evaluate(e=>getComputedStyle(e).outlineColor),'rgb(240, 165, 143)','Keyboard focus uses the coral accent');
+   const badge=await page.locator('.kilo-permission-warning').boundingBox(),label=await page.getByRole('menuitemradio',{name:/Full access/}).locator('strong').boundingBox();
+   assert(badge.y>=label.y&&badge.y+badge.height<=label.y+label.height,'Warning stays inline with Full access');
    await page.screenshot({path:path.join(os.tmpdir(),'kilo-permission-'+name+'.png')});
    await page.keyboard.press('End');assert.match(await page.locator(':focus').textContent(),/Full access/);await page.keyboard.press('Enter');
    assert.equal(await page.getByRole('button',{name:'Permissions: Auto'}).getAttribute('aria-busy'),'true');
    assert.equal(await menu.isVisible(),false);
    assert.equal(await page.evaluate(()=>window.messages.at(-1).mode),'full');
-   await page.evaluate(()=>{const m=window.messages.at(-1);window.emit({type:'permissionModeResult',requestID:m.requestID,mode:'full'});});
-   await page.getByRole('button',{name:'Permissions: Full access'}).click();await page.keyboard.press('Home');await page.keyboard.press('Enter');
-   await page.evaluate(()=>{const m=window.messages.at(-1);window.emit({type:'permissionModeResult',requestID:'stale',mode:'auto'});window.emit({type:'permissionModeResult',requestID:m.requestID,mode:'full',error:'Test save failure'});});
+   await page.evaluate(()=>{const m=window.messages.at(-1);window.emit({type:'permissionModeResult',sessionID:window.chat,requestID:m.requestID,mode:'full'});});
+   await page.getByRole('button',{name:'Permissions: Full access'}).click();
+   await page.screenshot({path:path.join(os.tmpdir(),'kilo-permission-'+name+'-full.png')});
+   await page.keyboard.press('Home');await page.keyboard.press('Enter');
+   await page.evaluate(()=>{const m=window.messages.at(-1);window.emit({type:'permissionModeResult',sessionID:window.chat,requestID:'stale',mode:'auto'});window.emit({type:'permissionModeResult',sessionID:window.chat,requestID:m.requestID,mode:'full',error:'Test save failure'});});
    assert.equal(await page.getByRole('alert').textContent(),'Test save failure');
    const full=page.getByRole('button',{name:'Permissions: Full access'});await full.click();await page.keyboard.press('Escape');assert.equal(await full.getAttribute('aria-expanded'),'false');
    await page.setViewportSize({width:420,height:650});await full.click();const box=await menu.boundingBox();assert(box.x>=0&&box.x+box.width<=420,'Menu fits a narrow viewport');
+   assert(await menu.evaluate(e=>e.scrollWidth<=e.clientWidth),'Descriptions do not overflow the menu');
    await page.mouse.click(3,3);assert.equal(await menu.isVisible(),false);
-   await page.evaluate(()=>window.emit({type:'autoApproveState',active:false,mode:'ask'}));await page.getByRole('button',{name:'Permissions: Ask'}).waitFor();
+   await page.evaluate(()=>window.emit({type:'autoApproveState',sessionID:window.chat,active:false,mode:'ask'}));await page.getByRole('button',{name:'Permissions: Ask'}).waitFor();
    await page.emulateMedia({forcedColors:'active'});assert.equal(await page.getByRole('button',{name:'Permissions: Ask'}).evaluate(e=>getComputedStyle(e).borderTopStyle),'solid');
    await page.evaluate(()=>window.cleanup.forEach(fn=>fn()));assert.equal(await page.evaluate(()=>window.handlers.length),0);assert.equal(await page.getByRole('menu',{name:'Permissions'}).count(),0);
    assert.deepEqual(errors,[]);await page.close();console.log(name+': menu rendering, selection, request acknowledgements, errors, keyboard navigation, outside click, narrow viewport, forced colors and cleanup passed.');

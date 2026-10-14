@@ -1,7 +1,10 @@
 'use strict';
 const assert = require('node:assert');
+// Most checks exercise the GLM fallback: a missing CLI binary fails fast.
+const missingClaude = require('node:path').join(require('node:os').tmpdir(), 'no-such-claude-binary');
+process.env.KILO_PREDICT_CLAUDE = missingClaude;
 process.env.KILO_PREDICT_LOG = require('node:os').devNull;
-const { predict, cancel, contextFrom, clean, instructions } = require('./predict-next.cjs');
+const { predict, cancel, contextFrom, inputFrom, clean, instructions } = require('./predict-next.cjs');
 
 function makeClient(options = {}) {
   const calls = [];
@@ -13,6 +16,7 @@ function makeClient(options = {}) {
     provider: { list: async () => { calls.push('list'); return { data: { all: [{ id: 'lithosai', models }] } }; } },
     session: {
       messages: async () => { calls.push('messages'); return { data: options.messages || [] }; },
+      get: async () => ({ data: { title: 'Fix the suggestion' } }),
       create: async () => { calls.push('create'); return { data: { id: 'tmp-1' } }; },
       prompt: async (args, opts) => {
         calls.push('prompt');
@@ -47,6 +51,23 @@ function makeClient(options = {}) {
   assert.equal(clean('Go ahead.\n\n## My opinion\nFine.'), '');
   assert.equal(clean('- **Go** with B'), 'Go with B');
   assert.ok(instructions.includes('NONE'));
+  // agent voice and Kilo runtime text are never suggested
+  assert.equal(clean('Name the first app you want this in, then I\'ll run the prompt against it'), '');
+  assert.equal(clean('Do you want me to apply it?'), '');
+  assert.equal(clean('Maximum steps for this agent have been reached, so tools are disabled.'), '');
+  assert.equal(clean('Yes, apply it and run the tests.'), 'Yes, apply it and run the tests.');
+
+  // inputFrom(): goal, next step and the user's own recent messages
+  {
+    const users = ['one', 'two', 'three', 'four'].map((t, i) => ({ info: { role: 'user', id: 'u' + i }, parts: [{ type: 'text', text: t }] }));
+    const reply = { info: { role: 'assistant' }, parts: [{ type: 'text', text: '## Answer\n\n- done\n\n## Next step\n\nReload the window.\n' }] };
+    const input = inputFrom([...users, reply], 'Chat title');
+    assert.equal(input.goal, 'Chat title');
+    assert.equal(input.nextStep, 'Reload the window.');
+    assert.deepEqual(input.yourRecentMessages, ['two', 'three', 'four']);
+    assert.equal(inputFrom([reply]).nextStep.length > 0, true);
+    assert.equal(inputFrom([{ info: { role: 'assistant' }, parts: [{ type: 'text', text: 'no sections' }] }]).nextStep, '');
+  }
 
   // 2. contextFrom()
   const ctx = contextFrom([
@@ -77,7 +98,7 @@ function makeClient(options = {}) {
     assert.equal(prompts[0].variant, 'low');
     assert.equal(prompts[0].agent, 'next-message-predictor');
     assert.equal(prompts[0].parts[0].type, 'text');
-    assert.deepEqual(JSON.parse(prompts[0].parts[0].text), { recentChat: [] });
+    assert.deepEqual(JSON.parse(prompts[0].parts[0].text), { goal: 'Fix the suggestion', nextStep: '', yourRecentMessages: [], recentChat: [] });
   }
 
   // cleaned text is applied
@@ -146,6 +167,54 @@ function makeClient(options = {}) {
   {
     const owner = {};
     assert.equal(cancel(owner, 'missing'), false);
+  }
+
+  // feedback: the user's actual next message is logged against the shown prediction
+  {
+    const fs = require('node:fs');
+    const log = require('node:path').join(require('node:os').tmpdir(), `predict-feedback-${process.pid}.log`);
+    process.env.KILO_PREDICT_LOG = log;
+    const messages = [{ info: { role: 'user', id: 'u1' }, parts: [{ type: 'text', text: 'start' }] }];
+    const { client } = makeClient({ messages });
+    await predict(client, { sessionID: 'fb' }, '/tmp', {});
+    await predict(client, { sessionID: 'fb' }, '/tmp', {}); // no new user message: nothing logged
+    messages.push({ info: { role: 'user', id: 'u2' }, parts: [{ type: 'text', text: 'looks good, run the tests.' }] });
+    await predict(client, { sessionID: 'fb' }, '/tmp', {});
+    const feedback = fs.readFileSync(log, 'utf8').trim().split('\n').map(l => JSON.parse(l)).filter(e => e.type === 'feedback');
+    fs.rmSync(log);
+    process.env.KILO_PREDICT_LOG = require('node:os').devNull;
+    assert.equal(feedback.length, 1);
+    assert.equal(feedback[0].predicted, 'Looks good, run the tests.');
+    assert.equal(feedback[0].actual, 'looks good, run the tests.');
+    assert.equal(feedback[0].accepted, true);
+  }
+
+  // Claude CLI path: Haiku at high effort, no tools, input on stdin; no Kilo session is created
+  {
+    const fs = require('node:fs');
+    const dir = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'predict-claude-'));
+    const bin = require('node:path').join(dir, 'claude');
+    fs.writeFileSync(bin, `#!/bin/sh\nprintf '%s\\n' "$@" > "${dir}/args"\ncat > "${dir}/stdin"\necho '{"is_error":false,"result":"Go with B, implement it."}'\n`, { mode: 0o755 });
+    process.env.KILO_PREDICT_CLAUDE = bin;
+    const { client, calls } = makeClient({ messages: [] });
+    const result = await predict(client, { sessionID: 'cli' }, '/tmp', {});
+    assert.equal(result.text, 'Go with B, implement it.');
+    assert.equal(result.model, 'claude-local-cli/claude-haiku-5-5');
+    assert.ok(!calls.includes('create'));
+    const args = fs.readFileSync(`${dir}/args`, 'utf8').split('\n');
+    assert.equal(args[args.indexOf('--model') + 1], 'claude-haiku-5-5');
+    assert.equal(args[args.indexOf('--effort') + 1], 'high');
+    assert.equal(args[args.indexOf('--tools') + 1], '');
+    assert.ok(args.includes('--no-session-persistence') && args.includes('--strict-mcp-config'));
+    assert.equal(JSON.parse(fs.readFileSync(`${dir}/stdin`, 'utf8')).goal, 'Fix the suggestion');
+
+    // a CLI error (for example a usage limit) falls back to GLM through Kilo
+    fs.writeFileSync(bin, `#!/bin/sh\ncat > /dev/null\necho '{"is_error":true,"result":"usage limit reached"}'\n`, { mode: 0o755 });
+    const fallback = await predict(makeClient().client, { sessionID: 'cli' }, '/tmp', {});
+    assert.equal(fallback.model, 'lithosai/zai-org/GLM-5.3-Flash-ultra');
+    assert.equal(fallback.text, 'Looks good, run the tests.');
+    fs.rmSync(dir, { recursive: true });
+    process.env.KILO_PREDICT_CLAUDE = missingClaude;
   }
 
   // missing sessionID rejects
