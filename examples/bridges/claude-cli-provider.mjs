@@ -21,7 +21,7 @@ const MAX_SCHEMA_DESCRIPTION_CHARS = 320;
 // Per backend, so Codex churn never evicts Claude sessions (and vice versa).
 const MAX_SESSIONS_PER_BACKEND = 128;
 const REQUEST_CACHE_MS = 30 * 1000;
-const STATUS_DELAY_MS = 10 * 1000;
+const STATUS_DELAY_MS = 1500;
 // The self-test drives the real request handler, so it must never overwrite the live state.
 const SESSION_STATE_FILE = process.env.CLAUDE_BRIDGE_STATE_FILE || (process.argv.includes("--self-test")
   ? join(tmpdir(), `claude-cli-provider-self-test-${process.pid}.json`)
@@ -50,6 +50,22 @@ const CODEX_CONCURRENCY = Math.min(8, Math.max(1, Number.parseInt(process.env.CO
 // apply_patch has no switch; the read-only sandbox blocks its writes.
 const CODEX_DISABLED_FEATURES = ["shell_tool", "unified_exec", "multi_agent", "apps", "plugins", "browser_use", "computer_use", "image_generation", "view_image"];
 const conversationLocks = new Map();
+// Optional warm mode: one long-lived `claude` process per CLI session, reused
+// across the tool-mode steps of a chat instead of one process per step.
+// CLAUDE_BRIDGE_WARM=0 disables it. The switch is a module-level `let` so the
+// self-test can toggle it.
+let warmEnabled = process.env.CLAUDE_BRIDGE_WARM !== "0";
+// ponytail: a fixed cap of warm processes keyed by CLI session id; an idle one
+// is evicted LRU and a busy-only table falls back to a one-shot run. Upgrade
+// path is sizing the cap from measured memory (about 277MB per live process).
+let warmIdleMs = Number.parseInt(process.env.CLAUDE_BRIDGE_WARM_IDLE_MS, 10);
+if (!Number.isFinite(warmIdleMs) || warmIdleMs < 1) warmIdleMs = 600000;
+let warmMax = Number.parseInt(process.env.CLAUDE_BRIDGE_WARM_MAX, 10);
+if (!Number.isFinite(warmMax) || warmMax < 1) warmMax = 4;
+// key = CLI session id; value = { key, child, signature, cwd, alive, busy, lastUsed, idleTimer, step, pending, stderr }
+const warmProcesses = new Map();
+// Set by shutdown: from then on no process is started or kept warm.
+let shuttingDown = false;
 let stateWrite = Promise.resolve();
 // Codex's limit is kept in memory only: the bridge cannot tell ChatGPT accounts apart without
 // reading ~/.codex/auth.json, and a fresh Codex run re-detects a limit within seconds.
@@ -67,9 +83,13 @@ const toolSystemPrompt = await readFile(TOOL_SYSTEM_PROMPT_FILE, "utf8").catch((
 });
 
 const profiles = {
+  "codex-astra-engineering-lead": { name: "Astra Engineering Lead (ZCode)", model: "gpt-6-astra", effort: "xhigh", zcodeLead: "astra-engineering-lead" },
+  "fable-engineering-lead": { name: "Fable Engineering Lead (ZCode)", model: "fable", effort: "high", zcodeLead: "fable-engineering-lead" },
   "opus-5-5-fast": { name: "Claude Opus 5.5 Fast (Local CLI)", model: "claude-opus-5-5", effort: "low" },
   "opus-5-5-medium": { name: "Claude Opus 5.5 Medium (Local CLI)", model: "claude-opus-5-5", effort: "medium" },
   "opus-5-5-high": { name: "Claude Opus 5.5 High (Local CLI)", model: "claude-opus-5-5", effort: "high" },
+  "sonnet-5-5-medium": { name: "Claude Sonnet 5.5 Medium (Local CLI)", model: "claude-sonnet-5-5", effort: "medium" },
+  "sonnet-5-5-high": { name: "Claude Sonnet 5.5 High (Local CLI)", model: "claude-sonnet-5-5", effort: "high" },
   "fable-5-1-high": { name: "Claude Fable 5.1 High (Local CLI)", model: "fable", effort: "high" },
   "fable-5-1-medium": { name: "Claude Fable 5.1 Medium (Local CLI)", model: "fable", effort: "medium" },
   "fable-5-1-max": { name: "Claude Fable 5.1 Max (Local CLI)", model: "fable", effort: "max" },
@@ -570,9 +590,12 @@ function contentText(content) {
 
 // VS Code's Copilot Chat fetcher always sends X-VSCode-User-Agent-Library-Version
 // and, unless overridden, a GitHubCopilotChat/<version> user agent. Kilo sends
-// neither and shows tok/s itself, so only VS Code gets the footer.
-function wantsThroughputFooter(headers) {
-  return Boolean(headers["x-vscode-user-agent-library-version"]) || /^GitHubCopilotChat\//.test(headers["user-agent"] || "");
+// neither and shows tok/s itself, so it gets no footer. ZCode shows no rate, so
+// its chat turns get one; those stream, while its title and memory side requests
+// do not and must come back as bare text.
+function wantsThroughputFooter(headers, stream = false) {
+  const agent = headers["user-agent"] || "";
+  return Boolean(headers["x-vscode-user-agent-library-version"]) || /^GitHubCopilotChat\//.test(agent) || (Boolean(stream) && /^ZCode\//.test(agent));
 }
 
 // Kilo's footer ("203.9 t/s   3:44 PM · 48s"; "112 t/s" drops ".0"; the gap is three U+00A0), same as openrouter-speed-proxy.mjs.
@@ -1033,6 +1056,9 @@ async function liveClaudeBinary(resolver = resolveClaudeBinary) {
 }
 
 async function runClaude(...args) {
+  // Invariant: never two live processes on one CLI session. A one-shot spawn
+  // retires this session's warm process first and waits for it to exit.
+  if (args[5]?.id) await retireWarm(args[5].id);
   if (args[3].aborted) throw cancellationError();
   await liveClaudeBinary();
   try {
@@ -1046,10 +1072,296 @@ async function runClaude(...args) {
   }
 }
 
-function spawnClaude(profile, prompt, cwd, signal, tools = [], session, imageDirectory = null, onText = null) {
+// Shared by the one-shot and warm step paths so their error/decision/usage
+// handling cannot drift: throws the error the step should reject with, else
+// returns the output the caller resolves with.
+function settlePayloadResult(payload, code, tools, stderr) {
+  if (code !== 0 || payload.is_error) {
+    const error = new Error(payload.result || stderr.trim() || `Claude CLI exited with code ${code}`);
+    error.status = payload.api_error_status || (SUBSCRIPTION_LIMIT.test(error.message) ? 429 : 500);
+    throw error;
+  }
+  if (tools.length) return { decision: parseDecision(payload, tools), usage: normalizeUsage(payload.usage) };
+  return { text: payload.result || "Claude completed the task without a text response.", usage: normalizeUsage(payload.usage) };
+}
+
+function warmSignature(profile, cwd, tools) {
+  return JSON.stringify([profile.model, profile.effort, cwd, toolsCatalogHash(tools)]);
+}
+
+function warmEligible(tools, imageDirectory, onText, onReasoning) {
+  return warmEnabled && !shuttingDown && tools.length > 0 && Boolean(onText || onReasoning) && !imageDirectory;
+}
+
+function warmFallbackError(cause, child) {
+  const error = new Error(`Claude warm process unavailable: ${cause?.message || cause}`);
+  error.warmFallback = true;
+  error.child = child;
+  return error;
+}
+
+function waitForExit(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolveExit) => child.once("close", resolveExit));
+}
+
+function clearWarmTimer(entry) {
+  if (entry.idleTimer) {
+    clearTimeout(entry.idleTimer);
+    entry.idleTimer = null;
+  }
+}
+
+function scheduleWarmIdle(entry) {
+  clearWarmTimer(entry);
+  if (warmProcesses.get(entry.key) !== entry) return;
+  if (shuttingDown) return void retireWarm(entry.key);
+  entry.idleTimer = setTimeout(() => {
+    if (entry.busy || warmProcesses.get(entry.key) !== entry) return;
+    retireWarm(entry.key);
+  }, warmIdleMs);
+  entry.idleTimer.unref?.();
+}
+
+// A session's previous process can still be exiting after it left the table
+// (retire, abort, failed write). A new spawn for that session waits for it, so
+// two processes never share one CLI session. SIGKILL bounds the wait.
+const warmExits = new Map();
+function trackWarmExit(entry) {
+  const hardKill = setTimeout(() => { try { entry.child.kill("SIGKILL"); } catch {} }, 8000);
+  hardKill.unref?.();
+  const exit = waitForExit(entry.child).then(() => {
+    clearTimeout(hardKill);
+    if (warmExits.get(entry.key) === exit) warmExits.delete(entry.key);
+  });
+  warmExits.set(entry.key, exit);
+  return exit;
+}
+
+// Resolves once the session has no live process: retires the one in the table,
+// or waits for one that is already on its way out.
+async function retireWarm(id) {
+  const entry = warmProcesses.get(id);
+  if (!entry) return warmExits.get(id);
+  warmProcesses.delete(id);
+  clearWarmTimer(entry);
+  entry.alive = false;
+  const step = entry.step;
+  entry.step = null;
+  entry.busy = false;
+  if (step) {
+    if (step.forwarded()) step.reject(new Error("Claude warm process retired"));
+    else step.reject(warmFallbackError(new Error("Claude warm process retired"), entry.child));
+  }
+  const exited = trackWarmExit(entry);
+  try { entry.child.stdin.end(); } catch {}
+  const killTimer = setTimeout(() => { try { entry.child.kill("SIGTERM"); } catch {} }, 5000);
+  killTimer.unref?.();
+  await exited;
+  clearTimeout(killTimer);
+}
+
+function failWarmStep(entry, error) {
+  const step = entry.step;
+  if (!step) return;
+  entry.step = null;
+  entry.busy = false;
+  if (step.forwarded()) step.reject(error);
+  else step.reject(warmFallbackError(error, entry.child));
+}
+
+function ingestWarm(entry, text) {
+  entry.pending += text;
+  let newline;
+  while ((newline = entry.pending.indexOf("\n")) >= 0) {
+    const line = entry.pending.slice(0, newline).trim();
+    entry.pending = entry.pending.slice(newline + 1);
+    if (!line.startsWith("{")) continue;
+    let event;
+    try { event = JSON.parse(line); } catch { continue; }
+    const step = entry.step;
+    if (!step) continue;
+    if (event.type === "result") {
+      step.payload = event;
+      step.settle(event);
+      continue;
+    }
+    const delta = event.type === "stream_event" && event.event?.type === "content_block_delta" ? event.event.delta : null;
+    if (delta?.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking && step.onReasoning) {
+      step.onReasoning(delta.thinking);
+      continue;
+    }
+    if (!step.decisionStream || delta?.type !== "input_json_delta" || typeof delta.partial_json !== "string") continue;
+    const piece = step.decisionStream.push(delta.partial_json);
+    if (piece) step.onText(piece);
+  }
+}
+
+function spawnWarm(profile, tools, session, signature, cwd) {
+  const args = [...claudeArgs(profile, tools, session, null, true), "--input-format", "stream-json"];
+  const child = spawn(claudeBinary, args, {
+    cwd,
+    stdio: ["pipe", "pipe", "pipe"],
+    env: cleanClaudeEnvironment(tools.length > 0)
+  });
+  const entry = {
+    key: session.id,
+    child,
+    signature,
+    cwd,
+    alive: true,
+    busy: false,
+    lastUsed: Date.now(),
+    idleTimer: null,
+    step: null,
+    pending: "",
+    stderr: ""
+  };
+  child.stdout.on("data", (chunk) => ingestWarm(entry, chunk.toString("utf8")));
+  // Kept short: the process is long-lived and stderr only labels a failure.
+  child.stderr.on("data", (chunk) => { entry.stderr = (entry.stderr + chunk.toString("utf8")).slice(-4000); });
+  // A write to a dying process reports through the write callback; without a
+  // listener the stream's own EPIPE event would crash the whole bridge.
+  child.stdin.on("error", () => {});
+  child.on("error", (error) => {
+    entry.alive = false;
+    clearWarmTimer(entry);
+    if (warmProcesses.get(entry.key) === entry) warmProcesses.delete(entry.key);
+    failWarmStep(entry, error);
+  });
+  child.on("close", (code) => {
+    entry.alive = false;
+    clearWarmTimer(entry);
+    if (warmProcesses.get(entry.key) === entry) warmProcesses.delete(entry.key);
+    // Retire and abort clear the step first, so one still set here means the
+    // process died on its own or was killed from outside: fail it, never hang.
+    if (entry.step) failWarmStep(entry, new Error(entry.stderr.trim() || `Claude CLI exited with code ${code}`));
+  });
+  warmProcesses.set(session.id, entry);
+  return entry;
+}
+
+// Make room for one more warm process: evict the least recently used idle one.
+// False means every warm process is busy, so the caller runs one-shot instead.
+async function makeWarmRoom() {
+  while (warmProcesses.size >= warmMax) {
+    const idle = [...warmProcesses.entries()].filter(([, entry]) => !entry.busy).sort((left, right) => left[1].lastUsed - right[1].lastUsed)[0];
+    if (!idle) return false;
+    await retireWarm(idle[0]);
+  }
+  return true;
+}
+
+function warmRequest(entry, prompt, tools, signal, onText, onReasoning, mode) {
   return new Promise((resolveResult, reject) => {
     if (signal.aborted) return reject(cancellationError());
-    const args = claudeArgs(profile, tools, session, imageDirectory, Boolean(onText));
+    let forwarded = false;
+    entry.busy = true;
+    entry.lastUsed = Date.now();
+    clearWarmTimer(entry);
+    const step = {
+      decisionStream: onText ? createDecisionStream() : null,
+      payload: null,
+      loaded: false,
+      forwarded: () => forwarded,
+      onText: onText ? (piece) => { forwarded = true; onText(piece); } : null,
+      onReasoning: onReasoning ? (thinking) => { forwarded = true; onReasoning(thinking); } : null,
+      reject: null,
+      settle: null
+    };
+    const finish = (fn) => {
+      if (step.loaded) return;
+      step.loaded = true;
+      signal.removeEventListener("abort", cancel);
+      entry.step = null;
+      entry.busy = false;
+      entry.lastUsed = Date.now();
+      scheduleWarmIdle(entry);
+      fn();
+    };
+    step.reject = (error) => finish(() => reject(error));
+    step.settle = (payload) => finish(() => {
+      let value;
+      try {
+        value = settlePayloadResult(payload, 0, tools, entry.stderr);
+      } catch (error) {
+        // An error result retires the process. An invalid decision does not:
+        // the bridge's one corrective resend goes into this same process.
+        if (payload.is_error) retireWarm(entry.key);
+        return reject(error);
+      }
+      resolveResult({ output: value, mode });
+    });
+    const cancel = () => {
+      entry.alive = false;
+      warmProcesses.delete(entry.key);
+      clearWarmTimer(entry);
+      entry.step = null;
+      entry.busy = false;
+      try { entry.child.kill("SIGTERM"); } catch {}
+      trackWarmExit(entry);
+      finish(() => reject(cancellationError()));
+    };
+    entry.step = step;
+    signal.addEventListener("abort", cancel, { once: true });
+    const line = `${JSON.stringify({ type: "user", message: { role: "user", content: prompt } })}\n`;
+    entry.child.stdin.write(line, (error) => {
+      if (!error) return;
+      if (step.forwarded()) finish(() => reject(new Error(`Claude warm stdin write failed: ${error.message}`)));
+      else {
+        entry.alive = false;
+        warmProcesses.delete(entry.key);
+        try { entry.child.kill("SIGTERM"); } catch {}
+        trackWarmExit(entry);
+        finish(() => reject(warmFallbackError(error, entry.child)));
+      }
+    });
+  });
+}
+
+async function runWarmStep(profile, prompt, cwd, signal, tools, session, signature, onText, onReasoning) {
+  const id = session.id;
+  let entry = warmProcesses.get(id);
+  if (entry && (!entry.alive || entry.busy || entry.signature !== signature)) entry = null;
+  // Retires a stale process, or waits for one that is still exiting.
+  if (!entry) await retireWarm(id);
+  let mode;
+  if (entry) {
+    mode = "reused";
+  } else {
+    if (!(await makeWarmRoom())) return null;
+    // Aborted while waiting: do not start a process for a dead request.
+    if (signal.aborted) throw cancellationError();
+    entry = spawnWarm(profile, tools, session, signature, cwd);
+    mode = "spawned";
+  }
+  return warmRequest(entry, prompt, tools, signal, onText, onReasoning, mode);
+}
+
+// The request handler's Claude step: warm when eligible, else today's one-shot.
+// Returns { output, mode } where mode is "reused" | "spawned" | "off".
+async function runClaudeStep(profile, prompt, cwd, signal, tools, session, imageDirectory, onText, onReasoning) {
+  if (signal.aborted) throw cancellationError();
+  if (!warmEligible(tools, imageDirectory, onText, onReasoning)) {
+    return { output: await runClaude(profile, prompt, cwd, signal, tools, session, imageDirectory, onText, onReasoning), mode: "off" };
+  }
+  await liveClaudeBinary();
+  const signature = warmSignature(profile, cwd, tools);
+  try {
+    const warm = await runWarmStep(profile, prompt, cwd, signal, tools, session, signature, onText, onReasoning);
+    if (warm) return warm;
+  } catch (error) {
+    if (!error?.warmFallback) throw error;
+    await waitForExit(error.child);
+    // Process died before any output: fall through to today's one-shot path.
+  }
+  return { output: await runClaude(profile, prompt, cwd, signal, tools, session, imageDirectory, onText, onReasoning), mode: "off" };
+}
+
+function spawnClaude(profile, prompt, cwd, signal, tools = [], session, imageDirectory = null, onText = null, onReasoning = null) {
+  return new Promise((resolveResult, reject) => {
+    if (signal.aborted) return reject(cancellationError());
+    const args = claudeArgs(profile, tools, session, imageDirectory, Boolean(onText || onReasoning));
     const child = spawn(claudeBinary, args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
@@ -1060,15 +1372,33 @@ function spawnClaude(profile, prompt, cwd, signal, tools = [], session, imageDir
     let stderr = "";
     let pending = "";
     let streamedPayload = null;
+    let settled = false;
+    let exitTimer = null;
     const decisionStream = onText ? createDecisionStream() : null;
+    const cancel = () => child.kill("SIGTERM");
+    signal.addEventListener("abort", cancel, { once: true });
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", cancel);
+      fn();
+    };
+    const settlePayload = (payload, code = 0) => {
+      let value;
+      try {
+        value = settlePayloadResult(payload, code, tools, stderr);
+      } catch (error) {
+        return finish(() => reject(error));
+      }
+      finish(() => resolveResult(value));
+    };
     child.stdin.on("error", (error) => {
-      if (error.code !== "EPIPE") reject(error);
+      if (error.code !== "EPIPE") finish(() => reject(error));
     });
     child.stdin.end(prompt);
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString("utf8");
       stdout += text;
-      if (!decisionStream) return;
       pending += text;
       let newline;
       while ((newline = pending.indexOf("\n")) >= 0) {
@@ -1079,42 +1409,38 @@ function spawnClaude(profile, prompt, cwd, signal, tools = [], session, imageDir
         try { event = JSON.parse(line); } catch { continue; }
         if (event.type === "result") {
           streamedPayload = event;
+          if (!event.is_error || event.result) {
+            exitTimer = setTimeout(() => child.kill("SIGTERM"), 5000);
+            exitTimer.unref?.();
+            settlePayload(event, 0);
+          }
           continue;
         }
         const delta = event.type === "stream_event" && event.event?.type === "content_block_delta" ? event.event.delta : null;
-        if (delta?.type !== "input_json_delta" || typeof delta.partial_json !== "string") continue;
+        if (delta?.type === "thinking_delta" && typeof delta.thinking === "string" && delta.thinking && onReasoning) {
+          onReasoning(delta.thinking);
+          continue;
+        }
+        if (!decisionStream || delta?.type !== "input_json_delta" || typeof delta.partial_json !== "string") continue;
         const piece = decisionStream.push(delta.partial_json);
         if (piece) onText(piece);
       }
     });
     child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
-    child.on("error", reject);
-    const cancel = () => child.kill("SIGTERM");
-    signal.addEventListener("abort", cancel, { once: true });
+    child.on("error", (error) => finish(() => reject(error)));
     child.on("close", (code, stoppedBy) => {
-      signal.removeEventListener("abort", cancel);
-      if (stoppedBy || signal.aborted) return reject(cancellationError());
+      clearTimeout(exitTimer);
+      if (settled) return;
+      if (stoppedBy || signal.aborted) return finish(() => reject(cancellationError()));
       let payload = streamedPayload;
       if (!payload) {
         try {
           payload = JSON.parse(stdout);
         } catch {
-          return reject(new Error(stderr.trim() || stdout.trim() || `Claude CLI exited with code ${code}`));
+          return finish(() => reject(new Error(stderr.trim() || stdout.trim() || `Claude CLI exited with code ${code}`)));
         }
       }
-      if (code !== 0 || payload.is_error) {
-        const error = new Error(payload.result || stderr.trim() || `Claude CLI exited with code ${code}`);
-        error.status = payload.api_error_status || (SUBSCRIPTION_LIMIT.test(error.message) ? 429 : 500);
-        return reject(error);
-      }
-      if (tools.length) {
-        try {
-          return resolveResult({ decision: parseDecision(payload, tools), usage: normalizeUsage(payload.usage) });
-        } catch (error) {
-          return reject(error);
-        }
-      }
-      resolveResult({ text: payload.result || "Claude completed the task without a text response.", usage: normalizeUsage(payload.usage) });
+      settlePayload(payload, code);
     });
   });
 }
@@ -1202,6 +1528,17 @@ const server = createServer(async (request, response) => {
       sessionReuse: true,
       sessions: claudeSessions.length,
       limitedUntil: cachedSubscriptionError()?.until?.toISOString() || null,
+      warm: {
+        enabled: warmEnabled,
+        limit: warmMax,
+        idleMs: warmIdleMs,
+        processes: [...warmProcesses.values()].map((entry) => ({
+          pid: entry.child.pid,
+          cwd: entry.cwd,
+          busy: entry.busy,
+          idleForMs: Date.now() - entry.lastUsed
+        }))
+      },
       codex: {
         concurrency: { limit: CODEX_CONCURRENCY, active: codexPool.active, queued: codexPool.waiters.length },
         limitedUntil: cachedSubscriptionError("codex")?.until?.toISOString() || null
@@ -1248,8 +1585,9 @@ const server = createServer(async (request, response) => {
       userAgent: request.headers["user-agent"] || null,
       metadataKeys: body.metadata && typeof body.metadata === "object" ? Object.keys(body.metadata).sort() : []
     })}\n`);
-    const profile = profiles[body.model];
+    const profile = zcodeEffort(profiles[body.model], body.reasoning_effort);
     if (!profile) return sendJson(response, 400, { error: { message: `Unknown local Claude profile: ${body.model}` } });
+    body.messages = await zcodeLeadMessages(body.messages, profile);
     const backend = backendOf(body.model);
     const codex = backend === "codex";
     const tools = Array.isArray(body.tools) ? body.tools.filter((tool) => tool?.type === "function") : [];
@@ -1291,24 +1629,43 @@ const server = createServer(async (request, response) => {
       const unseenMessages = matched ? Math.max(0, hashes.length - matched.start) : hashes.length;
       let attachments = { directory: null, files: [] };
       let prompt = "";
+      let firstReasoningAt = 0;
+      let statusSent = false;
       const onText = writer ? (text) => {
         firstOutputAt ||= Date.now();
+        clearTimeout(status);
         writer.content(text);
+      } : null;
+      const onReasoning = writer ? (thinking) => {
+        firstReasoningAt ||= Date.now();
+        clearTimeout(status);
+        writer.chunk({ reasoning_content: statusSent ? `\n\n${thinking}` : thinking });
+        statusSent = false;
       } : null;
       // One reasoning delta so a long step is not a silent spinner. Delayed so
       // quick failures (subscription limit) still get a plain HTTP error; Kilo
       // keeps it as reasoning_content, which the transcript never forwards.
       const status = writer && setTimeout(() => {
-        if (!firstOutputAt) writer.chunk({ reasoning_content: `${profile.name.replace(/ \(.*/, "")} is working...` });
+        if (!firstOutputAt && !firstReasoningAt) {
+          statusSent = true;
+          firstReasoningAt = Date.now();
+          writer.chunk({ reasoning_content: `${profile.name.replace(/ \(.*/, "")} is working...` });
+        }
       }, STATUS_DELAY_MS);
       const catalogHash = toolsCatalogHash(tools);
       let resumed = Boolean(matched);
       // The catalog only has to be described once per CLI session.
       let knownCatalog = resumed && catalogHash && session.toolsHash === catalogHash ? catalogHash : "";
       // A new Codex thread gets its id from Codex; session.id is replaced once it runs.
-      const run = (text, target) => codex
-        ? runCodex(profile, text, cwd, controller.signal, tools, target, attachments.files)
-        : runClaude(profile, text, cwd, controller.signal, tools, target, attachments.directory, onText);
+      // warmField reports how the step that produced the output ran: a reused
+      // warm process, a freshly spawned one, or the one-shot path.
+      let warmField = "off";
+      const run = async (text, target) => {
+        if (codex) return runCodex(profile, text, cwd, controller.signal, tools, target, attachments.files);
+        const step = await runClaudeStep(profile, text, cwd, controller.signal, tools, target, attachments.directory, onText, onReasoning);
+        warmField = step.mode;
+        return step.output;
+      };
       try {
         attachments = await materializeImageAttachments(deltaMessages);
         prompt = tools.length ? kiloToolPrompt(deltaMessages, tools, attachments.files, knownCatalog, codex) : conversationPrompt(deltaMessages, attachments.files, codex);
@@ -1357,7 +1714,8 @@ const server = createServer(async (request, response) => {
           imageFiles: attachments.files.length,
           promptChars: prompt.length,
           // First streamed delta, else the finished result (sent right after this line).
-          ttftMs: (firstOutputAt || Date.now()) - startedAt
+          ttftMs: (firstOutputAt || Date.now()) - startedAt,
+          warm: warmField
         })}\n`);
         return output;
       } catch (error) {
@@ -1371,7 +1729,7 @@ const server = createServer(async (request, response) => {
       }
     }
     const elapsedMs = result.elapsedMs ?? Date.now() - startedAt;
-    const footer = wantsThroughputFooter(request.headers) ? `\n\n${throughputFooter(result.usage?.completion_tokens ?? 0, elapsedMs, elapsedMs)}` : "";
+    const footer = wantsThroughputFooter(request.headers, body.stream) ? `\n\n${throughputFooter(result.usage?.completion_tokens ?? 0, elapsedMs, elapsedMs)}` : "";
     if (body.stream) return streamCompletion(writer || createStreamWriter(response, id, body.model), result, footer);
     if (result.decision?.kind === "tool_call") {
       return sendJson(response, 200, {
@@ -1405,10 +1763,24 @@ const server = createServer(async (request, response) => {
 });
 
 function shutdown() {
+  // Idle warm processes end now. A busy one finishes its step first, as
+  // one-shot runs always have, and scheduleWarmIdle then retires it.
+  shuttingDown = true;
+  for (const entry of [...warmProcesses.values()]) if (!entry.busy) retireWarm(entry.key);
   server.close(() => process.exit(0));
 }
 
 if (process.argv.includes("--self-test")) {
+  // The existing stub CLIs read stdin to EOF (`cat`), which would hang under
+  // warm mode. Keep every existing assertion byte-for-byte by running them with
+  // warm mode off; the warm tests below re-enable it.
+  warmEnabled = false;
+  const leadInput = [{role:"user",content:"test"}];
+  if (await zcodeLeadMessages(leadInput, profiles["fable-5-1-high"]) !== leadInput) throw Error("Standalone profile was changed");
+  for (const id of ["codex-astra-engineering-lead","fable-engineering-lead"]) {
+    const messages = await zcodeLeadMessages(leadInput, profiles[id], async () => "---\nname: test\n---\nLead policy");
+    if (messages.length !== 2 || messages[0].role !== "system" || !messages[0].content.includes("Lead policy") || messages[1] !== leadInput[0]) throw Error("Lead policy binding failed");
+  }
   const embeddedImage = `data:image/png;base64,${"A".repeat(2 * 1024 * 1024)}`;
   const compactedImage = contentText([{ type: "image_url", image_url: { url: embeddedImage } }]);
   if (compactedImage.length > 512 || compactedImage.includes("AAAA")) {
@@ -1625,7 +1997,8 @@ if (process.argv.includes("--self-test")) {
     throw new Error("The throughput footer no longer matches Kilo's format");
   }
   if (!wantsThroughputFooter({ "user-agent": "GitHubCopilotChat/0.67.0", "x-vscode-user-agent-library-version": "electron-fetch" }) || !wantsThroughputFooter({ "x-vscode-user-agent-library-version": "node-http" })
-    || wantsThroughputFooter({ "user-agent": "ai-sdk/openai-compatible/1.0.0 runtime/bun/1.3.0" }) || wantsThroughputFooter({ "user-agent": "Kilo-Code/7.7.7" }) || wantsThroughputFooter({})) {
+    || wantsThroughputFooter({ "user-agent": "ai-sdk/openai-compatible/1.0.0 runtime/bun/1.3.0" }) || wantsThroughputFooter({ "user-agent": "Kilo-Code/7.7.7" }) || wantsThroughputFooter({ "user-agent": "Kilo-Code/7.8.1 ai-sdk/provider-utils/4.0.27 runtime/bun/1.3.14" }, true) || wantsThroughputFooter({})
+    || !wantsThroughputFooter({ "user-agent": "ZCode/3.14.4 ai-sdk/provider-utils/4.0.39 runtime/node.js/24" }, true) || wantsThroughputFooter({ "user-agent": "ZCode/3.14.4 ai/6.0.193 ai-sdk/provider-utils/4.0.39 runtime/node.js/24" }, false)) {
     throw new Error("The VS Code / Kilo client discriminator is wrong");
   }
   const sse = () => ({ headersSent: false, writeHead() { this.headersSent = true; }, write(body) { this.body = (this.body || "") + body; }, end(body) { this.body += body; } });
@@ -1823,7 +2196,7 @@ if (process.argv.includes("--self-test")) {
 
   // Codex backend: routing, argv, strict schema, JSONL parsing, limits, pools.
   const codexIds = Object.keys(profiles).filter((id) => backendOf(id) === "codex");
-  if (codexIds.join() !== "codex-gpt-6-astra-high,codex-gpt-6-astra-xhigh,codex-gpt-6-sol-high,codex-gpt-6-luna-medium,codex-gpt-5.6-sol-high,codex-gpt-5.6-terra-high,codex-gpt-5.6-luna-medium"
+  if (backendOf("fable-engineering-lead") !== "claude" || codexIds.join() !== "codex-astra-engineering-lead,codex-gpt-6-astra-high,codex-gpt-6-astra-xhigh,codex-gpt-6-sol-high,codex-gpt-6-luna-medium,codex-gpt-5.6-sol-high,codex-gpt-5.6-terra-high,codex-gpt-5.6-luna-medium"
     || backendOf("fable-5-1-high") !== "claude" || backendOf("opus-5-5-fast") !== "claude" || backendOf(undefined) !== "claude") {
     throw new Error("Model ids are not routed to Codex by the codex- prefix");
   }
@@ -1969,6 +2342,22 @@ if (process.argv.includes("--self-test")) {
     if (failure !== "Claude CLI did not return a valid Kilo decision" || (await stubFile("count")).trim() !== "2") {
       throw new Error(`A second invalid Kilo decision did not fail with the original error after one retry: ${failure}`);
     }
+    await writeFile(join(retryStub, "claude"), `#!/bin/sh\ncat >/dev/null\ncat "${retryStub}/stream"\nsleep 0.4\n`, { mode: 0o755 });
+    const thinkingStream = [
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "plan " } } },
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "" } } },
+      { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "now" } } },
+      { type: "result", structured_output: { kind: "final", content: "fast", tool_calls: [] }, usage: { output_tokens: 2 } }
+    ].map((event) => JSON.stringify(event)).join("\n") + "\n";
+    await writeFile(join(retryStub, "stream"), thinkingStream);
+    const tFast = performance.now();
+    const fastChunks = (await ask("third task")).split("\n\n").filter((line) => line.startsWith("data: {")).map((line) => JSON.parse(line.slice(6)).choices[0].delta);
+    const fastElapsed = performance.now() - tFast;
+    const reasoningText = fastChunks.map((delta) => delta.reasoning_content || "").join("");
+    const answerText = fastChunks.map((delta) => delta.content || "").join("");
+    if (reasoningText !== "plan now" || answerText !== "fast" || fastElapsed >= 350) {
+      throw new Error(`Streaming thinking_delta or early result resolution failed: reasoning=${JSON.stringify(reasoningText)} answer=${JSON.stringify(answerText)} elapsedMs=${Math.round(fastElapsed)}`);
+    }
   } finally {
     if (server.listening) {
       server.closeAllConnections();
@@ -1979,6 +2368,158 @@ if (process.argv.includes("--self-test")) {
     await stateWrite;
     await rm(SESSION_STATE_FILE, { force: true });
     await rm(retryStub, { recursive: true, force: true });
+  }
+  // Warm mode: one long-lived `claude` process reused across a conversation's
+  // tool-mode steps. The stub loops over stdin lines (one result per line)
+  // rather than reading to EOF, and records one line per spawn.
+  warmEnabled = true;
+  warmIdleMs = 600000;
+  warmMax = 4;
+  const warmStubDir = await mkdtemp(join(tmpdir(), "claude-warm-stub-"));
+  const warmStubSource = [
+    `#!${process.execPath}`,
+    `const fs = require("node:fs");`,
+    `const readline = require("node:readline");`,
+    `const dir = process.env.WARM_STUB_DIR;`,
+    `const mode = process.env.WARM_STUB_MODE || "";`,
+    `fs.appendFileSync(dir + "/spawns", process.pid + " " + process.argv.slice(2).join(" ").replace(/\\n/g, " ") + "\\n");`,
+    `const rl = readline.createInterface({ input: process.stdin });`,
+    `let n = 0;`,
+    `rl.on("line", () => {`,
+    `  n += 1;`,
+    `  if (mode === "hang" || (mode === "exitAfterFirst" && n > 1)) return;`,
+    `  const file = dir + "/replies";`,
+    `  const seq = Number(fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "0") + 1;`,
+    `  fs.writeFileSync(file, String(seq));`,
+    `  process.stdout.write(JSON.stringify({ type: "result", structured_output: { kind: "final", content: "reply-" + seq, tool_calls: [] }, usage: { output_tokens: 1 } }) + "\\n");`,
+    `  if (mode === "exitAfterFirst") setTimeout(() => process.exit(0), 150);`,
+    `});`
+  ].join("\n") + "\n";
+  process.env.WARM_STUB_DIR = warmStubDir;
+  delete process.env.WARM_STUB_MODE;
+  claudeBinary = join(warmStubDir, "claude");
+  const warmSession = () => ({ id: randomUUID(), resume: false });
+  const warmAnswer = (session, tools, text, resume = false) => {
+    session.resume = resume;
+    return runClaudeStep(profiles["fable-5-1-high"], text, warmStubDir, new AbortController().signal, tools, session, null, () => {}, null);
+  };
+  const warmSpawns = async () => (await readFile(join(warmStubDir, "spawns"), "utf8").catch(() => "")).split("\n").filter((line) => line.trim());
+  const resetWarmStub = async () => {
+    await rm(join(warmStubDir, "spawns"), { force: true });
+    await rm(join(warmStubDir, "replies"), { force: true });
+  };
+  try {
+    await writeFile(claudeBinary, warmStubSource, { mode: 0o755 });
+
+    // (a) Two consecutive steps of one conversation use ONE spawn and both answers are right.
+    await resetWarmStub();
+    delete process.env.WARM_STUB_MODE;
+    const sessionA = warmSession();
+    const firstA = await warmAnswer(sessionA, decisionTools, "step one");
+    const secondA = await warmAnswer(sessionA, decisionTools, "step two", true);
+    if (firstA.output.decision.content !== "reply-1" || secondA.output.decision.content !== "reply-2"
+      || firstA.mode !== "spawned" || secondA.mode !== "reused" || (await warmSpawns()).length !== 1) {
+      throw new Error(`Two warm steps of one conversation did not reuse one process: ${firstA.mode}/${secondA.mode} spawns=${(await warmSpawns()).length}`);
+    }
+    await retireWarm(sessionA.id);
+
+    // (b) A stub that exits after its first reply makes the next step fall back
+    // to a one-shot `--resume` and still succeed.
+    await resetWarmStub();
+    process.env.WARM_STUB_MODE = "exitAfterFirst";
+    const sessionB = warmSession();
+    const firstB = await warmAnswer(sessionB, decisionTools, "b one");
+    const secondB = await warmAnswer(sessionB, decisionTools, "b two", true);
+    const spawnLinesB = await warmSpawns();
+    const fallbackLine = spawnLinesB[1] || "";
+    delete process.env.WARM_STUB_MODE;
+    if (firstB.output.decision.content !== "reply-1" || secondB.output.decision.content !== "reply-2" || secondB.mode !== "off"
+      || spawnLinesB.length !== 2 || !spawnLinesB[0].includes("--input-format") || !fallbackLine.includes("--resume") || !fallbackLine.includes(sessionB.id)) {
+      throw new Error(`A dead warm process did not fall back to a one-shot --resume: ${JSON.stringify({ firstB: firstB.output.decision.content, secondB: secondB.output.decision.content, mode: secondB.mode, spawns: spawnLinesB.length, fallbackLine })}`);
+    }
+
+    // (c) A changed tool catalog causes a respawn and the old process ends.
+    await resetWarmStub();
+    const sessionC = warmSession();
+    await warmAnswer(sessionC, decisionTools, "c one");
+    const firstChildC = warmProcesses.get(sessionC.id)?.child;
+    const otherTools = [...decisionTools, { type: "function", function: { name: "write", parameters: { type: "object" } } }];
+    const secondC = await warmAnswer(sessionC, otherTools, "c two", true);
+    const spawnLinesC = await warmSpawns();
+    if (secondC.mode !== "spawned" || spawnLinesC.length !== 2 || !firstChildC || firstChildC.exitCode === null) {
+      throw new Error(`A changed tool catalog did not respawn and end the old process: mode=${secondC.mode} spawns=${spawnLinesC.length} oldExit=${firstChildC?.exitCode}`);
+    }
+    await retireWarm(sessionC.id);
+
+    // (d) A short idle timeout ends the process.
+    await resetWarmStub();
+    const savedIdle = warmIdleMs;
+    warmIdleMs = 40;
+    const sessionD = warmSession();
+    await warmAnswer(sessionD, decisionTools, "d one");
+    const idleChild = warmProcesses.get(sessionD.id)?.child;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+    const idleExited = idleChild && await Promise.race([waitForExit(idleChild).then(() => true), new Promise((resolveWait) => setTimeout(() => resolveWait(false), 3000).unref())]);
+    const gone = warmProcesses.get(sessionD.id) === undefined && idleExited;
+    warmIdleMs = savedIdle;
+    if (!gone) throw new Error("A warm process outlived its idle timeout");
+
+    // (g) A warm process killed from outside mid-step must not hang the step:
+    // nothing was forwarded yet, so it falls back to a one-shot run.
+    await resetWarmStub();
+    process.env.WARM_STUB_MODE = "hang";
+    const sessionG = warmSession();
+    const hung = warmAnswer(sessionG, decisionTools, "g one").then((step) => step.mode, (error) => `error: ${error.message}`);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 150));
+    delete process.env.WARM_STUB_MODE;
+    warmProcesses.get(sessionG.id)?.child.kill("SIGTERM");
+    let hangTimer;
+    const outcome = await Promise.race([hung, new Promise((resolveWait) => { hangTimer = setTimeout(() => resolveWait("hung"), 3000); })]);
+    clearTimeout(hangTimer);
+    if (outcome !== "off") throw new Error(`A warm process killed mid-step did not fall back to a one-shot run: ${outcome}`);
+
+    // (e) With warm mode off the one-shot path is used, one process per step.
+    await resetWarmStub();
+    warmEnabled = false;
+    const sessionE = warmSession();
+    const firstE = await warmAnswer(sessionE, decisionTools, "e one");
+    const secondE = await warmAnswer(sessionE, decisionTools, "e two", true);
+    const spawnLinesE = await warmSpawns();
+    warmEnabled = true;
+    if (firstE.mode !== "off" || secondE.mode !== "off" || spawnLinesE.length !== 2 || spawnLinesE.some((line) => line.includes("--input-format"))) {
+      throw new Error(`Warm mode off did not use one-shot per step: ${firstE.mode}/${secondE.mode} spawns=${spawnLinesE.length}`);
+    }
+
+    // (f) /health reports the warm shape above.
+    await resetWarmStub();
+    await new Promise((ready) => server.listen(0, HOST, ready));
+    try {
+      const healthUrl = `http://${HOST}:${server.address().port}/health`;
+      const emptyWarm = (await fetch(healthUrl).then((reply) => reply.json())).warm;
+      const sessionF = warmSession();
+      await warmAnswer(sessionF, decisionTools, "f one");
+      const liveWarm = (await fetch(healthUrl).then((reply) => reply.json())).warm;
+      const process = liveWarm?.processes?.find((entry) => typeof entry.pid === "number" && typeof entry.cwd === "string" && typeof entry.busy === "boolean" && typeof entry.idleForMs === "number");
+      if (!emptyWarm || typeof emptyWarm.enabled !== "boolean" || typeof emptyWarm.limit !== "number" || typeof emptyWarm.idleMs !== "number" || !Array.isArray(emptyWarm.processes)
+        || emptyWarm.limit !== warmMax || emptyWarm.idleMs !== warmIdleMs || !process || process.cwd !== warmStubDir || process.busy !== false) {
+        throw new Error(`/health does not report the warm shape: ${JSON.stringify(liveWarm)}`);
+      }
+      await retireWarm(sessionF.id);
+    } finally {
+      if (server.listening) {
+        server.closeAllConnections();
+        server.close();
+      }
+    }
+  } finally {
+    delete process.env.WARM_STUB_DIR;
+    delete process.env.WARM_STUB_MODE;
+    for (const id of [...warmProcesses.keys()]) await retireWarm(id);
+    warmEnabled = false;
+    warmIdleMs = 600000;
+    warmMax = 4;
+    claudeBinary = null;
+    await rm(warmStubDir, { recursive: true, force: true });
   }
   process.stdout.write("Claude prompt compaction self-test passed.\n");
 } else {
@@ -1995,4 +2536,26 @@ if (process.argv.includes("--self-test")) {
   });
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+}
+
+/* zcode-engineering-leads-v2 */
+async function zcodeLeadMessages(messages, profile, read = readFile) {
+  if (!profile.zcodeLead) return messages;
+  if (!Array.isArray(messages)) throw Error("Lead requests require a messages array");
+  const [lead, policy, style] = await Promise.all([
+    read(resolve(homedir(), ".zcode/agents", profile.zcodeLead + ".md"), "utf8"),
+    read(resolve(homedir(), ".config/ponytail/AGENTS.md"), "utf8"),
+    read(resolve(homedir(), ".config/kilo/chat-response-style.md"), "utf8")
+  ]);
+  const content = lead.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "") + "\n\n" + policy + "\n\n" + style +
+    "\nYou are the selected primary engineering lead and own this chat end to end. Work directly on ordinary questions and small fixes. When independent workstreams justify delegation, use only the available ZCode client subagent tool with deepseek-implementer or glm-investigator. Forward the complete coding policy, English response requirement, task scope, and verification requirements to each worker. Never call another primary lead. The local CLI process must not execute its own tools or background agents. Preserve the user's permissions and review worker evidence before reporting success.";
+  return [{role:"system",content},...messages];
+}
+
+function zcodeEffort(profile, effort) {
+  if (!profile || effort === undefined) return profile;
+  const levels = profile.model === 'fable' ? ['medium', 'high', 'max'] : profile.model === 'gpt-6-astra' ? ['high', 'xhigh'] : [];
+  if (!levels.length) return profile;
+  if (!levels.includes(effort)) throw Error('Unsupported reasoning effort');
+  return { ...profile, effort };
 }

@@ -39,6 +39,9 @@ This inventory records what was active on the audited machine on 2026-09-19 and 
 | Claude Code Peekaboo browser deny | `claude-code/config/settings.json` | `permissions.deny` includes `mcp__peekaboo__browser` |
 | Peekaboo guard for all tabs | `examples/patches/check-peekaboo-mcp.mjs` | Identical to the live copy; covers Kilo, VS Code, Claude Code and Codex |
 | Kilo bundle patches and auto re-apply | `examples/patches/{jev-agent-order,per-agent-model,global-last-agent,active-tab-blue,model-favorites}.mjs`, `scripts/reapply-kilo-patches.sh` | Agent patches target 7.7.x; `active-tab-blue` and `model-favorites` target 7.8.1; LaunchAgent `ai.kilo.reapply-patches` |
+| Chat reading and composer patches | `examples/patches/{skim-mode,chat-font,predict-next,provider-save-message}.mjs` with their helpers and tests | Identical to the live copies; target the local Kilo build 7.8.2; applied by `scripts/reapply-kilo-patches.sh`. See [Chat UI patches](chat-ui-patches.md) |
+| Warm-process live check | `examples/bridges/check-claude-warm-process.mjs` | Identical to the live copy; needs a running bridge |
+| Mockup instructions | `examples/instructions/mockup-preview.md`, `mockup-standard.md` | Preview is the exact active text; the standard has its two absolute paths replaced by a placeholder |
 
 ## Intentionally not reproduced
 

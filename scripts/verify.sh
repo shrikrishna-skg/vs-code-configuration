@@ -32,6 +32,14 @@ node scripts/test-subagent-default-open.mjs
 node scripts/test-todos-both-locations.mjs
 node scripts/test-composer-orange-actions.mjs
 node scripts/test-permission-modes.mjs
+node examples/patches/skim-mode.test.mjs
+node examples/patches/chat-font.test.mjs
+node examples/patches/predict-next.test.mjs
+node examples/patches/predict-next.test.cjs
+# Its test needs the installed dist/webview.js, so only the syntax is checked here.
+node --check examples/patches/provider-save-message.mjs
+# The warm-process check needs a running bridge and spends plan usage; syntax only here.
+node --check examples/bridges/check-claude-warm-process.mjs
 node scripts/test-cto-concurrency.mjs
 node --check examples/patches/codex-thinking-status.mjs
 node examples/patches/check-codex-thinking-status.mjs

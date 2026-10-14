@@ -4,6 +4,7 @@ Each dated configuration has a Git tag named `config-YYYY-MM-DD`. Check out a ta
 
 | Date | Tag | Commit | Headline |
 |---|---|---|---|
+| 2026-10-13 | `config-2026-10-13` | resolve the dated tag | [Faster local CLI bridge, skim mode, chat font and predicted next message](updates/2026-10-13.md) |
 | 2026-10-09 | `config-2026-10-09` | resolve the dated tag | [CTO, shared computer control, goal continuity and Clarify goal](updates/2026-10-09.md) |
 | 2026-09-26 | `config-2026-09-26` | `fae6ae5` | Opus + Jev Engineering Lead (recommended), Peekaboo runner |
 | 2026-09-23 | `config-2026-09-23` | `70a37a0` | VS Code Copilot Chat mirror, speed proxy, Astra + Jev |

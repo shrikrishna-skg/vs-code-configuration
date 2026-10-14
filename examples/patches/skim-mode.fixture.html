@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Skim mode browser check</title>
+<style>
+body{margin:0;padding:24px;background:#1b1b1b;color:#f2f2f2;font:13px/1.55 -apple-system,sans-serif}
+code{font:12px ui-monospace,Menlo,monospace;background:#2a2a2a;padding:1px 5px;border-radius:4px}
+#report{margin:0 0 20px;padding:12px;border:1px solid #333;border-radius:8px;white-space:pre-wrap;font:12px ui-monospace,Menlo,monospace}
+</style>
+<script src="./skim-mode-ui.js"></script>
+</head>
+<body>
+<div id="report">Running checks</div>
+
+<div data-component="user-message"><div data-component="markdown"><p data-case="user message" data-detail="">User text has two long sentences here for sure. This one must never be dimmed at all.</p></div></div>
+<div data-component="reasoning-part"><div data-component="markdown"><p data-case="reasoning" data-detail="">Thinking text has two long sentences here for sure. This one must never be dimmed either.</p></div></div>
+
+<div data-component="text-part"><div data-slot="text-part-body"><div data-component="markdown" id="root">
+<h2>Answer</h2>
+<p data-case="two sentences" data-detail="That is why it sometimes produced a heading instead of a message.">The suggestion model was reading your global reply rules. That is why it sometimes produced a heading instead of a message.</p>
+<p data-case="single sentence" data-detail="">Run the reload command and check that the chat text changed.</p>
+<p data-case="short lead" data-detail="">Yes. It works because the patch now waits for the page to be ready.</p>
+<p data-case="bold-only line" data-detail=""><strong>What was wrong</strong></p>
+<ul>
+<li data-case="label then text" data-detail="It now answers with a short confirmation instead."><strong>Invented outcomes:</strong> after a reload request it claimed the feature had failed. It now answers with a short confirmation instead.</li>
+<li data-case="period inside code" data-detail="It is ready before you finish reading."><strong>Fix:</strong> the change lives in <code>predict-next.cjs</code> and nowhere else. It is ready before you finish reading.</li>
+<li data-case="detail starts with code" data-detail="node --check then verifies that the bundle still parses.">The patch is applied to both bundles in one step. <code>node --check</code> then verifies that the bundle still parses.</li>
+<li data-case="sentence ends at bold" data-detail="Then the next sentence starts in plain text again.">The first sentence here ends inside <strong>a bold phrase.</strong> Then the next sentence starts in plain text again.</li>
+<li data-case="nested parent" data-detail="The children below must stay separate points.">Parent point has a long enough first sentence here. The children below must stay separate points.<ul>
+<li data-case="nested child single" data-detail="">Child point is a single sentence only.</li>
+<li data-case="nested child detail" data-detail="Its own detail is dimmed separately from the parent.">Second child has a long enough first sentence too. Its own detail is dimmed separately from the parent.</li>
+</ul></li>
+<li data-case="loose list item" data-detail=""><p data-case="loose list paragraph" data-detail="The paragraph inside is handled, not the list item.">Loose list items wrap their text in a paragraph. The paragraph inside is handled, not the list item.</p></li>
+</ul>
+<p data-case="decimal, abbreviation, version" data-detail="DeepSeek is the fallback when it is missing.">Each call takes about 1.9 s with a fast model, e.g. GLM Flash, on v7.8.2. DeepSeek is the fallback when it is missing.</p>
+<p data-case="period inside link" data-detail="Open it when you need the details.">The full write-up is in <a href="#">docs/notes.md. Draft</a> for this change. Open it when you need the details.</p>
+<table><tbody><tr><td><p data-case="table cell" data-detail="">Table text has two long sentences here for sure. This one must never be dimmed at all.</p></td></tr></tbody></table>
+<pre><code>const note = "A sentence in code. Another One.";</code></pre>
+<blockquote><p data-case="blockquote" data-detail="Quoted detail is dimmed like any other paragraph.">Quoted text has a long enough first sentence here. Quoted detail is dimmed like any other paragraph.</p></blockquote>
+<p data-case="last block of a finished reply" data-detail="No further action is needed after that.">Reload the window to load the new patch now. No further action is needed after that.</p>
+</div></div></div>
+
+<div id="stream-host"></div>
+
+<script>
+(async () => {
+  const failures = [], passed = [];
+  const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const norm = s => s.replace(/\s+/g, ' ').trim();
+  const check = (name, ok, info = '') => (ok ? passed : failures).push(name + (ok || !info ? '' : ' -> ' + info));
+  const highlight = () => CSS.highlights.get('kilo-skim-detail');
+  const detailOf = block => norm([...highlight()].filter(r => r.startContainer === block || block.contains(r.startContainer)).filter(r => r.startContainer.parentElement.closest('[data-case]') === block).map(String).join(' '));
+  const before = document.getElementById('root').innerHTML;
+  try {
+    check('Custom Highlight API available', !!(globalThis.CSS && CSS.highlights && globalThis.__kiloSkim && __kiloSkim.details));
+    await frame();
+    for (const block of document.querySelectorAll('[data-case]')) {
+      const got = detailOf(block), want = norm(block.dataset.detail);
+      check('case: ' + block.dataset.case, got === want, `got "${got}" want "${want}"`);
+    }
+    check('reply DOM is not modified', document.getElementById('root').innerHTML === before);
+    const rule = [...document.querySelectorAll('style')].map(s => s.textContent).find(t => t.includes('kilo-skim-detail')) || '';
+    check('dim colour rule derived from the text colour', /color-mix\(in srgb,rgb\(242, 242, 242\) 55%,transparent\)/.test(rule), rule);
+
+    const host = document.getElementById('stream-host');
+    host.innerHTML = '<div data-component="text-part"><div data-component="markdown" id="stream"><p id="s1">First streamed paragraph has a long first sentence. Its detail is dimmed once another block follows it.</p></div></div>';
+    const stream = document.getElementById('stream'), s1 = document.getElementById('s1');
+    await frame();
+    const s2 = document.createElement('p');
+    s2.textContent = 'Second streamed paragraph is still being written. More words are';
+    stream.append(s2);
+    await frame();
+    s2.firstChild.appendData(' arriving right now and the block keeps growing.');
+    await frame();
+    const inside = el => [...highlight()].filter(r => el.contains(r.startContainer)).map(r => norm(String(r))).join(' ');
+    check('streaming: earlier block is dimmed', inside(s1) === 'Its detail is dimmed once another block follows it.', inside(s1));
+    check('streaming: block still being written stays bright', inside(s2) === '', inside(s2));
+    await new Promise(r => setTimeout(r, 1500));
+    await frame();
+    check('streaming: last block is dimmed once it settles', inside(s2) === 'More words are arriving right now and the block keeps growing.', inside(s2));
+    s1.textContent = 'Rewritten paragraph now has a different first sentence. And a different detail sentence after it too.';
+    await new Promise(r => setTimeout(r, 1500));
+    await frame();
+    check('re-rendered block is recomputed', inside(s1) === 'And a different detail sentence after it too.', inside(s1));
+
+    const total = highlight().size;
+    const toggle = () => dispatchEvent(new KeyboardEvent('keydown', { ctrlKey: true, altKey: true, code: 'KeyS', bubbles: true }));
+    toggle();
+    await frame();
+    check('Ctrl+Option+S turns skim mode off', highlight().size === 0 && localStorage.getItem('kilo.skimMode') === 'off', 'size ' + highlight().size);
+    toggle();
+    await frame();
+    check('Ctrl+Option+S turns it back on', highlight().size === total && localStorage.getItem('kilo.skimMode') === 'on', highlight().size + ' vs ' + total);
+
+    document.body.classList.add('vscode-high-contrast');
+    await frame();
+    check('high contrast theme disables dimming', highlight().size === 0, 'size ' + highlight().size);
+    document.body.classList.remove('vscode-high-contrast');
+    await frame();
+    check('leaving high contrast restores dimming', highlight().size === total, highlight().size + ' vs ' + total);
+
+    const streamed = [...highlight()].filter(r => stream.contains(r.startContainer)).length;
+    host.replaceChildren();
+    await frame();
+    check('removed reply releases its ranges', highlight().size === total - streamed, highlight().size + ' vs ' + (total - streamed));
+  } catch (error) {
+    failures.push('exception: ' + error.message);
+  }
+  window.__result = { pass: failures.length === 0, passed: passed.length, failures };
+  document.getElementById('report').textContent = (failures.length ? 'FAIL\n' + failures.join('\n') : 'PASS') + `\n${passed.length} checks passed`;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kilo chat font comparison</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+@font-face{font-family:"Hanken Grotesk";src:url("./hanken-grotesk-variable.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:#141414;color:#ccc;font:13px/1.5 -apple-system,BlinkMacSystemFont,sans-serif}
+h1{margin:0 0 4px;font-size:18px;font-weight:600;color:#eee}
+.lead{margin:0 0 20px;color:#999}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}
+.card{background:#1b1b1b;border:1px solid #2e2e2e;border-radius:12px;overflow:hidden}
+.head{padding:12px 14px;border-bottom:1px solid #2e2e2e;background:#202020}
+.head h2{margin:0;font-size:14px;font-weight:600;color:#fff}
+.head p{margin:2px 0 0;color:#9a9a9a;font-size:12px}
+.status{display:inline-block;margin-top:6px;padding:1px 8px;border-radius:999px;font-size:11px;background:#2a2a2a;color:#aaa}
+.status.ok{background:#16351f;color:#7ddc97}
+.status.bad{background:#4a1c1c;color:#ff9a9a}
+.chat{padding:14px;font-size:13px;line-height:1.5;color:#cccccc}
+.user{margin:0 0 14px auto;max-width:85%;width:fit-content;padding:8px 12px;border-radius:10px;background:#2b2b2b;color:#e4e4e4}
+.chat h3{margin:14px 0 6px;font-size:15px;font-weight:600;color:#f0f0f0}
+.chat h3:first-of-type{margin-top:0}
+.chat ul{margin:0;padding-left:18px}
+.chat li{margin:0 0 8px}
+.chat p{margin:0 0 8px}
+.chat strong{font-weight:600;color:#ececec}
+.chat code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:1px 5px;border-radius:4px;background:#2a2a2a;color:#e0b98a}
+.test{margin-top:12px;padding:10px 12px;border:1px dashed #3a3a3a;border-radius:8px}
+.test span{display:block;font-size:11px;color:#8a8a8a;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.test b{font-weight:400;font-size:16px;color:#f0f0f0;letter-spacing:.02em}
+.small{margin-top:10px;font-size:11px;color:#8f8f8f}
+.input{margin-top:14px;padding:10px 12px 8px;border:1px solid #3a3a3a;border-radius:10px;background:#1f1f1f}
+.ghost{color:rgba(255,255,255,.35)}
+.row{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:#9a9a9a}
+.send{width:26px;height:26px;border-radius:7px;background:#de735b;color:#fff;display:grid;place-items:center;font-size:14px}
+</style>
+</head>
+<body>
+<h1>Kilo chat font comparison</h1>
+<p class="lead">Same reply, same size (13px, the VS Code chat size), four fonts. Code stays monospace in every option.</p>
+<main class="grid" id="grid"></main>
+
+<template id="card">
+<section class="card">
+  <div class="head"><h2></h2><p></p><span class="status" role="status">Checking font</span></div>
+  <div class="chat">
+    <div class="user">Use the same font in all my chats and tell me the next step.</div>
+    <h3>Answer</h3>
+    <ul>
+      <li><strong>Built and installed, not yet seen working.</strong> It only takes effect after a window reload.</li>
+      <li><strong>Model:</strong> hidden <code>next-message-predictor</code> agent on GLM 5.3 Flash Ultra at low reasoning.</li>
+      <li><strong>Speed:</strong> the first live call answered in 1.9 s; the timeout is 15 s.</li>
+    </ul>
+    <h3>My opinion</h3>
+    <p>The wiring is low risk. Speed is the open question, and if it stays near 7 s the suggestion will arrive too late to be useful.</p>
+    <div class="test"><span>Look-alike test</span><b>Il1 O0 rn m cl d &nbsp; Illinois 10O1 modern clean</b></div>
+    <div class="small">patches/predict-next.mjs &middot; 90 lines &middot; edited 17:10 &middot; 22 checks passed</div>
+    <div class="input">
+      <div class="ghost">Looks good, reload the window and test Tab.</div>
+      <div class="row"><span>Code &middot; DeepSeek V4.1 Flash Ultra &middot; High</span><span class="send" aria-hidden="true">&uarr;</span></div>
+    </div>
+  </div>
+</section>
+</template>
+
+<script>
+const fonts = [
+  { name: 'A. Apple system font (SF Pro)', note: 'The VS Code standard on this Mac, used until today', stack: '-apple-system,BlinkMacSystemFont,sans-serif', families: [] },
+  { name: 'B. Hanken Grotesk', note: 'Installed in Kilo chat now, same as your extension', stack: '"Hanken Grotesk",sans-serif', families: ['Hanken Grotesk'] },
+  { name: 'C. Atkinson Hyperlegible', note: 'My suggestion, designed for legibility', stack: '"Atkinson Hyperlegible Next","Atkinson Hyperlegible",sans-serif', families: ['Atkinson Hyperlegible Next', 'Atkinson Hyperlegible'] },
+  { name: 'D. Inter', note: 'One more option, designed for screen interfaces', stack: '"Inter",sans-serif', families: ['Inter'] }
+];
+const grid = document.getElementById('grid'), template = document.getElementById('card');
+for (const font of fonts) {
+  const node = template.content.cloneNode(true);
+  node.querySelector('h2').textContent = font.name;
+  node.querySelector('.head p').textContent = font.note;
+  node.querySelector('.chat').style.fontFamily = font.stack;
+  const status = node.querySelector('.status');
+  status.dataset.font = font.name;
+  if (!font.families.length) { status.textContent = 'System font'; status.classList.add('ok'); }
+  else Promise.all(font.families.map(f => document.fonts.load(`13px "${f}"`).then(faces => faces.length ? f : null, () => null))).then(found => {
+    const loaded = found.find(Boolean);
+    status.textContent = loaded ? `Loaded: ${loaded}` : 'Font did not load, this card shows a fallback';
+    status.classList.add(loaded ? 'ok' : 'bad');
+  });
+  grid.append(node);
+}
+</script>
+</body>
+</html>

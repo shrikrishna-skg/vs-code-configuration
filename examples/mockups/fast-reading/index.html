@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kilo chat fast-reading comparison</title>
+<style>
+@font-face{font-family:"Hanken Grotesk";src:url("./hanken-grotesk-variable.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:#141414;color:#ccc;font:13px/1.5 -apple-system,BlinkMacSystemFont,sans-serif}
+h1{margin:0 0 4px;font-size:18px;font-weight:600;color:#eee}
+.lead{margin:0 0 20px;color:#999}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;align-items:start}
+.card{background:#1b1b1b;border:1px solid #2e2e2e;border-radius:12px;overflow:hidden}
+.head{padding:12px 14px;border-bottom:1px solid #2e2e2e;background:#202020}
+.head h2{margin:0;font-size:14px;font-weight:600;color:#fff}
+.head p{margin:2px 0 0;color:#9a9a9a;font-size:12px}
+.chat{padding:14px;font-family:"Hanken Grotesk",-apple-system,sans-serif;font-size:13px;line-height:1.55;color:#cccccc}
+.user{margin:0 0 14px auto;max-width:85%;width:fit-content;padding:8px 12px;border-radius:10px;background:#2b2b2b;color:#e4e4e4}
+.chat h3{margin:14px 0 6px;font-size:15px;font-weight:600;color:#f0f0f0}
+.chat h3:first-of-type{margin-top:0}
+.chat ul{margin:0;padding-left:18px}
+.chat li{margin:0 0 8px}
+.chat p{margin:0 0 8px}
+.chat strong{font-weight:600;color:#ececec}
+.chat code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;padding:1px 5px;border-radius:4px;background:#2a2a2a;color:#e0b98a}
+.bionic .assistant{color:#a9a9a9}
+.bionic .assistant b{font-weight:700;color:#fff}
+.skim .assistant p,.skim .assistant li{color:#f2f2f2}
+.skim .assistant .detail{color:#7c7c7c}
+.skim .assistant .detail strong,.skim .assistant .detail code{color:inherit}
+</style>
+</head>
+<body>
+<h1>Kilo chat fast-reading comparison</h1>
+<p class="lead">Same reply in your chat font and size. A is how replies look now; B and C are two ways to read it faster.</p>
+<main class="grid" id="grid"></main>
+
+<template id="reply">
+  <div class="user">Why is the suggestion sometimes wrong, and what did you change?</div>
+  <div class="assistant">
+    <h3>Answer</h3>
+    <p>The suggestion model was reading your global reply rules as if they applied to it. That is why it sometimes produced a heading instead of a message you could send.</p>
+    <ul>
+      <li><strong>Invented outcomes:</strong> after a reload request it claimed the feature had failed. It now answers with a short confirmation instead, and never reports a result you have not stated.</li>
+      <li><strong>Missed turns:</strong> a reply that finished in a background tab got no suggestion. Suggestions are now stored per chat and shown when you return to that tab.</li>
+      <li><strong>Speed:</strong> each prediction takes about one second. It is ready before you finish reading, and the fix lives in <code>predict-next.cjs</code>.</li>
+    </ul>
+    <h3>My opinion</h3>
+    <p>The wording will never match yours exactly. It only needs to be close enough that pressing Tab is faster than typing the message yourself.</p>
+  </div>
+</template>
+
+<script>
+function textNodes(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentElement.closest('code') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  return nodes;
+}
+function bionic(root) {
+  for (const node of textNodes(root)) {
+    const out = document.createDocumentFragment();
+    let last = 0;
+    for (const match of node.data.matchAll(/[\p{L}\p{N}]+/gu)) {
+      const word = match[0], bold = word.length <= 3 ? 1 : Math.ceil(word.length * 0.4);
+      const b = document.createElement('b');
+      b.textContent = word.slice(0, bold);
+      out.append(node.data.slice(last, match.index), b, word.slice(bold));
+      last = match.index + word.length;
+    }
+    out.append(node.data.slice(last));
+    node.replaceWith(out);
+  }
+}
+function skim(root) {
+  for (const block of root.querySelectorAll('p, li')) {
+    for (const node of textNodes(block)) {
+      const end = /[.!?](?=\s)/.exec(node.data);
+      if (!end) continue;
+      const rest = node.splitText(end.index + 1), detail = document.createElement('span'), range = document.createRange();
+      detail.className = 'detail';
+      range.setStartBefore(rest);
+      range.setEndAfter(block.lastChild);
+      detail.append(range.extractContents());
+      block.append(detail);
+      break;
+    }
+  }
+}
+const variants = [
+  { name: 'A. Normal', note: 'How replies look now', mode: '', apply: null },
+  { name: 'B. Bold word starts', note: 'The first letters of every word are bold, so your eye hops from word to word', mode: 'bionic', apply: bionic },
+  { name: 'C. Skim mode', note: 'The first sentence of each point is bright and the detail is dimmed', mode: 'skim', apply: skim }
+];
+const grid = document.getElementById('grid'), reply = document.getElementById('reply');
+for (const v of variants) {
+  const card = document.createElement('section'), head = document.createElement('div'), title = document.createElement('h2'), note = document.createElement('p'), chat = document.createElement('div');
+  card.className = 'card';
+  head.className = 'head';
+  chat.className = 'chat ' + v.mode;
+  title.textContent = v.name;
+  note.textContent = v.note;
+  head.append(title, note);
+  chat.append(reply.content.cloneNode(true));
+  if (v.apply) v.apply(chat.querySelector('.assistant'));
+  card.append(head, chat);
+  grid.append(card);
+}
+</script>
+</body>
+</html>
