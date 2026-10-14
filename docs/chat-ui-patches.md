@@ -79,5 +79,5 @@ node scripts/test-reapply-kilo-patches.mjs
 - `examples/instructions/mockup-standard.md` is the design standard applied to every mockup. Its two absolute paths are replaced by `<ABSOLUTE_PATH_TO_COMPOSER_MOCKUPS>`.
 - `examples/instructions/mockup-preview.md` now requires the copyable `file://` link in the final reply.
 - `examples/mockups/chat-fonts/index.html` compares chat fonts. It loads Atkinson Hyperlegible and Inter from Google Fonts, so it needs a network connection.
-- `examples/mockups/fast-reading/index.html` compares fast-reading treatments of a chat reply.
+- `skim-mode/mockup/index.html` compares fast-reading treatments of a chat reply. The [skim mode folder](../skim-mode/README.md) explains the choice and has a prompt for other apps.
 - `examples/mockups/chatbox-controls/index.html` compares three chat box layouts; Variant A is the one implemented by `composer-chevrons.mjs`.

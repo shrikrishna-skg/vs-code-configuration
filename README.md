@@ -167,6 +167,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 ├── claude-code/             # Native Claude Code extension state and agents
 ├── copilot-chat/            # VS Code Chat (Copilot) agents, models, MCP, settings, installer
 ├── agent-vision/            # Browser automation, computer use, guardrail hooks
+├── skim-mode/               # Fast-reading chat replies: guide, mockup, prompt for other apps
 ├── scripts/                 # verify.sh, tests, reapply-kilo-patches.sh
 ├── third-party/             # Required third-party license notices
 └── examples/
