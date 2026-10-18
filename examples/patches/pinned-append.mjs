@@ -11,22 +11,33 @@ const root = process.env.KILO_PIN_APPEND_DIR || path.dirname(fileURLToPath(impor
 const count = (s, a) => s.split(a).length - 1;
 
 // Send path: the typed text `ze` is the last part joined into the outgoing message.
-const sendAnchor = 'ei=[fo,q0,Xo,ur,ze].filter(Boolean)';
-const sendPatched = 'ei=[fo,q0,Xo,ur,/* pinned-append-send:v1 */globalThis.__kiloPin?.append(ze)??ze].filter(Boolean)';
+const legacySendAnchor = 'ei=[fo,q0,Xo,ur,ze].filter(Boolean)';
+const legacySendPatched = 'ei=[fo,q0,Xo,ur,/* pinned-append-send:v1 */globalThis.__kiloPin?.append(ze)??ze].filter(Boolean)';
 // Footer: `fo` is the right-hand action group; `ze` is the composer root and `zr` the footer row.
-const footerAnchor = 'Q(fo,E(()=>globalThis.__kiloPermissionMenu(p,nt,';
+const legacyFooterAnchor = 'Q(fo,E(()=>globalThis.__kiloPermissionMenu(p,nt,';
 const installed = /Q\(fo,E\(\(\)=>\/\* pinned-append:v\d+ \*\/[\s\S]*?(?=Q\(fo,E\(\(\)=>globalThis\.__kiloPermissionMenu\(p,nt,)/g;
+// Prompts panel loads its list once; reload it when the pin popover saves, so its next save can't undo ours.
+// Optional: skipped when the (unscripted) v6 Prompts panel is absent.
+const reloadAnchor = 'promptSuggestionsSave=()=>{try{localStorage.setItem(promptSuggestionsStorageKey,JSON.stringify(promptSuggestionsItems))}catch{}},';
+const reloadPatched = reloadAnchor + 'promptSuggestionsReload=/* pinned-append-reload:v1 */(h=>(window.addEventListener("kilo-prompt-suggestions-changed",h),nt(()=>window.removeEventListener("kilo-prompt-suggestions-changed",h)),h))(()=>{promptSuggestionsItems=promptSuggestionsLoad(),renderPromptSuggestions()}),';
 
 export function patch(source, restore = false) {
   const helper = fs.readFileSync(path.join(root, 'pinned-append-ui.js'), 'utf8').trim();
   if (!helper.startsWith('(globalThis.__kiloPin ??=') || helper.includes('/* pinned-append')) throw Error('Unsupported pinned-append UI helper file; no changes made.');
+  const stable=source.includes('P(X1,C(()=>globalThis.__kiloPermissionMenu(m,Xe,');
+  const sendAnchor=stable?'Lg=[Tu,X1,Tg,ey,Ge].filter(Boolean)':legacySendAnchor;
+  const sendPatched=stable?'Lg=[Tu,X1,Tg,ey,/* pinned-append-send:v1 */globalThis.__kiloPin?.append(Ge)??Ge].filter(Boolean)':legacySendPatched;
+  const footerAnchor=stable?'P(X1,C(()=>globalThis.__kiloPermissionMenu(m,Xe,':legacyFooterAnchor;
+  const injected=stable?/P\(X1,C\(\(\)=>\/\* pinned-append:v\d+ \*\/[\s\S]*?(?=P\(X1,C\(\(\)=>globalThis\.__kiloPermissionMenu\(m,Xe,)/g:installed;
   if (count(source, footerAnchor) !== 1) throw Error('Unsupported pinned-append footer anchor; no changes made.');
   if (count(source, sendAnchor) + count(source, sendPatched) !== 1) throw Error('Unsupported pinned-append send anchor; no changes made.');
-  const bare = source.replace(installed, '').replace(sendPatched, sendAnchor);
+  const reload=stable?reloadPatched.replace('nt(()=>','Xe(()=>'):reloadPatched;
+  const bare = source.replace(injected, '').replace(sendPatched, sendAnchor).replace(reload, reloadAnchor);
   if (restore) return bare;
-  return bare
+  const out = bare
     .replace(sendAnchor, () => sendPatched)
-    .replace(footerAnchor, () => 'Q(fo,E(()=>/* pinned-append:v1 */' + helper + '.button(ze,zr,nt),{}),null),' + footerAnchor);
+    .replace(footerAnchor, () => (stable?'P(X1,C(()=>/* pinned-append:v1 */':'Q(fo,E(()=>/* pinned-append:v1 */') + helper + (stable?'.button(Ge,ci,Xe),{})),':'.button(ze,zr,nt),{}),null),') + footerAnchor);
+  return count(out, reloadAnchor) === 1 ? out.replace(reloadAnchor, () => reload) : out;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

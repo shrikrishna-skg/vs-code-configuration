@@ -18,7 +18,7 @@ const install = (ext) => {
 }
 
 // Trimmed Kilo 7.7.7 anchors (see examples/patches/check-per-agent-model.mjs).
-const webview = [
+const webview = "if(false){" + [
   "function uF(e){let n=a=>a??null,r=n(e.session)??n(e.preferred)??n(e.override)??n(e.mode)??n(e.global);return r}",
   "let Xi=Xnt({defaults:ne=>ue()??(G()[ne]?Mt.modelSelections[ne]:void 0)??Pa(ne)??Mi()});",
   "let Ge=uF({...$i(),mode:Pa(ne),global:Mi(),recent:Mt.recentModels});",
@@ -34,7 +34,7 @@ const webview = [
   '/*favoriteModels:()=>Mt.favoriteModels,toggleFavorite:zr,variantList:ct*/',
   '/*var Pa=dJr(),Mi=Pa.firstChild,$i=Mi.firstChild,Ji=$i.firstChild,jc=Ji.nextSibling;return Mi.$$dblclick=*/',
   '/*o.toggleFavorite(Le.providerID,Le.id)}function Nt(Le){*/',
-].join("\n")
+].join("\n") + '}document.getElementById("root").innerHTML="<button>Chat</button>";'
 const extension = 'let{visible,defaultAgent}=filterVisibleAgents(agents),message6={type:"agentsLoaded",agents:visible.map(mapAgent),allAgents:agents.map(mapAgent),defaultAgent};switch(x){case"t":break;case"persistVariant":{let stored2=0;break}/*case"requestFavorites":{let favorites=validateFavorites(this.extensionContext?.globalState.get("favoriteModels"));this.postMessage({type:"favoritesLoaded",favorites});break}*/}/*async toggleFavorite(message6){let current=validateFavorites(this.extensionContext?.globalState.get("favoriteModels")),key6=`${message6.providerID}/${message6.modelID}`,exists6=current.some(f2=>`${f2.providerID}/${f2.modelID}`===key6),favorites=message6.action==="add"&&!exists6?[...current,{providerID:message6.providerID,modelID:message6.modelID}]:message6.action==="remove"&&exists6?current.filter(f2=>`${f2.providerID}/${f2.modelID}`!==key6):current;await this.extensionContext?.globalState.update("favoriteModels",favorites),this.connectionService.notifyFavoritesChanged(favorites)}initializeConnection()*/'
 // Trimmed Kilo 7.8.1 active-tab rules (plain and .session-tab-bar), see examples/patches/active-tab-blue.mjs.
 const tab = "am-tab-active{color:var(--text-base);border-bottom-color:var(--surface-interactive-base);background:color-mix(in srgb,var(--surface-interactive-base) 10%,transparent)}"
@@ -60,69 +60,85 @@ for (const [from, to] of [["copilot-chat/config/mcp.json", "Library/Application 
 fs.writeFileSync(path.join(home, ".claude.json"), JSON.stringify({ mcpServers: { peekaboo: { type: "stdio", command: "peekaboo",
   args: ["mcp", "serve", "--no-remote", "--transport", "stdio", "--allow-foreground"] } } }))
 
-const run = (ext = "ext", patches = path.join(root, "examples/patches")) => execFileSync("bash", [path.join(root, "scripts/reapply-kilo-patches.sh")], {
+const run = (ext = "ext", patches = mainPatches) => execFileSync("bash", [path.join(root, "scripts/reapply-kilo-patches.sh")], {
   env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, KILO_EXTENSIONS_DIR: path.join(tmp, ext),
     KILO_PATCH_DIR: patches, KILO_PATCH_LOG: path.join(tmp, "log"), KILO_PATCH_SETTLE: "0",
-    KILO_CONFIG: path.join(root, "examples/kilo.jsonc") },
+    KILO_CONFIG: path.join(root, "examples/kilo.jsonc"),
+    KILO_BROWSER_RUNTIME: path.join(os.homedir(), ".config/shared-computer/runtime/package.json") },
 })
 const read = (f) => fs.existsSync(f) ? fs.readFileSync(f, "utf8") : ""
 
+// The five marketplace patches now match only Kilo 7.8.12 bundles (their own tests cover the anchors),
+// so this fixture swaps them for marker stubs and checks only the reapply orchestration.
+const mainPatches = path.join(tmp, "main-patches")
+fs.cpSync(path.join(root, "examples/patches"), mainPatches, { recursive: true })
+const stub = (name) => `import fs from 'node:fs';const m='/*stub:${name}*/',args=process.argv.slice(2),files=args.filter(a=>!a.startsWith('--'));` +
+  `if(args.includes('--check'))process.exit(files.every(f=>fs.readFileSync(f,'utf8').includes(m))?0:1);for(const f of files)if(!fs.readFileSync(f,'utf8').includes(m))fs.appendFileSync(f,m);`
+for (const name of ["jev-agent-order", "per-agent-model", "global-last-agent", "active-tab-blue", "model-favorites"]) fs.writeFileSync(path.join(mainPatches, name + ".mjs"), stub(name))
+
 run()
 assert.match(read(path.join(tmp, "log")), /re-applied patches to kilocode\.kilo-code-9\.9\.9/)
-assert.match(read(notes), /Kilo patches re-applied/)
+assert.match(read(notes), /Kilo patches validated and installed/)
 assert.match(read(path.join(tmp, "log")), /Peekaboo MCP config OK: .*\.codex\/config\.toml/)
-for (const marker of ["orderAgents", "Xi.forget", "persistLastSelectedAgent", "favoritesFilterOpen", "model-selector-favorite-drag-handle"]) assert.ok(read(path.join(dist, "webview.js")).includes(marker), marker)
-assert.match(read(path.join(dist, "extension.js")), /persistLastSelectedAgent/)
-assert.match(read(path.join(dist, "extension.js")), /reorderFavorites/)
-for (const f of ["webview.css", "agent-manager.css"]) assert.equal(read(path.join(dist, f)).split("border-bottom-color:var(--vscode-focusBorder, #3794ff)").length, 3, f)
+for (const name of ["jev-agent-order", "per-agent-model", "global-last-agent", "model-favorites"]) assert.ok(read(path.join(dist, "webview.js")).includes(`/*stub:${name}*/`), name)
+for (const name of ["global-last-agent", "model-favorites"]) assert.ok(read(path.join(dist, "extension.js")).includes(`/*stub:${name}*/`), name)
+for (const f of ["webview.css", "agent-manager.css"]) assert.ok(read(path.join(dist, f)).includes("/*stub:active-tab-blue*/"), f)
 const before = ["webview.js", "agent-manager.js", "extension.js", "webview.css", "agent-manager.css"].map((f) => read(path.join(dist, f)))
 
 run()
-assert.match(read(path.join(tmp, "log")), /all patches present/)
+assert.match(read(path.join(tmp, "log")), /All patches validated/)
 assert.equal(read(notes).trim().split("\n").length, 1, "second run must not notify")
 assert.deepEqual(["webview.js", "agent-manager.js", "extension.js", "webview.css", "agent-manager.css"].map((f) => read(path.join(dist, f))), before)
 
 // A broken first patch (jev-agent-order) must not block per-agent-model and global-last-agent.
 const broken = path.join(tmp, "patches")
-fs.cpSync(path.join(root, "examples/patches"), broken, { recursive: true })
+fs.cpSync(mainPatches, broken, { recursive: true })
 fs.writeFileSync(path.join(broken, "jev-agent-order.mjs"), "process.exit(1)\n")
 const dist2 = install("ext2")
 assert.throws(() => run("ext2", broken), (e) => e.status === 1)
 assert.match(read(path.join(tmp, "log")), /FAILED jev-agent-order\.mjs/)
-assert.match(read(notes), /Kilo patch re-apply FAILED: jev-agent-order/)
-for (const marker of ["Xi.forget", "persistLastSelectedAgent"]) assert.ok(read(path.join(dist2, "webview.js")).includes(marker), marker)
-assert.match(read(path.join(dist2, "extension.js")), /persistLastSelectedAgent/)
+assert.match(read(notes), /Kilo patch blocked/)
+assert.equal(read(path.join(dist2, "webview.js")), webview, "Failed batch preserves the previous webview")
+assert.equal(read(path.join(dist2, "extension.js")), extension, "Failed batch preserves the previous extension")
 
 // The custom build must reapply the renderer recovery hook, with directory arguments.
 const customDist = path.join(tmp, "custom", "shrikrishna-skg.kilo-code-local-7.8.2", "dist")
 fs.mkdirSync(customDist, { recursive: true })
+for (const [name, text] of [["webview.js", webview], ["agent-manager.js", webview], ["extension.js", extension]]) fs.writeFileSync(path.join(customDist, name), text)
 const customPatches = path.join(tmp, "custom-patches"), customCalls = path.join(tmp, "custom-calls")
 fs.mkdirSync(customPatches)
-for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "subagent-default-open", "todos-both-locations", "composer-orange-actions", "permission-modes", "chat-effort-isolation", "chat-scroll-stability", "clarify-goal", "native-webview-recovery", "predict-next", "skim-mode", "provider-save-message", "chat-font", "composer-chevrons", "session-map", "pinned-append"]) {
+for (const name of ["safe-kilo-patches.mjs", "check-kilo-render.mjs"]) fs.copyFileSync(path.join(root, "examples/patches", name), path.join(customPatches, name))
+for (const name of ["check-peekaboo-mcp", "agent-manager-manual-open", "native-subagent-ready", "cto-selected-label", "subagent-default-open", "todos-both-locations", "composer-orange-actions", "permission-modes", "permission-route", "chat-effort-isolation", "chat-scroll-stability", "clarify-goal", "native-webview-recovery", "predict-next", "skim-mode", "provider-save-message", "chat-font", "composer-chevrons", "session-map", "pinned-append", "prompt-suggestions", "jev-agent-order", "per-agent-model", "global-last-agent", "active-tab-blue", "model-favorites", "subagents-header", "subagent-model-small", "composer-one-line"]) {
   fs.writeFileSync(path.join(customPatches, name + ".mjs"), `import fs from 'node:fs';fs.appendFileSync(${JSON.stringify(customCalls)}, JSON.stringify({name:${JSON.stringify(name)},args:process.argv.slice(2)})+'\\n');`)
 }
 run("custom", customPatches)
 const customInvocations = read(customCalls).trim().split("\n").map(line => JSON.parse(line))
-assert(customInvocations.some(call => call.name === "native-webview-recovery" && call.args[0] === customDist && call.args[1] === "--check"), "Custom extension reapply must include renderer recovery")
-for (const file of ["webview.js", "agent-manager.js"]) assert(customInvocations.some(call => call.name === "subagent-default-open" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must include expanded subagent cards in both views")
-for (const file of ["webview.js", "agent-manager.js"]) assert(customInvocations.some(call => call.name === "todos-both-locations" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must include both to-do views")
+assert(customInvocations.some(call => call.name === "permission-route" && call.args[0].endsWith(path.join(path.basename(path.dirname(customDist)), "dist", "extension.js")) && call.args[1] === "--check"), "Custom extension reapply must retain stale permission route recovery")
+assert(customInvocations.some(call => call.name === "native-webview-recovery" && call.args[0].endsWith(path.join(path.basename(path.dirname(customDist)), "dist")) && call.args[1] === "--check"), "Custom extension reapply must include renderer recovery")
+for (const file of ["webview.js", "agent-manager.js"]) assert(customInvocations.some(call => call.name === "subagent-default-open" && call.args[0].endsWith(path.join(path.basename(path.dirname(customDist)), "dist", file)) && call.args[1] === "--check"), "Custom extension reapply must include expanded subagent cards in both views")
+for (const file of ["webview.js", "agent-manager.js"]) assert(customInvocations.some(call => call.name === "todos-both-locations" && call.args[0].endsWith(path.join(path.basename(path.dirname(customDist)), "dist", file)) && call.args[1] === "--check"), "Custom extension reapply must include both to-do views")
 
-for (const file of ["webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]) assert(customInvocations.some(call => call.name === "composer-orange-actions" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must retain orange controls in both views")
+for (const file of ["webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]) assert(customInvocations.some(call => call.name === "composer-orange-actions" && call.args[0].endsWith(path.join(path.basename(path.dirname(customDist)), "dist", file)) && call.args[1] === "--check"), "Custom extension reapply must retain orange controls in both views")
 
-for (const file of ["extension.js", "webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]) assert(customInvocations.some(call => call.name === "permission-modes" && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), "Custom extension reapply must retain permission modes")
+for (const file of ["extension.js", "webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]) assert(customInvocations.some(call => call.name === "permission-modes" && call.args[0].endsWith(path.join(path.basename(path.dirname(customDist)), "dist", file)) && call.args[1] === "--check"), "Custom extension reapply must retain permission modes")
 
-for (const [name, files] of [["chat-effort-isolation", ["webview.js", "agent-manager.js"]], ["chat-scroll-stability", ["webview.js"]], ["predict-next", ["extension.js", "webview.js"]], ["skim-mode", ["webview.js", "agent-manager.js"]], ["provider-save-message", ["webview.js"]], ["chat-font", ["webview.css", "agent-manager.css"]], ["composer-chevrons", ["webview.css", "agent-manager.css", "webview.js"]], ["session-map", ["extension.js", "webview.js", "webview.css"]], ["pinned-append", ["webview.js"]]]) {
-  for (const file of files) assert(customInvocations.some(call => call.name === name && call.args[0] === path.join(customDist, file) && call.args[1] === "--check"), `Custom extension reapply must include ${name} for ${file}`)
+for (const [name, files] of [["chat-effort-isolation", ["webview.js", "agent-manager.js"]], ["predict-next", ["extension.js", "webview.js"]], ["skim-mode", ["webview.js", "agent-manager.js"]], ["provider-save-message", ["webview.js"]], ["chat-font", ["webview.css", "agent-manager.css"]], ["composer-chevrons", ["webview.css", "agent-manager.css", "webview.js"]], ["session-map", ["extension.js", "webview.js", "webview.css"]], ["pinned-append", ["webview.js"]], ["subagents-header", ["webview.js", "agent-manager.js", "webview.css", "agent-manager.css"]], ["subagent-model-small", ["webview.css", "agent-manager.css"]], ["composer-one-line", ["webview.css", "agent-manager.css", "webview.js", "agent-manager.js"]]]) {
+  for (const file of files) assert(customInvocations.some(call => call.name === name && call.args[0].endsWith(path.join(path.basename(path.dirname(customDist)), "dist", file)) && call.args[1] === "--check"), `Custom extension reapply must include ${name} for ${file}`)
 }
 
-// An incompatible scroll patch must be reported without blocking permission/effort recovery.
-fs.writeFileSync(path.join(customPatches, 'chat-scroll-stability.mjs'), "process.exit(1)\n")
+// Multi-file ensures on the custom build: the prompt library first, then the baseline picker patches.
+for (const name of ["prompt-suggestions", "jev-agent-order", "per-agent-model", "global-last-agent", "active-tab-blue", "model-favorites"]) assert(customInvocations.some(call => call.name === name && call.args.at(-1) === "--check"), `Custom extension reapply must include ${name}`)
+assert.equal(customInvocations.find(call => call.args.at(-1) === "--check")?.name, "prompt-suggestions", "The prompt library is checked before dependent UI patches")
+
+// An incompatible patch (chat font) must be reported without blocking permission/effort recovery.
+fs.writeFileSync(path.join(customPatches, 'chat-font.mjs'), "process.exit(1)\n")
 fs.writeFileSync(customCalls, '')
 assert.throws(() => run("custom", customPatches), e => e.status === 1)
 const afterFailure = read(customCalls).trim().split("\n").map(line => JSON.parse(line))
 assert(afterFailure.some(call => call.name === "permission-modes"), "Independent permission recovery must still run")
 assert(afterFailure.some(call => call.name === "chat-effort-isolation"), "Independent effort recovery must still run")
-assert.match(read(path.join(tmp, "log")), /FAILED chat-scroll-stability/)
+assert.match(read(path.join(tmp, "log")), /FAILED chat-font/)
+assert(!read(customCalls).includes("chat-scroll-stability"), "The scroll glide stays off (2026-10-15 user choice)")
 
 fs.rmSync(tmp, { recursive: true })
 console.log("reapply-kilo-patches checks passed")

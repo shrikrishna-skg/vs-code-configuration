@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const bodies = [
+  'let A=()=>{let b=e.agents.find(y=>y.name===e.value);return b?prt(b):e.value||"Code"}',
+  'let A=()=>{let b=e.agents.find(y=>y.name===e.value);return b?MJe(b):e.value||"Code"}',
   'let b=()=>{let A=e.agents.find(y=>y.name===e.value);return A?MWe(A):e.value||"Code"}',
   'let A=()=>{let b=e.agents.find(y=>y.name===e.value);return b?DUe(b):e.value||"Code"}',
 ];

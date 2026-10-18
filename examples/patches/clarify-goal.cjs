@@ -3,8 +3,32 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { fileURLToPath } = require('node:url');
-const clarificationModel = Object.freeze({ providerID: 'lithosai', modelID: 'deepseek-ai/DeepSeek-V4.1-Flash-ultra' });
+const clarificationModel = Object.freeze({ providerID: 'lithosai', modelID: 'deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat' });
+const modelPreferenceKey = 'goalClarificationModel';
 const active = new WeakMap();
+
+function selectedModel(owner) {
+  const saved = owner?.extensionContext?.globalState?.get(modelPreferenceKey);
+  return saved && typeof saved.providerID === 'string' && typeof saved.modelID === 'string'
+    ? { providerID: saved.providerID, modelID: saved.modelID } : { ...clarificationModel };
+}
+
+async function modelSettings(client, message, directory, owner) {
+  const providers = (await client.provider.list({ directory }, { throwOnError: true, signal: AbortSignal.timeout(15000) })).data;
+  const models = (providers?.all || [])
+    .filter(provider => !providers.connected || providers.connected.includes(provider.id))
+    .flatMap(provider => Object.entries(provider.models || {}).map(([modelID, model]) => ({
+      providerID: provider.id, modelID, name: `${model.name || modelID} · ${provider.name || provider.id}`,
+    }))).sort((a, b) => a.name.localeCompare(b.name));
+  if (message.type === 'setGoalModel') {
+    const requested = models.find(model => model.providerID === message.providerID && model.modelID === message.modelID);
+    if (!requested) throw Error('That model is no longer available. Choose another connected model.');
+    const state = owner?.extensionContext?.globalState;
+    if (!state) throw Error('Model preferences could not be saved. Try reopening the panel.');
+    await state.update(modelPreferenceKey, { providerID: requested.providerID, modelID: requested.modelID });
+  }
+  return { models, selected: selectedModel(owner) };
+}
 
 function cancel(owner, requestId) {
   const controller = active.get(owner)?.get(requestId);
@@ -37,7 +61,7 @@ async function clarify(client, message, directory, owner = client) {
   const controller = new AbortController();
   requests.set(key, controller);
   try {
-    return await rewrite(client, message, directory, AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]));
+    return await rewrite(client, message, directory, AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]), selectedModel(owner));
   } catch (error) {
     if (controller.signal.aborted) throw controller.signal.reason;
     throw error;
@@ -46,23 +70,22 @@ async function clarify(client, message, directory, owner = client) {
   }
 }
 
-async function rewrite(client, message, directory, signal) {
+async function rewrite(client, message, directory, signal, model) {
   const text = message.text;
   if (typeof text !== 'string' || !text.trim() || text.length > 24000) throw Error('Enter a goal under 24,000 characters. Your draft was kept.');
   const files = message.files || [];
   if (!Array.isArray(files) || files.length > 8) throw Error('Clarify up to eight attachments at a time. Your draft was kept.');
   const options = { throwOnError: true, signal };
-  const model = { ...clarificationModel };
   const providers = (await client.provider.list({ directory }, options)).data;
   signal.throwIfAborted();
   const definition = providers?.all?.find(p => p.id === model.providerID)?.models?.[model.modelID];
-  if (!definition) throw Error('The DeepSeek clarification model on LithosAI is unavailable. Your draft was kept.');
+  if (!definition || providers.connected && !providers.connected.includes(model.providerID)) throw Error('The selected clarification model is unavailable. Choose another model. Your draft was kept.');
   const parts = [], references = [];
   for (const file of files) {
     if (!file || typeof file.url !== 'string' || typeof file.mime !== 'string') throw Error('An attachment is unavailable. Reattach it and try again.');
     if (/^image\/(png|jpeg|webp|gif)$/.test(file.mime) || file.mime === 'application/pdf') {
       const kind = file.mime.startsWith('image/') ? 'image' : 'pdf';
-      if (definition.capabilities?.input?.[kind] !== true) throw Error(`The DeepSeek clarification model cannot read ${kind === 'image' ? 'images' : 'PDFs'}. Your draft and attachments are unchanged.`);
+      if (definition.capabilities?.input?.[kind] !== true) throw Error(`The selected clarification model cannot read ${kind === 'image' ? 'images' : 'PDFs'}. Your draft and attachments are unchanged.`);
       if (!file.url.startsWith(`data:${file.mime};base64,`) || file.url.length > 14000000) throw Error('Attach an inline image or PDF under 10 MB to clarify it.');
       parts.push({ type: 'file', mime: file.mime, url: file.url, filename: clip(file.filename, 200) });
     } else if (file.url.startsWith('file:')) {
@@ -108,4 +131,4 @@ async function rewrite(client, message, directory, signal) {
     }
   }
 }
-module.exports = { clarify, cancel, contextFrom, instructions };
+module.exports = { clarify, cancel, contextFrom, instructions, modelSettings };

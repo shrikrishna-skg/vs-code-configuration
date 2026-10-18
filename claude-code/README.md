@@ -70,6 +70,8 @@ performed, progress, and result.
 - `config/agents/`: Opus and Sonnet custom agent definitions.
 - `FABLE_ENGINEERING_LEAD.md`: operating, failure, and rollback notes.
 - `scripts/validate.mjs`: no-model-cost static validation.
+- `mods/skim-mode/`: skim mode mod (`/skim`); load with `claude --plugin-dir` (see its README).
+- `hooks/`: tokens/s speed-readout hook and how to wire it into `~/.claude/settings.json`.
 
 ## Install
 

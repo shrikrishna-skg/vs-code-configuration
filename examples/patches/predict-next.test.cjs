@@ -56,6 +56,9 @@ function makeClient(options = {}) {
   assert.equal(clean('Do you want me to apply it?'), '');
   assert.equal(clean('Maximum steps for this agent have been reached, so tools are disabled.'), '');
   assert.equal(clean('Yes, apply it and run the tests.'), 'Yes, apply it and run the tests.');
+  // acknowledgements carry no action
+  for (const t of ['Done.', 'Done', 'Ok', 'Thanks', 'Yes.', 'Thank you!', 'Sounds good.', 'Do it.']) assert.equal(clean(t), '', t);
+  assert.equal(clean('Go with B'), 'Go with B');
 
   // inputFrom(): goal, next step and the user's own recent messages
   {
@@ -103,9 +106,9 @@ function makeClient(options = {}) {
 
   // cleaned text is applied
   {
-    const { client } = makeClient({ prompt: async () => ({ data: { parts: [{ type: 'text', text: '"Do it."' }] } }) });
+    const { client } = makeClient({ prompt: async () => ({ data: { parts: [{ type: 'text', text: '"Do it now."' }] } }) });
     const result = await predict(client, { sessionID: 's1' }, '/tmp', {});
-    assert.equal(result.text, 'Do it.');
+    assert.equal(result.text, 'Do it now.');
   }
 
   // tool call -> empty text
@@ -152,14 +155,14 @@ function makeClient(options = {}) {
 
   // predictions for different sessions do not cancel each other
   {
-    const { client } = makeClient({ prompt: () => new Promise(resolve => setTimeout(() => resolve({ data: { parts: [{ type: 'text', text: 'ok' }] } }), 20)) });
+    const { client } = makeClient({ prompt: () => new Promise(resolve => setTimeout(() => resolve({ data: { parts: [{ type: 'text', text: 'ok, ship it' }] } }), 20)) });
     const owner = {};
     const [one, two] = await Promise.all([
       predict(client, { sessionID: 's1', requestId: 'a' }, '/tmp', owner),
       predict(client, { sessionID: 's2', requestId: 'b' }, '/tmp', owner),
     ]);
-    assert.equal(one.text, 'ok');
-    assert.equal(two.text, 'ok');
+    assert.equal(one.text, 'ok, ship it');
+    assert.equal(two.text, 'ok, ship it');
     assert.equal(clean('None.'), '');
   }
 
@@ -215,6 +218,18 @@ function makeClient(options = {}) {
     assert.equal(fallback.text, 'Looks good, run the tests.');
     fs.rmSync(dir, { recursive: true });
     process.env.KILO_PREDICT_CLAUDE = missingClaude;
+  }
+
+  // trivial or empty predictions fall back to the reply's Next step, or to nothing without one
+  {
+    const withStep = [{ info: { role: 'assistant' }, parts: [{ type: 'text', text: '## Answer\n\n- ok\n\n## Next step\n\nApply the patch and run the tests.\n' }] }];
+    const answer = text => async () => ({ data: { parts: [{ type: 'text', text }] } });
+    const run = async (text, messages) => (await predict(makeClient({ messages, prompt: answer(text) }).client, { sessionID: 'ns' }, '/tmp', {})).text;
+    assert.equal(await run('Done.', withStep), 'Go ahead with the next step.');
+    assert.equal(await run('NONE', withStep), 'Go ahead with the next step.');
+    assert.equal(await run('Yes, apply it and run the tests.', withStep), 'Yes, apply it and run the tests.');
+    assert.equal(await run('Done.', []), '');
+    assert.equal(await run('NONE', []), '');
   }
 
   // missing sessionID rejects

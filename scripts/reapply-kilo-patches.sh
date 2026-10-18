@@ -10,10 +10,16 @@ patches="${KILO_PATCH_DIR:-$HOME/.config/kilo/patches}"
 log="${KILO_PATCH_LOG:-$HOME/.config/kilo/logs/kilo-patches.log}"
 settle="${KILO_PATCH_SETTLE:-15}" # seconds for VS Code to finish extracting an update
 
+# All automatic installs stage and validate before touching the live extension.
+if [ "${KILO_PATCH_STAGING:-}" != 1 ]; then
+  sleep "$settle"
+  exec node "$patches/safe-kilo-patches.mjs" reapply "$0"
+fi
+
 mkdir -p "$(dirname "$log")"
 exec >>"$log" 2>&1
 say() { echo "$(date '+%F %T') $*"; }
-notify() { osascript -e "display notification \"$1\" with title \"Kilo Code\""; }
+notify() { :; } # Staging is silent; the outer gate reports the result.
 
 applied=0 failed=""
 # ensure <patch.mjs> <files...>: apply only when its --check fails, then re-check.
@@ -31,14 +37,26 @@ attempt() {
   # The custom Kilo build has an independent, fail-closed UI opening patch.
   local_dir=$(ls -d "$extensions"/shrikrishna-skg.kilo-code-local-*/ 2>/dev/null | sort -V | tail -1)
   if [ -n "$local_dir" ]; then
+    # Preserve the existing v6 prompt library and Continue menu before dependent UI patches.
+    ensure prompt-suggestions.mjs "${local_dir%/}/dist/webview.js" "${local_dir%/}/dist/webview.css"
     ensure agent-manager-manual-open.mjs "${local_dir%/}/dist/extension.js"
     ensure native-subagent-ready.mjs "${local_dir%/}/dist/extension.js"
+    # Baseline custom build also carries these preferences and picker changes.
+    ensure jev-agent-order.mjs "${local_dir%/}/dist/webview.js"
+    ensure per-agent-model.mjs "${local_dir%/}/dist/webview.js" "${local_dir%/}/dist/agent-manager.js"
+    ensure global-last-agent.mjs "${local_dir%/}/dist/webview.js" "${local_dir%/}/dist/extension.js" "${local_dir%/}/dist/agent-manager.js"
+    ensure active-tab-blue.mjs "${local_dir%/}/dist/webview.css" "${local_dir%/}/dist/agent-manager.css"
+    ensure model-favorites.mjs "${local_dir%/}/dist/webview.js" "${local_dir%/}/dist/extension.js" "${local_dir%/}/dist/webview.css"
     ensure cto-selected-label.mjs "${local_dir%/}/dist/webview.js"
     ensure cto-selected-label.mjs "${local_dir%/}/dist/agent-manager.js"
     ensure subagent-default-open.mjs "${local_dir%/}/dist/webview.js"
     ensure subagent-default-open.mjs "${local_dir%/}/dist/agent-manager.js"
     ensure todos-both-locations.mjs "${local_dir%/}/dist/webview.js"
     ensure todos-both-locations.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure subagents-header.mjs "${local_dir%/}/dist/webview.js"
+    ensure subagents-header.mjs "${local_dir%/}/dist/agent-manager.js"
+    ensure subagents-header.mjs "${local_dir%/}/dist/webview.css"
+    ensure subagents-header.mjs "${local_dir%/}/dist/agent-manager.css"
     ensure clarify-goal.mjs "${local_dir%/}/dist/extension.js"
     ensure clarify-goal.mjs "${local_dir%/}/dist/webview.js"
     ensure clarify-goal.mjs "${local_dir%/}/dist/agent-manager.js"
@@ -52,8 +70,10 @@ attempt() {
     ensure composer-orange-actions.mjs "${local_dir%/}/dist/agent-manager.css"
     ensure chat-effort-isolation.mjs "${local_dir%/}/dist/webview.js"
     ensure chat-effort-isolation.mjs "${local_dir%/}/dist/agent-manager.js"
-    ensure chat-scroll-stability.mjs "${local_dir%/}/dist/webview.js"
+    # Off 2026-10-15: user chose Kilo's native chat scroll over the glide. Re-enable this line to bring the glide back.
+    # ensure chat-scroll-stability.mjs "${local_dir%/}/dist/webview.js"
     ensure permission-modes.mjs "${local_dir%/}/dist/extension.js"
+    ensure permission-route.mjs "${local_dir%/}/dist/extension.js"
     ensure permission-modes.mjs "${local_dir%/}/dist/webview.js"
     ensure permission-modes.mjs "${local_dir%/}/dist/agent-manager.js"
     ensure permission-modes.mjs "${local_dir%/}/dist/webview.css"
@@ -62,10 +82,18 @@ attempt() {
     ensure provider-save-message.mjs "${local_dir%/}/dist/webview.js"
     ensure chat-font.mjs "${local_dir%/}/dist/webview.css"
     ensure chat-font.mjs "${local_dir%/}/dist/agent-manager.css"
+    # Background-agent strip cards: agent · model · provider line at 9px.
+    ensure subagent-model-small.mjs "${local_dir%/}/dist/webview.css"
+    ensure subagent-model-small.mjs "${local_dir%/}/dist/agent-manager.css"
     ensure composer-chevrons.mjs "${local_dir%/}/dist/webview.css"
     ensure composer-chevrons.mjs "${local_dir%/}/dist/agent-manager.css"
     # Needs the Continue quick-action button, which not every build has; a miss is logged, not fatal.
     ensure composer-chevrons.mjs "${local_dir%/}/dist/webview.js"
+    # Composer controls on one line; model name truncated, full name on hover.
+    ensure composer-one-line.mjs "${local_dir%/}/dist/webview.css"
+    ensure composer-one-line.mjs "${local_dir%/}/dist/agent-manager.css"
+    ensure composer-one-line.mjs "${local_dir%/}/dist/webview.js"
+    ensure composer-one-line.mjs "${local_dir%/}/dist/agent-manager.js"
     # Session map: button left of ✦ Prompts plus the overlay; host block, call site, CSS.
     ensure session-map.mjs "${local_dir%/}/dist/extension.js"
     ensure session-map.mjs "${local_dir%/}/dist/webview.js"
@@ -98,6 +126,7 @@ sleep "$settle"
 # and Codex (~/.codex/config.toml) need Peekaboo started with "mcp serve --no-remote", browser off.
 node "$patches/check-peekaboo-mcp.mjs" "${KILO_CONFIG:-$HOME/.config/kilo/kilo.jsonc}" ||
   notify "Peekaboo MCP config check FAILED — see ~/.config/kilo/logs/kilo-patches.log"
+
 if attempt || { say "retrying in ${settle}s"; sleep "$settle"; attempt; }; then
   [ "$applied" = 1 ] && notify "Kilo patches re-applied — run Developer: Reload Window"
   exit 0

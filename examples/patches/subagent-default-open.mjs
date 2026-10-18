@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const names = ['CSn', 'Hbn']; // Local Kilo 7.8.2: editor and Agent Manager.
+const names = ['CSn', 'Hbn', 'GWn', 'kEn']; // Local Kilo 7.8.2: editor and Agent Manager.
 const before = name => `function ${name}(e,t){return e==="running"&&!t}`;
 const after = name => `function ${name}(e,t){/* subagent-default-open:v1 */return!0}`;
 

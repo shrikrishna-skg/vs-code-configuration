@@ -34,7 +34,7 @@ export const previousOrder = `function orderAgents(agents) {
 
 // Verified installed 7.7.2/7.7.5/7.7.6/7.7.7/7.7.9/7.8.1 anchors: display only, not default selection.
 const anchors = [
-  ['re','de','we'], ['ne','ae','Ne'], ['ne','et','He'], ['ne','et','qe'],
+  ['re','de','we'], ['ne','ae','Ne'], ['ne','et','He'], ['ne','et','qe'], ['ae','ce','ie'],
 ].map(([m,set,all])=>{
   const wrap=fn=>`if(${m}.type!=="agentsLoaded")return;${set}((${fn})(${m}.agents)),${all}(${m}.allAgents??${m}.agents)`;
   return { before:`if(${m}.type!=="agentsLoaded")return;${set}(${m}.agents),${all}(${m}.allAgents??${m}.agents)`, after:wrap(orderAgents.toString()), legacy:wrap(legacyOrder), previous:wrap(previousOrder) };

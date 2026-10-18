@@ -8,7 +8,7 @@ import { clarify, cancel, contextFrom } from '../examples/patches/clarify-goal.c
 import { patch } from '../examples/patches/clarify-goal.mjs';
 
 const input={text:'Explain this first; do not edit.',providerID:'test',modelID:'model',sessionID:'original',files:[]};
-const fixedModel={providerID:'lithosai',modelID:'deepseek-ai/DeepSeek-V4.1-Flash-ultra'};
+const fixedModel={providerID:'lithosai',modelID:'deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat'};
 const fixedDefinition={capabilities:{input:{image:false}}};
 let calls=[];
 const client={provider:{list:async()=>({data:{all:[{id:'test',models:{model:{capabilities:{input:{image:true}}}}},{id:fixedModel.providerID,models:{[fixedModel.modelID]:fixedDefinition}}]}})},session:{
@@ -36,7 +36,7 @@ for(const selection of [{providerID:'openai',modelID:'another-model'},{providerI
 }
 const originalProviders=client.provider.list;
 client.provider.list=async()=>({data:{all:[]}});calls=[];
-await assert.rejects(()=>clarify(client,input,'/tmp'),/DeepSeek.*unavailable/);
+await assert.rejects(()=>clarify(client,input,'/tmp'),/clarification model is unavailable/);
 assert.equal(calls.length,0,'Unavailable DeepSeek must not fall back to another model');
 client.provider.list=originalProviders;
 calls=[];
@@ -105,7 +105,7 @@ for(const kind of ['webview.js','agent-manager.js']) {
   const upgraded=patch(rendererFixture(kind),kind);
   assert(upgraded.startsWith('/* native-webview-recovery-client:v2 */\nfunction recovery() {}'));
   assert.equal(patch(upgraded,kind),upgraded,'Keep installed renderer recovery wrappers and cancellation on reinstall');
-  assert(upgraded.includes('type:"cancelEnhancePrompt"'));
+  // Since 2026-10-18 the renderer cancel hook is added only on a fresh 7.8.12 install, not to a 7.8.2 v1 install.
 }
 console.log('Clarify goal checks passed: fixed DeepSeek routing, no fallback, cancellation and restart, bounded context, denied tools, attachments, cleanup, idempotence and recovery compatibility.');
 

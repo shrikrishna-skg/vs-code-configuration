@@ -59,6 +59,17 @@
   };
   const scrollBehavior = () => reduceMotion() ? 'auto' : 'smooth';
 
+  const ASK_KEY = 'kilo.sessionMap.ask.v1';
+  const SUGGEST = ['Which files changed the most?', 'What went wrong?', 'Where did the time go?', 'What did I decide in each loop?'];
+  const short = (t, n) => {
+    t = String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
+    n = n || 32;
+    return t.length > n ? t.slice(0, n - 1) + '\u2026' : t;
+  };
+  // The Ask thread and unsent draft live in localStorage so text survives a refresh.
+  const readAskStore = () => { try { return JSON.parse(localStorage.getItem(ASK_KEY)) || {}; } catch (e) { return {}; } };
+  const writeAskStore = s => { try { localStorage.setItem(ASK_KEY, JSON.stringify(s)); } catch (e) { /* quota or disabled */ } };
+
   const X = { msg: 14, help: 196, file: 336 };
   const W = { msg: 160, help: 124, file: 150 };
 
@@ -91,6 +102,15 @@
     let full = false;
     const N = {};
 
+    // The Ask tab only exists when the host can answer; without opts.ask the
+    // panel behaves exactly as before.
+    const askFn = typeof opts.ask === 'function' ? opts.ask : null;
+    const sessionIDFn = typeof opts.sessionID === 'function' ? opts.sessionID : null;
+    const sid = () => { try { return (sessionIDFn && sessionIDFn()) || 'default'; } catch (e) { return 'default'; } };
+    let thread = [];
+    let busy = false;
+    let askSeq = 0;
+
     // ---- overlay skeleton (built once, lazily) ----------------------------
     function buildOverlay() {
       const root = h('div', 'ksm-map');
@@ -108,7 +128,9 @@
         h('h2', null, 'Session map'), ttl, h('span', 'ksm-sp'), totals, closeBtn));
 
       const szLabel = h('span', 'ksm-dim', '14px');
-      const dgToggle = h('button', { class: 'ksm-tool', type: 'button', 'aria-pressed': 'true' }, 'Diagram');
+      // With an Ask tab the toggle shows and hides the whole right panel (Diagram and Ask), so it is named for that;
+      // without one it keeps its old name and behaviour exactly.
+      const dgToggle = h('button', { class: 'ksm-tool', type: 'button', 'aria-pressed': 'true' }, askFn ? 'Side panel' : 'Diagram');
       const jumpNow = h('button', { class: 'ksm-tool', type: 'button' }, 'Jump to now');
       dgToggle.addEventListener('click', onToggleDiagram);
       jumpNow.addEventListener('click', () => {
@@ -141,25 +163,61 @@
       const fullLabel = h('span', null, 'Full screen');
       const fullBtn = h('button', { class: 'ksm-tool', type: 'button', 'aria-pressed': 'false', 'aria-label': 'Full screen' }, fullIcon, fullLabel);
       fullBtn.addEventListener('click', onToggleFull);
-      const dg = h('aside', { class: 'ksm-dg', 'aria-label': 'Diagram of the whole chat' },
-        h('div', 'ksm-dg-head',
-          h('b', null, 'Diagram'), h('span', 'ksm-dim', 'whole chat'), pick, h('span', 'ksm-sp'),
-          h('button', { class: 'ksm-tool', type: 'button', 'aria-label': 'Zoom out', onclick: () => zoom(-0.1) }, '−'),
-          h('button', { class: 'ksm-tool', type: 'button', 'aria-label': 'Zoom in', onclick: () => zoom(0.1) }, '+'),
-          fullBtn),
-        dgBody,
-        h('div', 'ksm-dg-legend',
-          h('span', null, h('i', { style: 'border-left:3px solid var(--ksm-blue)' }), 'Your message'),
-          h('span', null, h('i', { style: 'border-style:dashed' }), 'Helper'),
-          h('span', null, h('i'), 'File changed'),
-          h('span', null, h('i', { style: 'border-color:var(--ksm-blue);background:#10253a' }), 'In view')));
+      const zoomOut = h('button', { class: 'ksm-tool', type: 'button', 'aria-label': 'Zoom out', onclick: () => zoom(-0.1) }, '−');
+      const zoomIn = h('button', { class: 'ksm-tool', type: 'button', 'aria-label': 'Zoom in', onclick: () => zoom(0.1) }, '+');
+
+      const head = h('div', 'ksm-dg-head');
+      let tabDg = null, tabAsk = null, tabsEl = null;
+      if (askFn) {
+        tabDg = h('button', { class: 'ksm-tab', type: 'button', role: 'tab', id: 'ksm-tab-dg', 'aria-controls': 'ksm-panel-dg', 'aria-selected': 'true', tabindex: '0' }, 'Diagram');
+        tabAsk = h('button', { class: 'ksm-tab', type: 'button', role: 'tab', id: 'ksm-tab-ask', 'aria-controls': 'ksm-panel-ask', 'aria-selected': 'false', tabindex: '-1' }, 'Ask about this chat');
+        tabsEl = h('div', { class: 'ksm-tabs', role: 'tablist', 'aria-label': 'Side panel' }, tabDg, tabAsk);
+        head.appendChild(tabsEl);
+      } else {
+        head.appendChild(h('b', null, 'Diagram'));
+        head.appendChild(h('span', 'ksm-dim', 'whole chat'));
+      }
+      head.appendChild(pick);
+      head.appendChild(h('span', 'ksm-sp'));
+      head.appendChild(zoomOut);
+      head.appendChild(zoomIn);
+      head.appendChild(fullBtn);
+
+      let ask = null, askLog = null, askInput = null, askScope = null, askSend = null, askClear = null;
+      if (askFn) {
+        dgBody.id = 'ksm-panel-dg';
+        dgBody.setAttribute('role', 'tabpanel');
+        dgBody.setAttribute('aria-labelledby', 'ksm-tab-dg');
+        askLog = h('div', { class: 'ksm-ask-log', 'aria-live': 'polite' });
+        askInput = h('textarea', { class: 'ksm-ask-input', 'aria-label': 'Ask about this chat', rows: '2', placeholder: 'Ask about this chat\u2026 (Enter to send, Shift+Enter for a new line)' });
+        askScope = h('select', { class: 'ksm-scope', 'aria-label': 'What to ask about' }, h('option', { value: 'all' }, 'Whole chat'));
+        askSend = h('button', { class: 'ksm-send', type: 'submit', 'aria-label': 'Send question', title: 'Send' }, '\u2191');
+        askClear = h('button', { class: 'ksm-mini ksm-clear', type: 'button', title: 'Clear the conversation' }, 'Clear');
+        const askFoot = h('div', 'ksm-ask-foot', askScope, askClear, h('span', 'ksm-sp'), h('span', 'ksm-dim', 'Reads this chat only'), askSend);
+        const askForm = h('form', { class: 'ksm-ask-box', onsubmit: e => { e.preventDefault(); sendQuestion(N.askInput.value, true); } }, askInput, askFoot);
+        ask = h('div', { class: 'ksm-ask', id: 'ksm-panel-ask', role: 'tabpanel', 'aria-labelledby': 'ksm-tab-ask', hidden: 'hidden' }, askLog, askForm);
+        askInput.addEventListener('input', () => { updateComposer(); saveAsk(); });
+        askInput.addEventListener('keydown', e => {
+          if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendQuestion(N.askInput.value, true); }
+        });
+        askClear.addEventListener('click', clearAsk);
+        tabDg.addEventListener('click', () => showTab('dg'));
+        tabAsk.addEventListener('click', () => showTab('ask'));
+        tabsEl.addEventListener('keydown', onTabsKey);
+      }
+      const legend = h('div', 'ksm-dg-legend',
+        h('span', null, h('i', { style: 'border-left:3px solid var(--ksm-blue)' }), 'Your message'),
+        h('span', null, h('i', { style: 'border-style:dashed' }), 'Helper'),
+        h('span', null, h('i'), 'File changed'),
+        h('span', null, h('i', { style: 'border-color:var(--ksm-blue);background:#10253a' }), 'In view'));
+      const dg = h('aside', { class: 'ksm-dg', 'aria-label': 'Diagram of the whole chat' }, head, dgBody, ask, legend);
       const sd = h('div', 'ksm-sd', stMain, dg);
       root.appendChild(sd);
 
       stMain.addEventListener('scroll', onStoryScroll, { passive: true });
       root.addEventListener('keydown', onKeyDown, true);
 
-      Object.assign(N, { root, ttl, totals, szLabel, dgToggle, jumpNow, status, empty, stMain, layer, svg, dgBody, dg, pick, sd, fullBtn, fullLabel });
+      Object.assign(N, { root, ttl, totals, szLabel, dgToggle, jumpNow, status, empty, stMain, layer, svg, dgBody, dg, pick, sd, fullBtn, fullLabel, tabDg, tabAsk, tabsEl, ask, askLog, askInput, askScope, askSend, askClear, zoomOut, zoomIn, legend });
       mount.appendChild(root);
       return root;
     }
@@ -183,6 +241,7 @@
       scale = 1;
       fsz = 14;
       if (N.pick) { N.pick.hidden = true; N.pick.textContent = ''; }
+      askSeq++; // a reply for the old open no longer applies
       showLoading();
       const mine = ++seq;
       let p;
@@ -201,6 +260,7 @@
       if (!overlay || !open) return;
       open = false;
       seq++;
+      askSeq++; // drop any answer still in flight
       setFull(false);
       closeFocus();
       file = null;
@@ -321,6 +381,7 @@
 
       renderStory(replyText);
       renderDiagram();
+      renderAsk();
       N.status.hidden = true;
       N.empty.hidden = true;
       N.sd.hidden = false;
@@ -423,7 +484,7 @@
 
     // ---- diagram layout (measure while visible) --------------------------
     function layoutDiagram() {
-      if (!N.dg || N.dg.hidden) return;
+      if (!N.dg || N.dg.hidden || N.dgBody.hidden) return;
       for (const b of [...N.layer.querySelectorAll('.ksm-dg-band')]) b.remove();
       let y = 36;
       loops.forEach((l, li) => {
@@ -514,7 +575,7 @@
       if (active === n && !force) return;
       active = n;
       paint();
-      if (!N.dg || N.dg.hidden) return;
+      if (!N.dg || N.dg.hidden || N.dgBody.hidden) return;
       const el = dn['m' + n];
       if (!el) return;
       const top = el.offsetTop * scale;
@@ -568,7 +629,9 @@
       N.dgToggle.setAttribute('aria-pressed', String(show));
       if (show) {
         // A narrow panel cannot fit the story and the diagram side by side, so the diagram opens full screen there.
-        if (narrow()) setFull(true); else layoutDiagram();
+        // With the Ask tab showing there is nothing to lay out; the panel just opens.
+        if (N.dgBody.hidden) { /* Ask tab */ }
+        else if (narrow()) setFull(true); else layoutDiagram();
         if (active != null) setActive(active, true);
       } else {
         setFull(false);
@@ -590,7 +653,7 @@
       N.fullLabel.textContent = on ? 'Exit full screen' : 'Full screen';
       if (on && open) layoutDiagram();
       // Leaving full screen in a narrow panel closes the diagram instead of squeezing the story.
-      if (!on && !N.dg.hidden && narrow()) { N.dg.hidden = true; N.dgToggle.setAttribute('aria-pressed', 'false'); }
+      if (!on && !N.dg.hidden && !N.dgBody.hidden && narrow()) { N.dg.hidden = true; N.dgToggle.setAttribute('aria-pressed', 'false'); }
     }
 
     function onStoryScroll() {
@@ -664,6 +727,165 @@
     function jumpStep(s) {
       const id = s.messageID != null ? s.messageID : (s.turns[0] && s.turns[0].messageID);
       try { if (id != null) jump(id); } finally { closeMap(); }
+    }
+
+    // ---- Ask about this chat ----------------------------------------------
+    function currentScope() {
+      const sel = N.askScope;
+      const v = sel.value;
+      const opt = sel.selectedOptions && sel.selectedOptions[0];
+      return { value: v === 'all' ? 'all' : +v, label: opt ? opt.textContent : 'Whole chat' };
+    }
+
+    // history is the last complete {q, a} pairs already in the thread.
+    function historyPairs() {
+      const pairs = [];
+      for (const e of thread) {
+        if (e.me) pairs.push({ q: e.text, a: '' });
+        else if (e.a && pairs.length) pairs[pairs.length - 1].a = e.text;
+      }
+      return pairs;
+    }
+
+    function sendQuestion(q, fromInput) {
+      q = String(q == null ? '' : q).trim();
+      if (!askFn || !q || busy) return;
+      const sc = currentScope();
+      const hist = historyPairs().slice(-6);
+      thread.push({ me: true, text: q });
+      if (fromInput) N.askInput.value = '';
+      busy = true;
+      saveAsk(); updateComposer(); renderAskLog();
+      const mine = ++askSeq;
+      const askSid = sid();
+      Promise.resolve().then(() => askFn(q, sc.value, hist)).then(ans => {
+        // A reply arriving after the map closed, moved session, or a newer ask is dropped.
+        if (disposed || mine !== askSeq || !open || sid() !== askSid) return;
+        thread.push({ a: true, text: ans == null ? '' : String(ans), scope: 'From: ' + sc.label });
+        busy = false; saveAsk(); updateComposer(); renderAskLog();
+      }, err => {
+        if (disposed || mine !== askSeq || !open || sid() !== askSid) return;
+        thread.push({ err: true, msg: (err && err.message) ? err.message : 'Something went wrong.', q: q, scopeVal: N.askScope.value });
+        busy = false; saveAsk(); updateComposer(); renderAskLog();
+      });
+    }
+
+    function clearAsk() {
+      thread = [];
+      askSeq++; // abandon any answer still in flight
+      busy = false;
+      saveAsk(); updateComposer(); renderAskLog();
+      try { N.askInput.focus(); } catch (e) { /* ignore */ }
+    }
+
+    function retryAsk(entry) {
+      const i = thread.indexOf(entry);
+      if (i >= 0) thread.splice(i, 1);
+      const os = N.askScope.options;
+      for (let j = 0; j < os.length; j++) if (os[j].value === entry.scopeVal) { N.askScope.value = entry.scopeVal; break; }
+      saveAsk(); renderAskLog();
+      sendQuestion(entry.q);
+    }
+
+    // A cite finds the step that owns turn n, else the nearest earlier step.
+    function jumpToTurn(n) {
+      let s = steps.find(x => n >= x.n && n <= x.to);
+      if (!s) { for (const x of steps) { if (x.n <= n) s = x; else break; } }
+      if (!s) s = steps[0];
+      if (!s) return;
+      setActive(s.n, true);
+      jumpStory(s.n);
+    }
+
+    function citeBtn(n) {
+      return h('button', { class: 'ksm-cite', type: 'button', title: 'Jump to message ' + n, onclick: () => jumpToTurn(n) }, '#' + n);
+    }
+
+    // Answer text is never parsed as HTML: one <p> per line, numbers in "#n" become cite buttons.
+    function answerBody(text) {
+      return String(text == null ? '' : text).split('\n').map(line =>
+        h('p', null, line.split(/#(\d+)/).map((part, i) => i % 2 ? citeBtn(+part) : part)));
+    }
+
+    function introBubble() {
+      return h('div', 'ksm-bub ksm-ai',
+        h('p', null, 'Ask anything about this chat. Answers point to message numbers; click one to jump the story there.'),
+        h('div', 'ksm-sugs', SUGGEST.map(q => h('button', { class: 'ksm-sug', type: 'button', onclick: () => sendQuestion(q) }, q))));
+    }
+
+    function renderAskLog() {
+      if (!askFn) return;
+      const kids = [introBubble()];
+      for (const t of thread) {
+        if (t.me) kids.push(h('div', 'ksm-bub ksm-me', t.text));
+        else if (t.err) kids.push(h('div', 'ksm-bub ksm-ai ksm-err', h('p', null, t.msg), h('button', { class: 'ksm-mini ksm-retry', type: 'button', onclick: () => retryAsk(t) }, 'Retry')));
+        else kids.push(h('div', 'ksm-bub ksm-ai', answerBody(t.text), t.scope ? h('div', 'ksm-ask-note', t.scope) : null));
+      }
+      if (busy) kids.push(h('div', 'ksm-bub ksm-ai ksm-dim', 'Reading this chat\u2026'));
+      N.askLog.replaceChildren(...kids);
+      N.askLog.scrollTop = N.askLog.scrollHeight;
+    }
+
+    function updateComposer() {
+      if (!askFn) return;
+      N.askSend.disabled = busy || !String(N.askInput.value || '').trim();
+    }
+
+    function saveAsk() {
+      if (!askFn) return;
+      try {
+        const store = readAskStore();
+        store[sid()] = { thread: thread.slice(-30), draft: N.askInput.value, updatedAt: Date.now() };
+        const keys = Object.keys(store).sort((a, b) => ((store[b] && store[b].updatedAt) || 0) - ((store[a] && store[a].updatedAt) || 0));
+        for (const k of keys.slice(20)) delete store[k];
+        writeAskStore(store);
+      } catch (e) { /* ignore */ }
+    }
+
+    function restoreThread() {
+      const store = readAskStore();
+      const e = store[sid()];
+      thread = (e && Array.isArray(e.thread)) ? e.thread.slice(-30) : [];
+      N.askInput.value = (e && typeof e.draft === 'string') ? e.draft : '';
+      busy = false;
+      askSeq++;
+    }
+
+    function renderAsk() {
+      if (!askFn) return;
+      const cur = N.askScope.value;
+      N.askScope.replaceChildren(
+        h('option', { value: 'all' }, 'Whole chat'),
+        ...loops.map((l, li) => h('option', { value: String(li) }, 'Loop ' + (li + 1) + ' \u00b7 ' + short(l.title, 32))));
+      N.askScope.value = [...N.askScope.options].some(o => o.value === cur) ? cur : 'all';
+      restoreThread();
+      showTab('dg');
+      renderAskLog();
+      updateComposer();
+    }
+
+    function showTab(which) {
+      if (!askFn) return;
+      const isAsk = which === 'ask';
+      N.tabAsk.setAttribute('aria-selected', String(isAsk));
+      N.tabDg.setAttribute('aria-selected', String(!isAsk));
+      N.tabAsk.tabIndex = isAsk ? 0 : -1;
+      N.tabDg.tabIndex = isAsk ? -1 : 0;
+      N.ask.hidden = !isAsk;
+      N.dgBody.hidden = isAsk;
+      N.legend.hidden = isAsk;
+      N.zoomOut.hidden = isAsk;
+      N.zoomIn.hidden = isAsk;
+      if (isAsk) { try { N.askInput.focus(); } catch (e) { /* ignore */ } }
+      else requestAnimationFrame(() => { if (disposed || !open || !N.dg || N.dg.hidden) return; layoutDiagram(); paint(); });
+    }
+
+    function onTabsKey(e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      const toAsk = N.tabAsk.getAttribute('aria-selected') !== 'true';
+      showTab(toAsk ? 'ask' : 'dg');
+      try { (toAsk ? N.tabAsk : N.tabDg).focus(); } catch (e2) { /* ignore */ }
     }
 
     // ---- keyboard ---------------------------------------------------------

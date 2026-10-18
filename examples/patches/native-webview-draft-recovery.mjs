@@ -61,20 +61,20 @@ export function patchDraftClient(source) {
     if (count !== 1) throw new Error(`Unsupported Kilo draft recovery anchor count ${count}: ${before.slice(0,65)}`);
     source = source.replace(before, after);
   };
-  const declaration = 'var E3=new Map,um=new Map,_g=new Map,Ad=new Map,u1=new Map,p1=new Map,m1=new Map,Y0=new Map,$V=new Set,zV=new Set,E0e=new Set;';
-  replace(declaration, declaration + 'installDraftRecovery({mentions:E3,text:um,browsers:_g,comments:Ad,contexts:u1,images:p1,scrolls:m1,pastes:Y0,aliases:gF});');
+  const declaration = 'fy=new Map,Nm=new Map,cf=new Map,Td=new Map,zg=new Map,Og=new Map,jg=new Map,QA=new Map,wZ=new Set,kZ=new Set,Hbe=new Set';
+  replace(declaration, declaration + ';installDraftRecovery({mentions:fy,text:Nm,browsers:cf,comments:Td,contexts:zg,images:Og,scrolls:jg,pastes:QA,aliases:aP});');
   // Initialize before any effects infer a model from the last sent message.
-  for (const name of ['modelSelections', 'sessionOverrides', 'agentSelections', 'variantSelections']) {
+  for (const name of ['sessionOverrides', 'agentSelections', 'variantSelections']) {
     replace(`${name}:{}`, `${name}:(globalThis.__nativeWebviewInitial?.drafts?.version===1?globalThis.__nativeWebviewInitial.drafts.selections?.${name}:void 0)??{}`);
   }
-  replace(',aMn={currentSessionID:o,', ',nativeDraftSelections=(globalThis.__nativeReadDraftSelections=()=>({modelSelections:Mt.modelSelections,sessionOverrides:Mt.sessionOverrides,agentSelections:Mt.agentSelections,variantSelections:Mt.variantSelections}),Xe(()=>{JSON.stringify([Mt.modelSelections,Mt.sessionOverrides,Mt.agentSelections,Mt.variantSelections]);globalThis.__nativeQueueDraftSnapshot()})),aMn={currentSessionID:o,');
+  replace(',cYn={sessionsProject:g,currentSessionID:s,', ',nativeDraftSelections=(globalThis.__nativeReadDraftSelections=()=>({sessionOverrides:jt.sessionOverrides,agentSelections:jt.agentSelections,variantSelections:jt.variantSelections}),Ue(()=>{JSON.stringify([jt.sessionOverrides,jt.agentSelections,jt.variantSelections]);globalThis.__nativeQueueDraftSnapshot()})),cYn={sessionsProject:g,currentSessionID:s,');
   // Normal persistent VS Code state intentionally drops temporary tabs. Only
   // renderer recovery retains their exact IDs so draft scope keys still match.
-  const tabInitializer = 'o=H8n(a?.sidebarSessionTabIDs,a?.sidebarActiveSessionTabID,i),[s,l]=ye(o.ids);';
-  replace(tabInitializer, 'o=restoreDraftTabs(globalThis.__nativeWebviewInitial?.drafts?.version===1?globalThis.__nativeWebviewInitial.drafts.tabs:void 0,()=>H8n(a?.sidebarSessionTabIDs,a?.sidebarActiveSessionTabID,i)),[s,l]=ye(o.ids);');
-  replace('h=new Set,b=()=>({ids:s(),active:d()}),A=U=>', 'h=new Set,b=()=>({ids:s(),active:d()}),nativeDraftTabs=(globalThis.__nativeReadDraftTabs=b,Xe(()=>{s();d();globalThis.__nativeQueueDraftSnapshot()})),A=U=>');
-  const scopeEnd = 'let Kt=/^## Review Comments\\n[\\s\\S]*?\\n\\n/;';
-  replace(scopeEnd, `const nativeDraftReader=()=>{q(D(),U(),Y(),x.images());const paths=[...A.mentionedPaths()],sessions=[...A.mentionedSessions().values()];if(paths.length||sessions.length)E3.set(D(),{paths,sessions});else E3.delete(D())};globalThis.__nativeDraftReaders.set(M(),nativeDraftReader);nt(()=>{if(globalThis.__nativeDraftReaders.get(M())===nativeDraftReader)globalThis.__nativeDraftReaders.delete(M())});Xe(()=>{D();U();Y();x.images();ae();pe();le.pastes();A.mentionedPaths();A.mentionedSessions();globalThis.__nativeQueueDraftSnapshot()});${scopeEnd}`);
+  const tabInitializer = 'o=jqn(a?.sidebarSessionTabIDs,a?.sidebarActiveSessionTabID,i),[s,l]=Ae(o.ids);';
+  replace(tabInitializer, 'o=restoreDraftTabs(globalThis.__nativeWebviewInitial?.drafts?.version===1?globalThis.__nativeWebviewInitial.drafts.tabs:void 0,()=>jqn(a?.sidebarSessionTabIDs,a?.sidebarActiveSessionTabID,i)),[s,l]=Ae(o.ids);');
+  replace('h=new Set,A=()=>({ids:s(),active:d()}),b=V=>', 'h=new Set,A=()=>({ids:s(),active:d()}),nativeDraftTabs=(globalThis.__nativeReadDraftTabs=A,Ue(()=>{s();d();globalThis.__nativeQueueDraftSnapshot()})),b=V=>');
+  const scopeEnd = 'let ln=/^## Review Comments\\n[\\s\\S]*?\\n\\n/;';
+  replace(scopeEnd, `const nativeDraftReader=()=>{V(Q(),W(),Oe(),w.images());const paths=[...y.mentionedPaths()],sessions=[...y.mentionedSessions().values()];if(paths.length||sessions.length)fy.set(Q(),{paths,sessions});else fy.delete(Q())};globalThis.__nativeDraftReaders.set(L(),nativeDraftReader);Xe(()=>{if(globalThis.__nativeDraftReaders.get(L())===nativeDraftReader)globalThis.__nativeDraftReaders.delete(L())});Ue(()=>{Q();W();Oe();w.images();fe();Ne();Le.pastes();y.mentionedPaths();y.mentionedSessions();globalThis.__nativeQueueDraftSnapshot()});${scopeEnd}`);
   return `${marker}\n${restoreDraftTabs.toString()}\n${installDraftRecovery.toString()}\n${source}`;
 }
 

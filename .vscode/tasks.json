@@ -11,8 +11,8 @@
     {
       "label": "Kilo: Repair Jev picker order",
       "type": "process",
-      "command": "node",
-      "args": ["${workspaceFolder}/examples/patches/jev-agent-order.mjs", "--apply"],
+      "command": "bash",
+      "args": ["${workspaceFolder}/scripts/reapply-kilo-patches.sh"],
       "problemMatcher": []
     }
   ]

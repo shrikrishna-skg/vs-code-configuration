@@ -21,11 +21,11 @@ const extensionInsert = `case"requestNextPrompt":{${hostMarker}let sdkClient=thi
 // webview.js: one call site at the autocomplete hook; helper block placed before
 // clarify-goal's marker so permission-modes (whose own block also prepends) still verifies.
 // Any installed version is removed by its marker first, so --apply also upgrades in place.
-const webviewCallAnchor = 'let Be=dBn(p,U,()=>r.isConnected()),';
-const webviewCallInsert = '/* predict-next-call:v2 */var __kiloNextStop=globalThis.__kiloNext.attach({input:()=>w,post:m=>p.postMessage(m),on:f=>p.onMessage(f),session:()=>t.currentSessionID(),apply:value=>{K(value),A.seedFromText(value),w.value=value,ct(),w.focus()}});Xe(()=>{t.currentSessionID();__kiloNextStop.sync()});nt(()=>__kiloNextStop());';
+const webviewCallAnchor = 'let Rt=aKn(m,W,()=>r.isConnected()),';
+const webviewCallInsert = '/* predict-next-call:v2 */var __kiloNextStop=globalThis.__kiloNext.attach({input:()=>B,post:message=>m.postMessage(message),on:fn=>m.onMessage(fn),session:()=>t.currentSessionID(),apply:value=>{Z(value),y.seedFromText(value),B.value=value,ea(),B.focus()}});Ue(()=>{t.currentSessionID();__kiloNextStop.sync()});Xe(()=>__kiloNextStop());';
 const webviewHelperAnchor = '/* clarify-goal-patch:v1 */';
 const installedHelper = /\/\* predict-next-ui:v\d+ \*\/[\s\S]*?(?=\/\* clarify-goal-patch:v1 \*\/)/g;
-const installedCall = /\/\* predict-next-call:v\d+ \*\/[\s\S]*?(?=let Be=dBn\(p,U,\(\)=>r\.isConnected\(\)\),)/g;
+const installedCall = /\/\* predict-next-call:v\d+ \*\/[\s\S]*?(?=let Rt=aKn\(m,W,\(\)=>r\.isConnected\(\)\),)/g;
 
 export function patch(source, kind, restore = false) {
   if (kind === 'extension.js') {

@@ -1,7 +1,8 @@
 ---
-description: Leaf implementation worker using DeepSeek V4.1 Flash for substantial, well-scoped coding tasks with exclusive file ownership.
+description: Leaf implementation worker using DeepSeek V4.1 Flash Ultra Chat on LithosAI for substantial, well-scoped coding tasks with exclusive file ownership.
 mode: subagent
-model: lithosai/deepseek-ai/DeepSeek-V4.1-Flash-ultra
+model: lithosai/deepseek-ai/DeepSeek-V4.1-Flash-ultra-chat
+variant: high
 color: accent
 steps: 150
 permission:
@@ -9,6 +10,7 @@ permission:
   cto_*: deny
   agent_manager*: deny
   computer_*: deny
+  SUBQ_*: deny
   TypeSafe_*: deny
   Claude_Code_Local_*: deny
 ---

@@ -9,19 +9,23 @@ import { spawnSync } from 'node:child_process';
 
 // Tests may point this at a throwaway directory with stub helper files.
 const root = process.env.KILO_SESSION_MAP_DIR || path.dirname(fileURLToPath(import.meta.url));
-const helpers = ['session-map.cjs', 'session-map-host.cjs'];
+const helpers = ['session-map.cjs', 'session-map-host.cjs', 'session-map-ask.cjs'];
 const count = (s, a) => s.split(a).length - 1;
 const read = name => fs.readFileSync(path.join(root, name), 'utf8');
 
 // extension.js: same sdkClient acquisition as the predict-next host block, placed before enhancePrompt.
-const hostMarker = '/* session-map-host:v1 */';
+const hostMarker = '/* session-map-host:v2 */';
 const extensionAnchor = 'case"enhancePrompt":{';
-// Every path, including a synchronous throw (missing helper, bad directory), replies with sessionMapResult.
-const extensionInsert = `case"requestSessionMap":{${hostMarker}const smFail=err=>{this.postMessage({type:"sessionMapResult",error:String(err&&err.message||err),requestId:message6.requestId})};try{let sdkClient=this.client;if(!sdkClient){smFail("Kilo is not connected yet.");break}require(require("node:path").join(__dirname,"session-map-host.cjs")).load(sdkClient,message6,this.getSessionDirectory(message6.sessionID)).then(map=>{this.postMessage({type:"sessionMapResult",map,requestId:message6.requestId})}).catch(smFail)}catch(err){smFail(err)}break}`;
+// Every path, including a synchronous throw (missing helper, bad directory), replies with its result type.
+const hostCase = (marker, type, reply, helper, call, field) => `case"${type}":{${marker}const smFail=err=>{this.postMessage({type:"${reply}",error:String(err&&err.message||err),requestId:message6.requestId})};try{let sdkClient=this.client;if(!sdkClient){smFail("Kilo is not connected yet.");break}require(require("node:path").join(__dirname,"${helper}")).${call}(sdkClient,message6,this.getSessionDirectory(message6.sessionID)).then(${field}=>{this.postMessage({type:"${reply}",${field},requestId:message6.requestId})}).catch(smFail)}catch(err){smFail(err)}break}`;
+// v1 (map only) is what earlier installs hold; it is swapped for v2 (map + Ask) on apply.
+const legacyInsert = hostCase('/* session-map-host:v1 */', 'requestSessionMap', 'sessionMapResult', 'session-map-host.cjs', 'load', 'map');
+const extensionInsert = hostCase(hostMarker, 'requestSessionMap', 'sessionMapResult', 'session-map-host.cjs', 'load', 'map')
+  + hostCase('', 'askSessionMap', 'askSessionMapResult', 'session-map-ask.cjs', 'ask', 'answer').replace('.then(answer=>{', '.then(r=>{const answer=r.answer;');
 
 // webview.js: one fenced block in the composer setup, before predict-next's call when present
 // (predict-next strips only its own marker..anchor span, so this block survives its re-apply).
-const callAnchor = 'let Be=dBn(p,U,()=>r.isConnected()),';
+const callAnchor = 'let Rt=aKn(m,W,()=>r.isConnected()),';
 const callStart = '/* session-map-call:v1 */', callEnd = '/* end session-map-call */';
 const installedCall = /\/\* session-map-call:v\d+ \*\/[\s\S]*?\/\* end session-map-call \*\//g;
 const predictCall = /\/\* predict-next-call:v\d+ \*\//;
@@ -39,6 +43,10 @@ function callBlock() {
 
 export function patch(source, kind, restore = false) {
   if (kind === 'extension.js') {
+    if (source.includes('/* session-map-host:v1 */')) {
+      if (count(source, legacyInsert) !== 1) throw Error('Unsupported session-map v1 host block; no changes made.');
+      source = source.replace(legacyInsert, '');
+    }
     const exists = source.includes(hostMarker);
     if (exists && count(source, extensionInsert) !== 1) throw Error('Unsupported session-map host block; no changes made.');
     if (!exists && count(source, extensionAnchor) !== 1) throw Error('Unsupported session-map host anchor; no changes made.');
@@ -57,7 +65,9 @@ export function patch(source, kind, restore = false) {
     const css = read('session-map.css').trim();
     if (!css.startsWith(cssStart) || !css.endsWith(cssEnd) || css.slice(0, -cssEnd.length).includes(cssEnd)) throw Error('Unsupported session-map CSS file; no changes made.');
     const bare = source.replace(installedCss, '');
-    return restore ? bare : bare + (bare.endsWith('\n') ? '' : '\n') + css + '\n';
+    if (restore) return bare;
+    // Update in place so CSS patches appended later keep their order; .ksm-/.session-map- rules do not rely on file position.
+    return (source.match(installedCss) || []).length === 1 ? source.replace(installedCss, () => css + '\n') : bare + (bare.endsWith('\n') ? '' : '\n') + css + '\n';
   }
   throw Error('Expected extension.js, webview.js or webview.css');
 }

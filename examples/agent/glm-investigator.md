@@ -1,7 +1,8 @@
 ---
-description: Read-only investigator and independent reviewer using GLM 5.3 Flash for exploration, diagnosis, and verification.
+description: Read-only investigator and independent reviewer using GLM 5.3 Flash Ultra on LithosAI for exploration, diagnosis, and verification.
 mode: subagent
 model: lithosai/zai-org/GLM-5.3-Flash-ultra
+variant: high
 color: info
 steps: 60
 permission:
@@ -11,6 +12,7 @@ permission:
   cto_*: deny
   agent_manager*: deny
   computer_*: deny
+  SUBQ_*: deny
   TypeSafe_*: deny
   Claude_Code_Local_*: deny
   bash:

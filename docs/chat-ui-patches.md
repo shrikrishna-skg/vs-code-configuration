@@ -1,4 +1,4 @@
-# Chat reading and composer patches (2026-10-13, updated 2026-10-14)
+# Chat reading and composer patches (2026-10-13, updated 2026-10-18)
 
 Five patches change how Kilo chat replies read and how the composer behaves, plus one small selector tweak. They target the local Kilo build `kilo-code-local-7.8.2` and are version-sensitive: each one matches exact text in the installed bundle and makes no change when that text is not found.
 
@@ -30,7 +30,7 @@ Five patches change how Kilo chat replies read and how the composer behaves, plu
 
 - **Files:** `examples/patches/predict-next.mjs` (installer), `predict-next.cjs` (the prediction), `predict-next-ui.js` (marker `predict-next-ui:v2`), `predict-next.test.mjs`, `predict-next.test.cjs`, `predict-next.live.mjs`.
 - **Behaviour:** when the composer is empty, the suggestion appears as its placeholder. Tab accepts it and Escape dismisses it. The user's typed input is never modified.
-- **Model:** one bounded, tool-free request on LithosAI at low effort, using `zai-org/GLM-5.3-Flash-ultra` when available and `deepseek-ai/DeepSeek-V4.1-Flash-ultra` otherwise, with a 15 s deadline. Requests use the agent name `next-message-predictor`.
+- **Model:** one bounded, tool-free request to `claude-haiku-5-5` through the local Claude CLI at high effort (8 s limit). If that fails, it falls back to LithosAI at low effort, using `zai-org/GLM-5.3-Flash-ultra` when available and `deepseek-ai/DeepSeek-V4.1-Flash-ultra` otherwise, with agent name `next-message-predictor`. The whole request has a 15 s deadline. Acknowledgements such as "Done." and empty results are dropped; when the reply has a Next step section, the placeholder shows "Go ahead with the next step." instead.
 - **Scope of context:** a window of the most recent chat messages. Older decisions can be missing, so a prediction is a suggestion and never a commitment.
 - **One per session:** the latest prediction wins; other sessions keep theirs.
 
@@ -56,6 +56,27 @@ Added 2026-10-14 (Variant A of `examples/mockups/chatbox-controls/index.html`).
 - **Bundle change:** in `dist/webview.js` the Continue button text loses its `▾` character (one exact match). The marked CSS block (`kilo-composer-chevrons:v1`) goes into both CSS files.
 - **Modes:** `--apply` (default), `--check` and `--restore`. The first apply keeps a `.pre-composer-chevrons` backup of each file.
 - **Scope:** the Continue and Prompts buttons exist only in the sidebar chat, so Agent Manager gets the chevrons but not the spacing change.
+
+## Subagent strip
+
+Added 2026-10-18.
+
+- **Files:** `examples/patches/subagents-header.mjs` (with `legacy-agent-header.mjs`, `agent-presentation.mjs`, `agent-identity-patch.mjs`), `subagent-model-small.mjs`, tests `subagents-header.test.mjs`.
+- **Collapsed:** the strip above the chat shows up to four chips with their status dots and the subagent title on one line; extra agents show as `+N`. The agent · model · provider line is hidden; the chip tooltip still names all three.
+- **Expanded:** the list shows that line at 9px under a 12px title.
+
+## Settings navigation highlight
+
+- **File:** `examples/patches/active-tab-blue.mjs`. The standalone Settings panel loads its own `settings.css`, so the patch now also patches and checks the sibling `settings.css` next to `webview.css`. The selected Settings tab is solid blue (`#0e639c`, `#1177bb` on hover) even when the VS Code theme repaints selected tabs.
+
+## New-chat memory
+
+- **Model and effort:** the last explicit model or variant pick, made in any chat, is saved and used for the next new chat of that agent; an agent's `model:` pin is the fallback (`per-agent-model.mjs`, test `per-agent-model-last-pick.test.mjs`).
+- **Permissions:** a new chat starts in the last mode the user chose, Full access included (`kilo.chatPermissionModes.last.v1` in global state; `permission-modes.cjs`, test `permission-modes.test.cjs`).
+
+## Predictor filter
+
+- `predict-next.cjs` drops predictions shorter than 8 characters or made only of filler words ("Done.", "Ok", "thanks", "go ahead"). When the reply ends with a Next step, the placeholder falls back to "Go ahead with the next step." (test `predict-next.test.cjs`).
 
 ## Saved chat settings and update recovery
 

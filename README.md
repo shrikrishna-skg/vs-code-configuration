@@ -10,7 +10,7 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 
 ## Start here
 
-**Latest snapshot: [2026-10-14b](docs/updates/2026-10-14b.md)** · Git tag `config-2026-10-14b` · [Dated change index](docs/configuration-history.md).
+**Latest snapshot: [2026-10-18](docs/updates/2026-10-18.md)** · Git tag `config-2026-10-18` · [Dated change index](docs/configuration-history.md).
 
 **Speed and reading:** [Local CLI bridge latency](docs/local-cli-bridge.md#response-latency-2026-10-13) replies on the result line, shows progress after 1.5 s and reuses one CLI process per chat. [Chat UI patches](docs/chat-ui-patches.md) add skim mode, the Hanken Grotesk chat font and a predicted next message.
 
@@ -123,7 +123,7 @@ flowchart TD
 4. Copy the files under `examples/agent/` to `~/.config/kilo/agent/`.
 5. Merge the relevant keys from `examples/vscode/settings.jsonc` into VS Code user settings.
 6. Configure the local Claude CLI bridge and authenticate providers outside Git.
-7. Optionally install the Kilo bundle patches under `examples/patches/`; LaunchAgent `ai.kilo.reapply-patches` runs `scripts/reapply-kilo-patches.sh` to re-apply them after each Kilo auto-update.
+7. Install Kilo patches only through `scripts/reapply-kilo-patches.sh` (also used by LaunchAgent `ai.kilo.reapply-patches` after updates). The mandatory gate stages the whole batch, checks every JavaScript file, checks a second application changes nothing, and renders both real chat bundles in an isolated offline Chrome browser. A failed batch leaves the installed version untouched. Individual installs must use `node ~/.config/kilo/patches/safe-kilo-patches.mjs patch <patch.mjs> <installed-dist-targets...>`. The existing Playwright runtime and Chrome must be available; missing validation tools block installation. Rendering checks cover startup and visible controls; add focused regression tests for changed interactions. Validated replacements retain rollback copies. The gate never reloads VS Code or changes chat storage.
 8. Copy `examples/bridges/peekaboo-runner.mjs` to `~/.config/kilo/bridges/` for the Opus + Jev screen runner.
 9. Restart VS Code, select **Opus + Jev Engineering Lead** (or the Kilo default, **Astra Engineering Lead**), and run the scenario checks.
 

@@ -1,0 +1,5 @@
+{
+  "name": "skim-mode",
+  "version": "0.1.0",
+  "description": "Skim mode for assistant replies: the first sentence of each paragraph and list item stays bright, the rest is dimmed. /skim toggles it."
+}

@@ -18,7 +18,7 @@ assert.equal(patch(extPatched, 'extension.js'), extPatched, 'extension patch ide
 assert.equal(patch(extPatched, 'extension.js', true), extBase, 'extension restore exact');
 
 // --- patch() unit: webview.js ---
-const webBase = 'aaa;/* clarify-goal-patch:v1 */\n/* clarify-goal-ui:v1 */\n(()=>{})();\n\n"use strict";let x=1,let Be=dBn(p,U,()=>r.isConnected()),Ve=uBn();zzz';
+const webBase = 'aaa;/* clarify-goal-patch:v1 */\n/* clarify-goal-ui:v1 */\n(()=>{})();\n\n"use strict";let x=1,let Rt=aKn(m,W,()=>r.isConnected()),Ve=uBn();zzz';
 const webPatched = patch(webBase, 'webview.js');
 assert.notEqual(webPatched, webBase, 'webview patch must change source');
 const uiAt = webPatched.search(/\/\* predict-next-ui:v\d+ \*\//);
@@ -29,7 +29,7 @@ assert.equal(patch(webPatched, 'webview.js'), webPatched, 'webview patch idempot
 assert.equal(patch(webPatched, 'webview.js', true), webBase, 'webview restore exact');
 
 // --- an installed older version is upgraded in place and restores cleanly ---
-const webOld = webBase.replace('/* clarify-goal-patch:v1 */', '/* predict-next-ui:v1 */\nOLD();\n/* clarify-goal-patch:v1 */').replace('let Be=dBn(', '/* predict-next-call:v1 */OLDCALL();let Be=dBn(');
+const webOld = webBase.replace('/* clarify-goal-patch:v1 */', '/* predict-next-ui:v1 */\nOLD();\n/* clarify-goal-patch:v1 */').replace('let Rt=aKn(', '/* predict-next-call:v1 */OLDCALL();let Rt=aKn(');
 assert.equal(patch(webOld, 'webview.js'), webPatched, 'old version upgraded');
 assert.equal(patch(webOld, 'webview.js', true), webBase, 'old version restored');
 

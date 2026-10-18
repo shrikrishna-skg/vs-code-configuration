@@ -2,6 +2,34 @@
 (() => {
   const pending = new WeakMap();
   const panels = new WeakMap();
+  const preferences = new WeakMap();
+  function modelPicker(anchor, el) {
+    const state = preferences.get(anchor); if (!state) return;
+    el.querySelector('.kilo-goal-model')?.remove();
+    const row = document.createElement('label'); row.className='kilo-goal-model';
+    const caption = document.createElement('span'); caption.textContent='Clarification model';
+    const select = document.createElement('select'); select.setAttribute('aria-label','Clarification model');
+    const models = state.models || [];
+    const selected = state.selected;
+    if (!models.some(model=>model.providerID===selected?.providerID&&model.modelID===selected?.modelID)) {
+      const option=document.createElement('option');option.value='';option.disabled=true;option.selected=true;
+      option.textContent=selected?`Unavailable: ${selected.providerID}/${selected.modelID}`:'Loading models…';select.append(option);
+    }
+    models.forEach((model,index)=>{
+      const option=document.createElement('option');option.value=String(index);option.textContent=model.name;
+      option.selected=model.providerID===selected?.providerID&&model.modelID===selected?.modelID;select.append(option);
+    });
+    select.disabled=state.loading||models.length===0;
+    const hint=document.createElement('span');hint.className='kilo-goal-meta';hint.setAttribute('role','status');
+    hint.textContent=state.status||'Used for goal clarifications in every chat until you change it.';
+    select.addEventListener('change',()=>{
+      const model=models[Number(select.value)];if(!model)return;
+      state.loading=true;state.status='Saving model…';state.requestId=`${state.id}-model-${++state.sequence}`;
+      modelPicker(anchor,el);
+      state.post({type:'setGoalModel',providerID:model.providerID,modelID:model.modelID,requestId:state.requestId});
+    });
+    row.append(caption,select,hint);el.insertBefore(row,el.children[1]||null);
+  }
   function close(anchor) { const panel = panels.get(anchor); if (panel) panel.remove(); panels.delete(anchor); }
   function panel(anchor, title) {
     close(anchor);
@@ -10,23 +38,38 @@
     const el = document.createElement('section');
     el.className = 'kilo-goal-preview'; el.setAttribute('aria-label', title);
     const heading = document.createElement('strong'); heading.textContent = title; el.append(heading);
-    host.append(el); panels.set(anchor, el); return el;
+    host.append(el); panels.set(anchor, el); modelPicker(anchor,el); return el;
   }
   function button(label, callback) { const b = document.createElement('button'); b.type='button'; b.textContent=label;b.addEventListener('click',callback);return b; }
   const api = {
     begin(anchor, snapshot, current, control) {
       const request = {snapshot,current,control,stopped:false};
       pending.set(anchor,request);
+      if(control?.post){
+        const previous=preferences.get(anchor);
+        const state={...previous,id:control.requestId,sequence:0,requestId:`${control.requestId}-models`,post:control.post,loading:true,status:'Loading saved model…'};
+        preferences.set(anchor,state);
+        control.post({type:'requestGoalModels',requestId:state.requestId});
+      }
       const el=panel(anchor,'Clarifying goal…');if(!el)return;
-      const meta=document.createElement('p');meta.className='kilo-goal-meta';meta.textContent='DeepSeek V4.1 Flash Ultra · LithosAI';
       const status=document.createElement('p');status.className='kilo-goal-meta';status.setAttribute('role','status');status.textContent='Clarifying your draft with available attachments and recent context. Your original draft stays unchanged.';
-      el.append(meta,status);
+      el.append(status);
       if(control) el.append(button('Stop',event=>{
         if(request.stopped)return;
         request.stopped=true;event.currentTarget.disabled=true;
         status.textContent='Stopping clarification… Your draft and attachments are kept.';
         control.cancel(control.requestId);
       }));
+    },
+    modelSettings(anchor, response) {
+      const state=preferences.get(anchor);if(!state||state.requestId!==response.requestId)return;
+      state.loading=false;
+      if(response.error)state.status=response.error;
+      else {
+        state.models=response.models;state.selected=response.selected;
+        state.status=response.saved?'Saved for goal clarifications in every new chat. An active run keeps its original model.':'';
+      }
+      const el=panels.get(anchor);if(el)modelPicker(anchor,el);
     },
     cancelled(anchor, requestId) {
       const request=pending.get(anchor);if(!request||request.control?.requestId!==requestId)return;
@@ -58,6 +101,9 @@
     .kilo-goal-preview{padding:14px;margin:10px 0;border:1px solid var(--vscode-input-border,var(--border-base,#666));border-radius:7px;background:var(--vscode-editor-background);color:var(--vscode-foreground);font:inherit}
     .kilo-goal-preview textarea{display:block;width:100%;box-sizing:border-box;min-height:140px;resize:vertical;padding:10px;border:1px solid var(--vscode-input-border,#666);border-radius:4px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);font:inherit;line-height:1.5}
     .kilo-goal-meta{font-size:12px;opacity:.85;margin:8px 0;overflow-wrap:anywhere}
+    .kilo-goal-model{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+    .kilo-goal-model select{width:100%;min-width:0;padding:6px;font:inherit;color:var(--vscode-dropdown-foreground);background:var(--vscode-dropdown-background);border:1px solid var(--vscode-dropdown-border,var(--vscode-input-border,#666));border-radius:4px}
+    .kilo-goal-model select:focus-visible{outline:2px solid var(--vscode-focusBorder);outline-offset:2px}
     .kilo-goal-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
     .kilo-goal-preview button{font:inherit;padding:6px 12px;border:1px solid var(--vscode-button-border,transparent);border-radius:4px;background:var(--vscode-button-secondaryBackground);color:var(--vscode-button-secondaryForeground);cursor:pointer}
     .kilo-goal-preview button:focus-visible{outline:2px solid var(--vscode-focusBorder);outline-offset:2px}

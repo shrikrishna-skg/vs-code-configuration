@@ -117,7 +117,7 @@ const clientMarker = '/* native-webview-recovery-client:v2 */';
 const edits = [
   ['return buildWebviewHtml(webview,{sidebar:sidebar?', 'return buildWebviewHtml(webview,{nativeRecovery:this.nativeWebviewRecoveryState?.snapshot,sidebar:sidebar?'],
   ['<script nonce="${nonce}">window.ICONS_BASE_URI = ', '<script nonce="${nonce}">window.__nativeWebviewInitial = ${JSON.stringify(opts.nativeRecovery??null).replace(/</g,"\\\\u003c")}; window.ICONS_BASE_URI = '],
-  ['this.initializeConnection()}registerSession(session,activate2=!1)', 'this.initializeConnection(),installNativeWebviewRecovery(this,panel,vscode41)}registerSession(session,activate2=!1)'],
+  ['this.initializeConnection()}registerSession(session,activate2=!1,project=this.opts.projectQualifier?.()?.projectId)', 'this.initializeConnection(),installNativeWebviewRecovery(this,panel,vscode46)}registerSession(session,activate2=!1,project=this.opts.projectQualifier?.()?.projectId)'],
   ['dispose(){this.opts.onHidden?.()', 'dispose(){this.nativeWebviewRecovery?.dispose(),this.opts.onHidden?.()'],
   ['tabTitle:panelTitleHandler(panel),topBarSurface:"tab"', 'tabTitle:panelTitleHandler(panel),onRecoveredPanel:(old,next)=>{tabPanels.delete(old);next&&tabPanels.set(next,tabProvider)},topBarSurface:"tab"'],
   ['tabPanels.delete(panel),tabProvider.dispose()', 'tabPanels.delete(panel),tabProvider.panel===panel&&tabProvider.dispose()'],

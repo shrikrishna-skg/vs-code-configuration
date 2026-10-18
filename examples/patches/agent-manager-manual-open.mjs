@@ -8,8 +8,8 @@ import { spawnSync } from 'node:child_process';
 
 const changes = [
   {
-    before: 'let post=state=>{let active2=input.contexts().active();(state.status==="starting"||state.status==="loading")&&state.projectId===active2?.id&&input.openPanel(),input.post(browserMessage(state))}',
-    after: 'let post=state=>{/* kilo-manual-open: browser events never reveal the panel */input.post(browserMessage(state))}',
+    before: 'post=state=>{if(!state.projectId)return;let active2=input.contexts().active();(state.status==="starting"||state.status==="loading")&&state.projectId===active2?.id&&input.openPanel(),input.post(browserMessage(state))}',
+    after: 'post=state=>{/* kilo-manual-open: browser events never reveal the panel */if(!state.projectId)return;input.post(browserMessage(state))}',
   },
   {
     before: 'registerWebviewPanelSerializer(AgentManagerProvider.viewType,{deserializeWebviewPanel(panel){if(restore.agentManager===!1)return panel.dispose(),Promise.resolve();',

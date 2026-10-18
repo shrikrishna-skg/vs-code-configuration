@@ -15,6 +15,7 @@ node scripts/test-peekaboo-runner.mjs
 node --test scripts/test-computer-control.mjs
 node scripts/test-computer-install.mjs
 node scripts/test-reapply-kilo-patches.mjs
+node scripts/test-safe-kilo-patches.mjs
 node --check scripts/validate-long-run-plan.mjs
 node scripts/test-validate-long-run-plan.mjs
 node scripts/test-cto.mjs
@@ -28,6 +29,7 @@ node scripts/test-minimal-cto.mjs
 node scripts/test-adaptive-cto.mjs
 python3 scripts/check-workspace-path.py --self-test
 node scripts/test-clarify-goal.mjs
+node examples/patches/clarify-goal.test.cjs
 node scripts/test-cto-label.mjs
 node scripts/test-subagent-default-open.mjs
 node scripts/test-todos-both-locations.mjs
@@ -40,6 +42,13 @@ node examples/patches/predict-next.test.mjs
 node examples/patches/predict-next.test.cjs
 node examples/patches/session-map.test.cjs
 node examples/patches/pinned-append.test.mjs
+node examples/patches/subagents-header.test.mjs
+node examples/patches/per-agent-model-last-pick.test.mjs
+node examples/patches/permission-modes.test.cjs
+node examples/patches/session-map-ask.test.cjs
+node examples/patches/composer-one-line.test.mjs
+# These read Kilo's stock or installed bundles, so they run on the machine; syntax only here.
+for f in chat-effort-isolation.test.mjs per-agent-model.test.mjs native-webview-recovery.test.mjs model-favorites-7.8.12.test.mjs ui-7.8.12.test.mjs prompt-suggestions.test.mjs clarify-goal.test.cjs; do node --check "examples/patches/$f"; done
 # smooth-follow.test.mjs reads the installed webview.js, so it is run on the machine, not here.
 node --check examples/patches/smooth-follow.test.mjs
 # Its test needs the installed dist/webview.js, so only the syntax is checked here.
@@ -49,7 +58,8 @@ node --check examples/bridges/check-claude-warm-process.mjs
 node scripts/test-cto-concurrency.mjs
 node --check examples/patches/codex-thinking-status.mjs
 node examples/patches/check-codex-thinking-status.mjs
-node examples/patches/check-per-agent-model.mjs
+# check-per-agent-model.mjs holds Kilo 7.7.7 fixtures; per-agent-model.mjs now targets 7.8.12 (see per-agent-model-last-pick.test.mjs).
+node --check examples/patches/check-per-agent-model.mjs
 node examples/mockups/check-thinking-card.mjs
 node --check claude-code/scripts/validate.mjs
 node claude-code/scripts/validate.mjs

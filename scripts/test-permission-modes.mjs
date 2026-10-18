@@ -11,7 +11,7 @@ const flush=()=>new Promise(resolve=>setImmediate(resolve));
 function fixture(saved={}){
  let enabled=true,fail=false,listener;const calls=[],errors=[],requests=[],storage={...saved};
  const sdk={session:{get:async({sessionID})=>({data:{parentID:sessionID==='childA'?'A':undefined}})},permission:{list:async()=>({data:requests.slice()})}};
- const context={subscriptions:[],workspaceState:{get:()=>storage.modes,update:async(_,m)=>{if(fail)throw Error('disk full');storage.modes=structuredClone(m);}}};
+ const context={subscriptions:[],workspaceState:{get:()=>storage.modes,update:async(_,m)=>{if(fail)throw Error('disk full');storage.modes=structuredClone(m);}},globalState:{get:k=>storage[k],update:async(k,v)=>{storage[k]=v;}}};
  const ctrl=createPermissionController({context,readActive:()=>enabled,writeActive:()=>{throw Error('A chat must never change the window setting');},onConfiguration:fn=>(listener=fn,{dispose(){}}),registerCommand:()=>({dispose(){}}),client:()=>sdk,directories:()=>['/repo'],resolve:()=>'/repo',retry:fn=>fn(),showError:e=>errors.push(e),replyOnce:async(_,id,dir,guard)=>{await flush();if(!guard())return false;calls.push(id);const index=requests.findIndex(p=>p.id===id);if(index>=0)requests.splice(index,1);return true;}});
  return{ctrl,storage,calls,requests,fail:()=>fail=true,event:(sessionID,id,extra={})=>({properties:{sessionID,id,...extra}}),external:value=>{enabled=value;listener({affectsConfiguration:()=>true});}};
 }
@@ -40,7 +40,7 @@ function fixture(saved={}){
  const pending=f.ctrl.approve(f.event('A','cancel'));await f.ctrl.select('ask','A');assert.equal(await pending,false);
  await f.ctrl.select('auto','A');const unaffected=f.ctrl.approve(f.event('A','unaffected'));await f.ctrl.select('full','B');assert.equal(await unaffected,true,'Other chats do not cancel this chat approval');
  await Promise.all([f.ctrl.select('full','A'),f.ctrl.select('auto','B')]);assert.equal(f.ctrl.mode('A'),'full');assert.equal(f.ctrl.mode('B'),'auto');
- f.external(false);assert.equal(f.ctrl.mode('A'),'full');assert.equal(f.ctrl.mode('B'),'auto');assert.equal(await f.ctrl.state('new'),'ask');
+ f.external(false);assert.equal(f.ctrl.mode('A'),'full');assert.equal(f.ctrl.mode('B'),'auto');assert.equal(await f.ctrl.state('new'),'auto','A new chat starts in the last mode the user chose');
  const reopened=fixture(f.storage);assert.equal(await reopened.ctrl.state('A'),'full');assert.equal(await reopened.ctrl.state('B'),'auto');
  await f.ctrl.select('full','pending:draft-a');await f.ctrl.promote('draft-a','created');assert.equal(f.ctrl.mode('created'),'full');
  await f.ctrl.select('ask','existing');await f.ctrl.select('full','pending:draft-b');await f.ctrl.promote('draft-b','existing');assert.equal(f.ctrl.mode('existing'),'ask','Opening an existing chat cannot promote draft permissions over it');

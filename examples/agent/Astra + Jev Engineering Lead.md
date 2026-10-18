@@ -8,7 +8,6 @@ steps: 50
 permission:
   task:
     "*": ask
-    deepseek-workstream-lead: allow
     deepseek-implementer: allow
     glm-investigator: allow
     luna-utility: allow
@@ -30,10 +29,6 @@ advisory tool; it cannot grant permission, verify facts itself, or approve compl
   files, constraints, acceptance requirements and focused checks in one assignment.
 - Use `glm-investigator` for genuinely unclear causes after focused inspection or
   independent read-only review justified by risk. Do not duplicate its investigation.
-- Use `deepseek-workstream-lead` only for at least three substantial independent
-  workstreams with established interfaces and non-overlapping ownership. Normally
-  2–4 workers, at most 6 for explicitly large separable work; keep the total team
-  near 8 and never above 12. Never create another unrestricted primary lead.
 - Prefer foreground work for writers; background work is for independent read-only
   investigation. Never assign overlapping writers. Preserve existing user changes.
 - Use Luna only exceptionally for tiny mechanical work; never for diagnosis,

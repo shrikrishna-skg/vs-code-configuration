@@ -3,8 +3,10 @@
 // theme-aware blue active state instead of the theme's subtle grey selection.
 // High-contrast rules are untouched.
 // Usage: active-tab-blue.mjs <webview.css> [agent-manager.css ...] [--check]
+// A sibling settings.css next to webview.css is patched and checked as well.
 
 import fs from "node:fs"
+import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 const blue = "var(--vscode-focusBorder, #3794ff)"
@@ -19,6 +21,9 @@ const wideSettingsLegacy = `&:has([data-selected]){background-color:color-mix(in
 const wideSettingsThemeSelection = `&:has([data-selected]){background-color:var(--vscode-list-activeSelectionBackground, #094771);color:var(--vscode-list-activeSelectionForeground, #fff);box-shadow:inset 3px 0 0 ${blue};[data-component=icon]{color:var(--vscode-list-activeSelectionForeground, #fff)}&:hover:not(:disabled){background-color:var(--vscode-list-activeSelectionBackground, #094771)}}`
 const wideSettingsMixedSelection = `&:has([data-selected]){background-color:color-mix(in srgb,${blue} 45%,var(--background-base));color:#fff;box-shadow:inset 3px 0 0 ${blue};[data-component=icon]{color:#fff}&:hover:not(:disabled){background-color:color-mix(in srgb,${blue} 55%,var(--background-base))}}`
 const wideSettingsAfter = `&:has([data-selected]){background-color:#0e639c;color:#fff;box-shadow:inset 3px 0 0 ${blue},inset 0 -2px 0 ${blue};[data-component=icon]{color:#fff}&:hover:not(:disabled){background-color:#1177bb}}`
+// An unlayered VS Code theme block repaints every selected tab with --input-base, beating the layered rule above.
+const themeTabsBefore = "[data-slot=tabs-trigger-wrapper]{padding:8px;border-radius:2px;&:has([data-selected]){background-color:var(--input-base)}}"
+const themeTabsAfter = `${themeTabsBefore}@media not (forced-colors:active){&[data-variant=settings] [data-slot=tabs-trigger-wrapper]:has([data-selected]){background-color:#0e639c;&:hover:not(:disabled){background-color:#1177bb}}}`
 
 export function patch(source) {
   const pending = source.split(before).length - 1
@@ -34,12 +39,20 @@ export function patch(source) {
   const wideMixedSelection = source.split(wideSettingsMixedSelection).length - 1
   const wideApplied = source.split(wideSettingsAfter).length - 1
   if (widePending + wideLegacy + wideThemeSelection + wideMixedSelection + wideApplied !== 1) throw new Error(`active-tab-blue: expected 1 wide settings-nav anchor, found ${widePending} unpatched + ${wideLegacy + wideThemeSelection + wideMixedSelection} legacy + ${wideApplied} patched; no changes made.`)
-  return source.replaceAll(before, after).replace(compactSettingsBefore, compactSettingsAfter).replace(compactSettingsLegacy, compactSettingsAfter).replace(wideSettingsBefore, wideSettingsAfter).replace(wideSettingsLegacy, wideSettingsAfter).replace(wideSettingsThemeSelection, wideSettingsAfter).replace(wideSettingsMixedSelection, wideSettingsAfter)
+  const themeApplied = source.split(themeTabsAfter).length - 1
+  const themePending = source.split(themeTabsBefore).length - 1 - themeApplied
+  if (themePending + themeApplied !== 1) throw new Error(`active-tab-blue: expected 1 theme tabs anchor, found ${themePending} unpatched + ${themeApplied} patched; no changes made.`)
+  return (themePending ? source.replace(themeTabsBefore, themeTabsAfter) : source).replaceAll(before, after).replace(compactSettingsBefore, compactSettingsAfter).replace(compactSettingsLegacy, compactSettingsAfter).replace(wideSettingsBefore, wideSettingsAfter).replace(wideSettingsLegacy, wideSettingsAfter).replace(wideSettingsThemeSelection, wideSettingsAfter).replace(wideSettingsMixedSelection, wideSettingsAfter)
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const checkOnly = process.argv.includes("--check")
-  const files = process.argv.slice(2).filter((arg) => arg !== "--check")
+  const files = process.argv.slice(2).filter((arg) => !arg.startsWith("--")) // the safe gate also passes --apply
+  // The standalone Settings panel loads the sibling settings.css bundle, not webview.css.
+  for (const target of [...files]) {
+    const settings = path.join(path.dirname(target), "settings.css")
+    if (path.basename(target) === "webview.css" && fs.existsSync(settings) && !files.some((file) => path.resolve(file) === path.resolve(settings))) files.push(settings)
+  }
   if (!files.length) {
     console.error("Usage: active-tab-blue.mjs <webview.css> [agent-manager.css ...] [--check]")
     process.exit(2)

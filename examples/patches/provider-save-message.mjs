@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 const original='function r(o,s={}){let l=crypto.randomUUID();return t.set(l,s),e.postMessage({...o,requestId:l}),l}';
 const replacement='function r(o,s={}){/* kilo-provider-save-message:v1 */let l=crypto.randomUUID();t.set(l,s);try{e.postMessage(JSON.parse(JSON.stringify({...o,requestId:l})))}catch{t.delete(l);s.onError?.({type:"providerActionError",requestId:l,providerID:o.providerID,message:"Unable to send provider request. Please reopen settings and try again."})}return l}';
-const context='function JD(e){let t=new Map,n=e.onMessage(o=>{';
+const contexts=['JD','dR','TQ'].map(name=>'function '+name+'(e){let t=new Map,n=e.onMessage(o=>{');
 const count=(s,a)=>s.split(a).length-1;
 export function patch(source,restore=false){
-  const start=source.indexOf(context),end=source.indexOf('function Dse(',start),helper=source.slice(start,end);
-  if(count(source,context)!==1||end<start||count(helper,original)+count(helper,replacement)!==1) throw Error('Unsupported provider request helper; no changes made.');
+  const matches=contexts.filter(context=>count(source,context)===1);
+  if(matches.length!==1)throw Error('Unsupported provider request helper; no changes made.');
+  const start=source.indexOf(matches[0]),end=source.indexOf('return{clear:a,send:r,dispose:i}}',start)+'return{clear:a,send:r,dispose:i}}'.length,helper=source.slice(start,end);
+  if(end<=start||!helper.includes('o.type==="providerActionError"')||count(helper,original)+count(helper,replacement)!==1) throw Error('Unsupported provider request helper; no changes made.');
   const next=restore?helper.replace(replacement,original):helper.replace(original,replacement);
   return source.slice(0,start)+next+source.slice(end);
 }

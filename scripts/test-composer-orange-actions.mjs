@@ -16,7 +16,7 @@ for(const v of variants) {
   assert.throws(()=>patch(anchors(v).slice(0,2).join(';')),/anchors/);
   let enabled=true,label='Send',sent=0,stopped=0;
   const context={create:(_,props)=>props,[v.component]:{},[v.send]:()=>sent++,
-    [v.enabled]:()=>enabled,[v.label]:()=>label,u:{t:key=>key},t:{abort:()=>stopped++}};
+    [v.enabled]:()=>enabled,[v.label]:()=>label,[v.locale??'u']:{t:key=>key},t:{abort:()=>stopped++}};
   // Evaluate each transformed native call rather than recreating its handlers.
   const controls=vm.runInNewContext('['+changed.split(';').join(',')+']',context);
   assert.equal(controls.length,3);

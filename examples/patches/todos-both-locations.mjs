@@ -18,7 +18,15 @@ export function todoState(signal, session) {
     bump(n=>n+1);return next;
   }];
 }
-const helper='\n/* todo-state:v2:start */\nglobalThis.__kiloTodoState='+todoState.toString()+';\n/* todo-state:v2:end */';
+export function todoHeader(signal,effect,cleanup,session,todos) {
+  const el=document.createElement('details'),summary=document.createElement('summary'),list=document.createElement('ul');
+  el.dataset.component='task-header-todos';el.style.cssText='padding:4px 12px;font-size:12px';el.append(summary,list);
+  const [get,set]=globalThis.__kiloTodoState(signal,session);
+  const toggle=()=>{if(el.open!==get())set(el.open);};el.addEventListener('toggle',toggle);cleanup(()=>el.removeEventListener('toggle',toggle));
+  effect(()=>{const items=todos();el.hidden=!items.length;el.open=get();summary.textContent=`To-dos (${items.filter(x=>x.status==='completed').length}/${items.length})`;list.replaceChildren(...items.map(item=>{const li=document.createElement('li');li.textContent=(item.status==='completed'?'✓ ':item.status==='in_progress'?'→ ':'○ ')+item.content;return li;}));});
+  return el;
+}
+const helper='\n/* todo-state:v2:start */\nglobalThis.__kiloTodoState='+todoState.toString()+';globalThis.__kiloTodoHeader='+todoHeader.toString()+';\n/* todo-state:v2:end */';
 const specs = [
   [
     ['let ZIn=()=>{let ne=o();return ne?Mt.todos[ne]||[]:[]}', 'let ZIn=()=>{let ne=o();/* todos-both-locations:v1 */return ne?Mt.todos[ne]??Tnt({messages:Mt.messages[ne]??[],parts:It=>Mt.parts[It]??me.peek(It),revert:Mt.sessions[ne]?.revert}):[]}'],
@@ -29,8 +37,18 @@ const specs = [
     ['[I,D]=ie(!1),[R,$]=ie(),Q=()=>{if(e.readonly)return;', '[I,D]=globalThis.__kiloTodoState(ie,()=>t.currentSessionID()),[R,$]=ie(),Q=()=>{if(e.readonly)return;'],
   ],
 ];
+const stableSpecs=[
+  [
+    ['let eYn=()=>{let ae=s();return ae?jt.todos[ae]||[]:[]}', 'let eYn=()=>{let ae=s();/* todos-both-locations:v3 */return ae?jt.todos[ae]??mgt({messages:jt.messages[ae]??[],parts:Et=>jt.parts[Et]??Oe.peek(Et),revert:jt.sessions[ae]?.revert}):[]}'],
+    ['R&&t.currentSession()?.id!==R.id&&D(void 0)}),C(le,{get when(){return o()},get children(){return[(()=>{var R=bXa()', 'R&&t.currentSession()?.id!==R.id&&D(void 0)}),C(le,{get when(){return o()},get children(){return[globalThis.__kiloTodoHeader(Ae,Ue,Xe,()=>t.currentSessionID(),()=>t.todos()),(()=>{var R=bXa()'],
+  ],
+  [
+    ['let Vmr=()=>{let me=s();return me?Vt.todos[me]||[]:[]}', 'let Vmr=()=>{let me=s();/* todos-both-locations:v3 */return me?Vt.todos[me]??C_n({messages:Vt.messages[me]??[],parts:Qt=>Vt.parts[Qt]??Be.peek(Qt),revert:Vt.sessions[me]?.revert}):[]}'],
+    ['T&&t.currentSession()?.id!==T.id&&R(void 0)}),w(Y,{get when(){return o()},get children(){return[(()=>{var T=XFa()', 'T&&t.currentSession()?.id!==T.id&&R(void 0)}),w(Y,{get when(){return o()},get children(){return[globalThis.__kiloTodoHeader(ie,Pe,qe,()=>t.currentSessionID(),()=>t.todos()),(()=>{var T=XFa()'],
+  ],
+];
 export function patch(source, restore = false) {
-  const matches = specs.filter(spec => spec.some(pair => pair.some(text => source.includes(text))));
+  const matches = [...specs,...stableSpecs].filter(spec => spec.some(pair => pair.some(text => source.includes(text))));
   if (matches.length !== 1) throw Error('Unsupported or ambiguous to-do view; no changes made.');
   let next = source.replace(/\n\/\* todo-state:v2:start \*\/[\s\S]*?\/\* todo-state:v2:end \*\//,'');
   next=next.replace('[D,R]=ye(/* todos-header-expanded:v1 */!0)', '[D,R]=ye(!1)').replace('[I,D]=ie(/* todos-header-expanded:v1 */!0)', '[I,D]=ie(!1)');
@@ -40,7 +58,7 @@ export function patch(source, restore = false) {
     next = next.replace(count(after) ? after : before, restore ? before : after);
   }
   if(restore)return next;
-  const anchor=next.includes('function Rnt(e)')?'function Rnt(e)':next.includes('function abn(e)')?'function abn(e)':null;
+  const anchor=next.includes('function fgt(e)')?'function fgt(e)':next.includes('function E_n(e)')?'function E_n(e)':next.includes('function Rnt(e)')?'function Rnt(e)':next.includes('function abn(e)')?'function abn(e)':null;
   return anchor?next.replace(anchor,helper+anchor):helper+next;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -11,74 +11,50 @@ function replaceOnce(source, before, after) {
   if (source.split(before).length !== 2) throw Error('Unsupported or ambiguous Clarify goal anchor. No changes made.');
   return source.replace(before, after);
 }
+// These tables describe the 7.8.12 composer closures, not global bundle names.
+const symbols = {
+  'webview.js': {input:'W', text:'Ge', paste:'Le', old:'$t', pastes:'Mt', counter:'on', id:'Q', finger:'N', mentions:'y', reply:'It', event:'Ge', resize:'ea', field:'B', images:'w', set:'Z', loading:'we', api:'m', lang:'p'},
+  'agent-manager.js': {input:'J', text:'Ye', paste:'Se', old:'Kt', pastes:'$t', counter:'xn', id:'F', finger:'$', mentions:'y', reply:'Nt', event:'Ye', resize:'or', field:'E', images:'k', set:'X', loading:'le', api:'m', lang:'p'},
+};
 export function patch(source, kind, ui = fs.readFileSync(path.join(root, 'clarify-goal-ui.js'), 'utf8')) {
   if (source.includes(marker)) {
     if (kind !== 'extension.js') {
-      // Other local patches prepend recovery helpers; retain those wrappers.
       const start=source.indexOf(marker+'\n/* clarify-goal-ui:v1 */');
       const boundary=source.indexOf('\n"use strict";',start);
       if (start<0 || boundary<0) throw Error('Unsupported installed Clarify goal UI prefix.');
       source=source.slice(0,start)+marker+'\n'+ui+'\n'+source.slice(boundary+1);
     }
-    return addCancellation(source,kind);
+    return source;
   }
+  const replace=(before,after)=>{source=replaceOnce(source,before,after)};
   if (kind === 'extension.js') {
-    source = replaceOnce(source,
-      'sdkClient.enhancePrompt.enhance({text:message6.text},{throwOnError:!0}).then(({data:data2})=>{this.postMessage({type:"enhancePromptResult",text:data2.text,requestId:message6.requestId})})',
-      'require(require("node:path").join(__dirname,"clarify-goal.cjs")).clarify(sdkClient,message6,message6.sessionID?this.getSessionDirectory(message6.sessionID):this.getWorkspaceDirectory()).then(data2=>{this.postMessage({type:"enhancePromptResult",...data2,requestId:message6.requestId})})');
-  } else if (['webview.js', 'agent-manager.js'].includes(kind)) {
-    const main = kind === 'webview.js';
-    const b = main ? {input:'U',text:'ze',paste:'le',old:'He',pastes:'at',counter:'Oe',id:'D',finger:'F',mentions:'A',reply:'Bt',event:'ze',resize:'ct'}
-      : {input:'H',text:'Oe',paste:'se',old:'We',pastes:'pt',counter:'Ve',id:'I',finger:'R',mentions:'b',reply:'_t',event:'Oe',resize:'lt'};
-    const fingerprint = `()=>JSON.stringify([${b.id}(),${b.finger}(${b.id}()),t.selected(g()),t.currentVariant(g()),f()])`;
-    const before = `${b.old}=${b.input}(),${b.pastes}=${b.paste}.pastes().map(${b.reply}=>${b.reply}.text),${b.counter}++,J(!0),p.postMessage({type:"enhancePrompt",text:${b.text},requestId:\`enhance-\${${b.id}()}-\${${b.counter}}\`})`;
-    // Snapshot before the async call: never apply over newer typing, attachments or selection.
-    const after = `${b.old}=${b.input}(),${b.pastes}=${b.paste}.pastes().map(${b.reply}=>${b.reply}.text),${b.counter}++,J(!0),globalThis.__kiloGoal.begin(w,(${fingerprint})(),${fingerprint}),p.postMessage({type:"enhancePrompt",text:${b.text},sessionID:t.currentSessionID(),providerID:t.selected(g())?.providerID,modelID:t.selected(g())?.modelID,files:[...${b.mentions}.parseFileAttachments(${b.text}),...x.images().map(image=>({mime:image.mime,url:image.dataUrl,filename:image.filename}))],requestId:\`enhance-\${${b.id}()}-\${${b.counter}}\`})`;
-    source = replaceOnce(source, before, after);
-    const resultBefore = `${b.reply}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&(K(${b.reply}.text),${b.mentions}.seedFromText(${b.reply}.text),J(!1),w&&(w.value=${b.reply}.text,${b.resize}(),w.focus()))`;
-    const resultAfter = `J(!1),${b.reply}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&w&&globalThis.__kiloGoal.preview(w,${b.reply},value=>{K(value),${b.mentions}.seedFromText(value),w.value=value,${b.resize}(),w.focus()})`;
-    source = replaceOnce(source, resultBefore, resultAfter);
-    source = replaceOnce(source, `${b.event}.type==="enhancePromptError"&&${b.event}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&J(!1)`,
-      `${b.event}.type==="enhancePromptError"&&(J(!1),${b.event}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&w&&globalThis.__kiloGoal.error(w,${b.event}.error))`);
-    // An empty composer stays empty; clicking the wand must not insert a generic task.
-    source = replaceOnce(source, `if(!${b.text}){let ${b.reply}=u.t("prompt.action.enhanceDescription");K(${b.reply}),w&&(w.value=${b.reply},${b.resize}(),w.focus());return}`,
-      `if(!${b.text}){w&&globalThis.__kiloGoal.error(w,"Add a message describing your goal first.");return}`);
-    if (source.split('u.t("prompt.action.enhance")').length !== 3) throw Error('Unexpected Clarify goal button count.');
-    source = source.replaceAll('u.t("prompt.action.enhance")','"Clarify goal"');
-    source = ui + '\n' + source;
-  } else throw Error('Expected extension.js, webview.js, or agent-manager.js');
-  return addCancellation(marker + '\n' + source,kind);
-}
-
-function addCancellation(source,kind) {
-  if(kind!=='extension.js') {
-    const event=kind==='webview.js'?'ze':'Oe';
-    source=source.replace(`globalThis.__kiloGoal.error(w,${event}.error)`,`globalThis.__kiloGoal.error(w,${event}.error,${event}.requestId)`);
+    replace('sdkClient.enhancePrompt.enhance({text:message6.text},{throwOnError:!0}).then(({data:data2})=>{this.postMessage({type:"enhancePromptResult",text:data2.text,requestId:message6.requestId})})',
+      'require(require("node:path").join(__dirname,"clarify-goal.cjs")).clarify(sdkClient,message6,message6.sessionID?this.getSessionDirectory(message6.sessionID):this.getWorkspaceDirectory(),this).then(data2=>{this.postMessage({type:"enhancePromptResult",...data2,requestId:message6.requestId})})');
+    replace('.catch(err2=>{let raw2=getErrorMessage(err2)||"Failed to enhance prompt"', '.catch(err2=>{if(err2?.name==="AbortError"){this.postMessage({type:"enhancePromptCancelled",requestId:message6.requestId});return}let raw2=getErrorMessage(err2)||"Failed to enhance prompt"');
+    replace('case"enhancePrompt":{', 'case"requestGoalModels":case"setGoalModel":{try{if(!this.client)throw Error("Not connected to CLI backend");const settings=await require(require("node:path").join(__dirname,"clarify-goal.cjs")).modelSettings(this.client,message6,this.getWorkspaceDirectory(),this);this.postMessage({type:"goalModelSettings",...settings,requestId:message6.requestId,saved:message6.type==="setGoalModel"})}catch(error){this.postMessage({type:"goalModelSettingsError",requestId:message6.requestId,error:error?.message||"Unable to load or save the clarification model."})}break}case"cancelEnhancePrompt":{if(!require(require("node:path").join(__dirname,"clarify-goal.cjs")).cancel(this,message6.requestId))this.postMessage({type:"enhancePromptCancelled",requestId:message6.requestId});break}case"enhancePrompt":{');
+  } else {
+    const b=symbols[kind]; if(!b)throw Error('Expected extension.js, webview.js, or agent-manager.js');
+    const fingerprint=`()=>JSON.stringify([${b.id}(),${b.finger}(${b.id}()),t.selected(f()),t.currentVariant(f()),h()])`;
+    replace(`${b.old}=${b.input}(),${b.pastes}=${b.paste}.pastes().map(${b.reply}=>${b.reply}.text),${b.counter}++,${b.loading}(!0),${b.api}.postMessage({type:"enhancePrompt",text:${b.text},requestId:\`enhance-\${${b.id}()}-\${${b.counter}}\`})`,
+      `${b.old}=${b.input}(),${b.pastes}=${b.paste}.pastes().map(${b.reply}=>${b.reply}.text),${b.counter}++,${b.loading}(!0),globalThis.__kiloGoal.begin(${b.field},(${fingerprint})(),${fingerprint},{requestId:\`enhance-\${${b.id}()}-\${${b.counter}}\`,cancel:requestId=>${b.api}.postMessage({type:"cancelEnhancePrompt",requestId}),post:message=>${b.api}.postMessage(message)}),${b.api}.postMessage({type:"enhancePrompt",text:${b.text},requestId:\`enhance-\${${b.id}()}-\${${b.counter}}\`,sessionID:t.currentSessionID(),providerID:t.selected(f())?.providerID,modelID:t.selected(f())?.modelID,files:[...${b.mentions}.parseFileAttachments(${b.text}),...${b.images}.images().map(image=>({mime:image.mime,url:image.dataUrl,filename:image.filename}))]})`);
+    replace(`${b.reply}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&(${b.set}(${b.reply}.text),${b.mentions}.seedFromText(${b.reply}.text),${b.loading}(!1),${b.field}&&(${b.field}.value=${b.reply}.text,${b.resize}(),${b.field}.focus()))`,
+      `${b.loading}(!1),${b.reply}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&${b.field}&&globalThis.__kiloGoal.preview(${b.field},${b.reply},value=>{${b.set}(value),${b.mentions}.seedFromText(value),${b.field}.value=value,${b.resize}(),${b.field}.focus()})`);
+    replace(`${b.event}.type==="enhancePromptError"&&${b.event}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&${b.loading}(!1)`,
+      `${b.event}.type==="enhancePromptCancelled"&&${b.event}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&(${b.loading}(!1),${b.field}&&globalThis.__kiloGoal.cancelled(${b.field},${b.event}.requestId)),${b.event}.type==="enhancePromptError"&&(${b.loading}(!1),${b.event}.requestId===\`enhance-\${${b.id}()}-\${${b.counter}}\`&&${b.field}&&globalThis.__kiloGoal.error(${b.field},${b.event}.error,${b.event}.requestId))`);
+    replace(`if(!${b.text}){let ${b.reply}=${b.lang}.t("prompt.action.enhanceDescription");${b.set}(${b.reply}),${b.field}&&(${b.field}.value=${b.reply},${b.resize}(),${b.field}.focus());return}`, `if(!${b.text}){${b.field}&&globalThis.__kiloGoal.error(${b.field},"Add a message describing your goal first.");return}`);
+    replace(`if(${b.event}.type==="enhancePromptResult"){`, `if((${b.event}.type==="goalModelSettings"||${b.event}.type==="goalModelSettingsError")&&${b.field})globalThis.__kiloGoal.modelSettings(${b.field},${b.event});if(${b.event}.type==="enhancePromptResult"){`);
+    if(source.split(`${b.lang}.t("prompt.action.enhance")`).length!==4)throw Error('Unexpected Clarify goal button count.');
+    source=source.replaceAll(`${b.lang}.t("prompt.action.enhance")`,'"Clarify goal"');
+    source=ui+'\n'+source;
   }
-  if(source.includes(cancelMarker))return source;
-  if(kind==='extension.js') {
-    source=replaceOnce(source,'case"enhancePrompt":{',
-      'case"cancelEnhancePrompt":{if(!require(require("node:path").join(__dirname,"clarify-goal.cjs")).cancel(this,message6.requestId))this.postMessage({type:"enhancePromptCancelled",requestId:message6.requestId});break}case"enhancePrompt":{');
-    source=replaceOnce(source,'message6.sessionID?this.getSessionDirectory(message6.sessionID):this.getWorkspaceDirectory()).then(data2=>',
-      'message6.sessionID?this.getSessionDirectory(message6.sessionID):this.getWorkspaceDirectory(),this).then(data2=>');
-    source=replaceOnce(source,'.catch(err2=>{let raw2=getErrorMessage(err2)||"Failed to enhance prompt"',
-      '.catch(err2=>{if(err2?.name==="AbortError"){this.postMessage({type:"enhancePromptCancelled",requestId:message6.requestId});return}let raw2=getErrorMessage(err2)||"Failed to enhance prompt"');
-  }else{
-    const main=kind==='webview.js';
-    const id=main?'D':'I', counter=main?'Oe':'Ve', finger=main?'F':'R', event=main?'ze':'Oe';
-    const fingerprint=`()=>JSON.stringify([${id}(),${finger}(${id}()),t.selected(g()),t.currentVariant(g()),f()])`;
-    source=replaceOnce(source,`globalThis.__kiloGoal.begin(w,(${fingerprint})(),${fingerprint})`,
-      `globalThis.__kiloGoal.begin(w,(${fingerprint})(),${fingerprint},{requestId:\`enhance-\${${id}()}-\${${counter}}\`,cancel:requestId=>p.postMessage({type:"cancelEnhancePrompt",requestId})})`);
-    source=replaceOnce(source,`${event}.type==="enhancePromptError"&&`,
-      `${event}.type==="enhancePromptCancelled"&&${event}.requestId===\`enhance-\${${id}()}-\${${counter}}\`&&(J(!1),w&&globalThis.__kiloGoal.cancelled(w,${event}.requestId)),${event}.type==="enhancePromptError"&&`);
-  }
-  // Keep the UI prefix stable so future upgrades can replace it independently.
-  return kind==='extension.js'?source+'\n'+cancelMarker:source.replace('\n"use strict";','\n"use strict";'+cancelMarker);
+  return marker+'\n'+source+'\n'+cancelMarker+'\n/* clarify-goal-model:v1 */';
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const [target, mode='--apply'] = process.argv.slice(2);
-  if (!target || !['--apply','--check'].includes(mode)) throw Error('Usage: clarify-goal.mjs <bundle.js> [--apply|--check]');
+  const args=process.argv.slice(2),mode=args.includes('--check')?'--check':'--apply';
+  const targets=args.filter(arg=>!arg.startsWith('--'));
+  if (!targets.length || args.some(arg=>arg.startsWith('--')&&!['--apply','--check'].includes(arg))) throw Error('Usage: clarify-goal.mjs <bundle.js> [...] [--apply|--check]');
+  for(const target of targets) {
   const source=fs.readFileSync(target,'utf8'),next=patch(source,path.basename(target));
   if(mode==='--check') {if(next!==source)throw Error('Clarify goal patch missing.');}
   else if(next!==source) {
@@ -99,4 +75,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     } else fs.copyFileSync(helper,destination);
   }
   console.log('Clarify goal patch verified: '+path.basename(target));
+  }
 }

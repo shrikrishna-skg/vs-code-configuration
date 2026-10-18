@@ -6,21 +6,25 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 export const variants = [
-  {component:'Cn',send:'gt',enabled:'nn',label:'vn'},
-  {component:'Ut',send:'ft',enabled:'dn',label:'Dn'},
+  {component:'Cn',send:'gt',enabled:'nn',label:'vn',locale:'u'},
+  {component:'Ut',send:'ft',enabled:'dn',label:'Dn',locale:'u'},
+  {component:'fn',send:'Yc',enabled:'ut',label:'zi',locale:'p'},
+  {component:'Mt',send:'gc',enabled:'mt',label:'ei',locale:'p'},
 ];
 export function anchors(v) {
   const send = `icon:"send",variant:"ghost",size:"small",onClick:${v.send},get disabled(){return!${v.enabled}()},get"aria-label"(){return ${v.label}()}`;
   return [
     `(${v.component},{${send}})`,
-    `(${v.component},{${send},get children(){return u.t("prompt.goal.start")}})`,
-    `(${v.component},{icon:"stop",variant:"ghost",size:"small",onClick:()=>t.abort(),get"aria-label"(){return u.t("prompt.action.stop")}})`,
+    `(${v.component},{${send},get children(){return ${v.locale??'u'}.t("prompt.goal.start")}})`,
+    `(${v.component},{icon:"stop",variant:"ghost",size:"small",onClick:()=>t.abort(),get"aria-label"(){return ${v.locale??'u'}.t("prompt.action.stop")}})`,
   ];
 }
 const styled = text => text.replace('icon:"send"', 'icon:"arrow-up"').replace('variant:"ghost"', 'class:"kilo-composer-action",variant:"ghost"');
-const start = '/* kilo-composer-orange-actions:v1 */';
+const legacyStart = '/* kilo-composer-orange-actions:v1 */';
+const previousStart = '/* kilo-composer-orange-actions:v2 */';
+const start = '/* kilo-composer-orange-actions:v3 */';
 const end = '/* end kilo-composer-orange-actions */';
-export const css = `${start}
+const legacyCss = `${legacyStart}
 [data-component="icon-button"].kilo-composer-action[data-variant="ghost"] {
   width:36px;height:36px;min-width:36px;padding:0;border:0;border-radius:9px;
   background:#de735b;color:#fff;box-shadow:none;cursor:pointer;
@@ -38,16 +42,31 @@ export const css = `${start}
   [data-component="icon-button"].kilo-composer-action[data-variant="ghost"]:focus-visible:not(:disabled):not([aria-disabled="true"]) {outline-color:Highlight}
 }
 ${end}`;
+const previousCss = legacyCss
+  .replace(legacyStart, previousStart)
+  .replace('border-radius:9px', 'border-radius:6px')
+  .replace('color:inherit}', 'color:#fff!important;opacity:1}')
+  .replace(':disabled {opacity:.4;cursor:not-allowed}', ':disabled {opacity:1;background:#805449;cursor:not-allowed}')
+  .replace('@media (forced-colors:active) {', '@media (forced-colors:active) {\n  [data-component="icon-button"].kilo-composer-action[data-variant="ghost"] [data-slot="icon-svg"] {color:ButtonText!important}\n  [data-component="icon-button"].kilo-composer-action[data-variant="ghost"]:disabled [data-slot="icon-svg"] {color:GrayText!important}');
+export const css = previousCss
+  .replace(previousStart, start)
+  .replace('background:#805449', 'background:#c16c55')
+  .replace('rect {animation:none}', 'rect {animation:none;transform:scale(1.4);transform-box:fill-box;transform-origin:center}');
 const count = (s, text) => s.split(text).length - 1;
 export function patch(source, kind = 'js', restore = false) {
   if (kind === 'css') {
     if (!source.includes('[data-component=icon-button]') || !source.includes('.prompt-input-container')) throw Error('Unsupported composer CSS; no changes made.');
-    if (source.includes(start) || source.includes(end)) {
-      if (count(source,css)!==1 || count(source,start)!==1 || count(source,end)!==1) throw Error('Ambiguous or modified composer CSS; no changes made.');
-      return restore ? source.replace('\n'+css+'\n','') : source;
+    for (const block of [legacyCss, previousCss, css]) {
+      const marker = block.split("\n", 1)[0];
+      if (!source.includes(marker)) continue;
+      if (count(source,block)!==1 || count(source,end)!==1) throw Error('Ambiguous or modified composer CSS; no changes made.');
+      if (block===css && !restore) return source;
+      source=source.replace('\n'+block+'\n','');
     }
+    if (source.includes('/* kilo-composer-orange-actions:') || source.includes(end)) throw Error('Unknown composer CSS version; no changes made.');
     return restore ? source : source+'\n'+css+'\n';
   }
+
   const matches = variants.filter(v=>anchors(v).every(a=>count(source,a)+count(source,styled(a))===1));
   if (matches.length!==1) throw Error('Unsupported or ambiguous composer action anchors; no changes made.');
   let result=source;

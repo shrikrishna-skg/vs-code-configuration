@@ -407,6 +407,88 @@
   border: 1px solid var(--ksm-line2);
 }
 
+/* Ask about this chat: tablist in the panel head and the chat that replaces the diagram */
+.ksm-tabs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--ksm-bg);
+  border: 1px solid var(--ksm-line2);
+  border-radius: 6px;
+  padding: 2px;
+}
+.ksm-tab {
+  border: 0;
+  background: transparent;
+  color: var(--ksm-text2);
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ksm-tab:hover { color: var(--ksm-text); }
+.ksm-tab[aria-selected="true"] { background: var(--ksm-raise); color: var(--ksm-text); }
+.ksm-ask { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.ksm-ask-log { flex: 1; overflow: auto; padding: 14px 14px 8px; display: flex; flex-direction: column; gap: 12px; }
+.ksm-bub { max-width: 94%; font-size: 13px; line-height: 1.5; border-radius: 8px; padding: 9px 12px; }
+.ksm-bub p { margin: 0 0 6px; }
+.ksm-bub p:last-child { margin-bottom: 0; }
+.ksm-bub.ksm-me { align-self: flex-end; background: var(--ksm-raise); white-space: pre-wrap; word-break: break-word; }
+.ksm-bub.ksm-ai { align-self: flex-start; background: var(--ksm-bg); border: 1px solid var(--ksm-line2); }
+.ksm-bub.ksm-err { border-color: var(--ksm-bad); }
+.ksm-cite {
+  border: 1px solid var(--ksm-blue);
+  background: var(--ksm-blue-tint);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 0 7px;
+  margin: 0 3px 0 0;
+  cursor: pointer;
+}
+.ksm-cite:hover { background: var(--ksm-blue); }
+.ksm-sugs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ksm-sug {
+  border: 1px solid var(--ksm-line2);
+  background: var(--ksm-panel);
+  border-radius: 999px;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  cursor: pointer;
+  color: var(--ksm-text);
+}
+.ksm-sug:hover { border-color: var(--ksm-blue); }
+.ksm-ask-note { font-size: 10.5px; color: var(--ksm-dim); margin-top: 6px; }
+.ksm-ask-box { margin: 0 12px 12px; border: 1px solid var(--ksm-line2); border-radius: 8px; background: var(--ksm-bg); padding: 8px 10px; }
+.ksm-ask-box:focus-within { border-color: var(--ksm-blue); }
+.ksm-ask-input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  max-height: 140px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ksm-text);
+  font: inherit;
+  font-size: 13px;
+}
+.ksm-ask-input::placeholder { color: #6f6f6f; }
+.ksm-ask-foot { display: flex; align-items: center; gap: 8px; font-size: 11px; margin-top: 4px; }
+.ksm-scope {
+  max-width: 180px;
+  height: 24px;
+  border: 1px solid var(--ksm-line2);
+  border-radius: 4px;
+  background: var(--ksm-panel);
+  color: var(--ksm-text);
+  font: inherit;
+  font-size: 11.5px;
+}
+.ksm-send { width: 26px; height: 26px; border-radius: 6px; border: 0; background: var(--ksm-blue); color: #fff; font-size: 14px; cursor: pointer; }
+.ksm-send:disabled { opacity: .4; cursor: default; }
+
 @media (prefers-reduced-motion: reduce) {
   .ksm-map *,
   .session-map-trigger {
