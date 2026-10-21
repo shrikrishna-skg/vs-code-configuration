@@ -2,15 +2,17 @@
 
 ![Kilo Code multi-agent configuration](assets/hero.svg)
 
-A reproducible, security-conscious blueprint for the VS Code workflows used on this machine. The current Kilo setup includes CTO agents, isolated workers, shared computer control and prompt clarification. Earlier Astra/Fable/Opus configurations, native Claude Code and VS Code Chat (Copilot) examples remain available.
+A reproducible, security-conscious blueprint for one custom VS Code and Kilo Code setup. The current Kilo setup includes CTO agents, isolated workers, shared computer control and prompt clarification. Earlier Astra/Fable/Opus configurations, native Claude Code and VS Code Chat (Copilot) examples remain available as historical references.
 
-> This repository contains sanitized examples only. API keys, OAuth tokens, account identifiers, logs, chat history, and machine-specific credentials are deliberately excluded.
+This is a personal configuration repository, not an official VS Code, Kilo Code, Claude, or Copilot feature. Some options patch the installed Kilo extension bundle and are version-sensitive; they can stop working after an update.
+
+> This repository contains sanitized examples only. API keys, OAuth tokens, account identifiers, logs, chat history, and machine-specific credentials are deliberately excluded. Use credentials only for the provider routes you choose, and keep their values outside this repository.
 
 ![How the configuration fits together: VS Code, engineering leads, workers, local services and tools](assets/architecture.svg)
 
 ## Start here
 
-**Latest snapshot: [2026-10-18](docs/updates/2026-10-18.md)** · Git tag `config-2026-10-18` · [Dated change index](docs/configuration-history.md).
+**Latest snapshot: [2026-10-18](docs/updates/2026-10-18.md)** · Kilo Code 7.8.12 · Git tag `config-2026-10-18` · [Dated change index](docs/configuration-history.md). Older notes describe 7.7.2 and 7.8.2 and are marked as historical where they differ.
 
 **Speed and reading:** [Local CLI bridge latency](docs/local-cli-bridge.md#response-latency-2026-10-13) replies on the result line, shows progress after 1.5 s and reuses one CLI process per chat. [Chat UI patches](docs/chat-ui-patches.md) add skim mode, the Hanken Grotesk chat font and a predicted next message.
 
@@ -29,7 +31,7 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 | I want to… | Go to |
 |---|---|
 | Use the recommended Kilo setup | [CTO setup](docs/cto-setup.md) |
-| Install everything on a new Mac | [Quick start](#quick-start), then [Installation and recovery](docs/installation.md) |
+| Install on a new machine | [Quick start](#quick-start), then [Installation and recovery](docs/installation.md) |
 | Set up VS Code Copilot Chat | [`copilot-chat/README.md`](copilot-chat/README.md) |
 | Restore the setup from a past date | [Configuration history](docs/configuration-history.md) |
 | Understand how requests are routed | [Architecture](docs/architecture.md) and [Task routing](docs/task-routing.md) |
@@ -38,9 +40,11 @@ A reproducible, security-conscious blueprint for the VS Code workflows used on t
 | Run Hermes Agent in VS Code (ACP) | [`hermes/README.md`](hermes/README.md) |
 | Check the repository | `bash scripts/verify.sh` |
 
-## Previous setup: Opus + Jev Engineering Lead
+## Historical setup: Opus + Jev Engineering Lead
 
-**What it is.** The engineering lead used day to day, in both VS Code Copilot Chat and Kilo Code. It runs on Claude Opus 5.5 High through the authenticated local Claude CLI (Claude Local CLI provider, `127.0.0.1:32123`) and consults Jev (TypeSafe) only as an advisory evidence check.
+This section and the older engineering-lead material below describe the configuration before the 2026-10-09 CTO replacement. They are retained for reference and dated restoration, not as the current install path.
+
+**What it is.** The engineering lead used before the CTO profiles, in both VS Code Copilot Chat and Kilo Code. It runs on Claude Opus 5.5 High through the authenticated local Claude CLI (Claude Local CLI provider, `127.0.0.1:32123`) and consults Jev (TypeSafe) only as an advisory evidence check.
 
 **How it routes.** It works directly by default. It hands one bounded subsystem to `deepseek-implementer`, uses `deepseek-workstream-lead` only for three or more independent workstreams, `glm-investigator` for read-only diagnosis, and `luna-utility` for tiny chores. It is already Opus, so it has no Opus escalation lane. It never falls back silently to another Claude route.
 
@@ -60,33 +64,26 @@ The selected engineering lead remains responsible for the whole task. It handles
 ```mermaid
 flowchart TD
     U[Developer in VS Code] --> K[Kilo Code]
-    K --> A{Selected engineering lead}
-    A -->|Recommended| OJ[Opus + Jev Engineering Lead]
-    A -->|Kilo default| ASTRA[GPT Astra Engineering Lead]
-    A -->|Alternative| FABLE[Fable Engineering Lead]
+    K --> C{Selected profile}
+    C -->|Recommended| CTO[CTO]
+    C -->|Advisory variant| JEV[CTO + JEV]
+    C -->|Historical| OLD[Astra / Fable / Opus leads]
 
-    OJ --> PROV[Local Claude CLI provider]
-    FABLE --> PROV
-    PROV --> FCLI[Authenticated Claude CLI]
-    OJ --> R{Route by task shape}
-    ASTRA --> R
-    FABLE --> R
-    R -->|Small / ordinary| DIRECT[Lead works directly]
-    R -->|Bounded implementation| DS[DeepSeek Implementer]
-    R -->|Large separable system| DSL[DeepSeek Workstream Lead]
-    DSL --> DS2[Bounded DeepSeek workers]
-    R -->|Unclear cause / independent review| GLM[GLM Investigator]
-    R -->|Tiny mechanical chore| LUNA[Luna Utility]
-    R -->|High-risk escalation, Astra and Fable| MCP[Local MCP bridge]
-    MCP --> OPUS[Local Opus High CLI]
+    CTO --> R{Route by task shape}
+    JEV --> R
+    R -->|Small / ordinary| DIRECT[CTO works directly]
+    R -->|Bounded implementation| DS[DeepSeek implementer]
+    R -->|Read-only cause or review| GLM[GLM investigator]
+    R -->|Tiny mechanical chore| LUNA[Luna utility]
+    R -->|Overlapping or risky writes| AM[Agent Manager worktree session]
+    R -->|Optional terminal workflow| MCP[Separate MCP scheduler]
 
-    DIRECT --> V[Lead inspects diff and verifies]
+    DIRECT --> V[CTO inspects diff and verifies]
     DS --> V
-    DS2 --> V
     GLM --> V
     LUNA --> V
-    FCLI --> V
-    OPUS --> V
+    AM --> V
+    MCP --> V
     V --> DONE[Final answer with evidence]
 ```
 
@@ -94,15 +91,12 @@ flowchart TD
 
 | Role | Best use | Important boundary |
 |---|---|---|
-| Opus + Jev Engineering Lead | Recommended lead: Opus 5.5 High through the local Claude CLI, advisory Jev checks, background screen control | No Opus escalation lane; Jev never approves completion |
-| Astra Engineering Lead | Kilo default: planning, direct implementation, integration, final verification | Delegates only when useful |
-| Fable Engineering Lead | Full-session lead whose primary work runs through authenticated local Fable CLI | Reports bridge failures; never silently switches providers |
-| Fable + Jev, Astra + Jev | The same leads with advisory Jev (TypeSafe) evidence checks | Jev is advisory only |
-| DeepSeek Implementer | Substantial but well-bounded coding | Exclusive file ownership; cannot delegate |
-| DeepSeek Workstream Lead | Large work with multiple independent streams | Coordinates bounded workers; cannot create another lead |
-| GLM Investigator | Read-only tracing, diagnosis, and review | Cannot edit files |
+| CTO (Recommended) | Current lead: selected chat model, direct execution, visible native workers | Fourteen-worker / six-writer scheduling is policy, not a native runtime cap |
+| CTO + JEV | Same execution policy with selective TypeSafe/JEV advice | Jev is advisory only; it never certifies completion |
+| DeepSeek Implementer | Substantial but well-bounded coding | Leaf worker; exclusive file ownership; cannot delegate |
+| GLM Investigator | Read-only tracing, diagnosis, and review | Cannot edit files or run executable checks |
 | Luna Utility | Tiny deterministic chores | Not for architecture, debugging, or broad edits |
-| Local Claude CLI | Difficult architecture/security/concurrency escalation or standalone profile | Runs outside Kilo's native shared-agent board |
+| Astra / Fable / Opus + Jev leads | Historical profiles retained in dated configurations | Not the current default; see [historical setup](docs/astra-jev.md) |
 
 ## Operating principles
 
@@ -117,17 +111,45 @@ flowchart TD
 
 ## Quick start
 
-1. Install VS Code, Kilo Code, and any provider CLIs you intend to use.
-2. Install the global coding policy and chat response-style instructions.
-3. Copy `examples/kilo.jsonc` to `~/.config/kilo/kilo.jsonc` and replace every placeholder.
-4. Copy the files under `examples/agent/` to `~/.config/kilo/agent/`.
-5. Merge the relevant keys from `examples/vscode/settings.jsonc` into VS Code user settings.
-6. Configure the local Claude CLI bridge and authenticate providers outside Git.
-7. Install Kilo patches only through `scripts/reapply-kilo-patches.sh` (also used by LaunchAgent `ai.kilo.reapply-patches` after updates). The mandatory gate stages the whole batch, checks every JavaScript file, checks a second application changes nothing, and renders both real chat bundles in an isolated offline Chrome browser. A failed batch leaves the installed version untouched. Individual installs must use `node ~/.config/kilo/patches/safe-kilo-patches.mjs patch <patch.mjs> <installed-dist-targets...>`. The existing Playwright runtime and Chrome must be available; missing validation tools block installation. Rendering checks cover startup and visible controls; add focused regression tests for changed interactions. Validated replacements retain rollback copies. The gate never reloads VS Code or changes chat storage.
-8. Copy `examples/bridges/peekaboo-runner.mjs` to `~/.config/kilo/bridges/` for the Opus + Jev screen runner.
-9. Restart VS Code, select **Opus + Jev Engineering Lead** (or the Kilo default, **Astra Engineering Lead**), and run the scenario checks.
+The current setup is **CTO (Recommended)** and **CTO + JEV** with native Kilo workers. The installer merges into an existing live configuration, so preview it before applying.
 
-Run the repository's static and bridge-protocol checks at any time with `./scripts/verify.sh`.
+1. Install VS Code, Kilo Code, and Node.js. macOS is required only for the optional Peekaboo screen control and any macOS service you create; Node.js is required for the installers and checks. Chrome and Playwright are needed for safe patch rendering and the complete verification suite; the profile installer itself does not need them.
+2. Clone or download this repository, then open a terminal in its root.
+3. Install Kilo and back up the current configuration:
+
+   ```sh
+   node --version
+   mkdir -p ~/.config/kilo
+   if [ -d ~/.config/kilo ]; then cp -R ~/.config/kilo ~/.config/kilo.backup-$(date +%Y%m%d-%H%M%S); fi
+   ```
+
+4. Copy the global instructions and create the base Kilo config. If `~/.config/kilo/kilo.jsonc` already exists, keep it; the installer preserves its installed routes. For a new machine, copy `examples/kilo.jsonc` and replace every placeholder.
+
+   ```sh
+   mkdir -p ~/.config/ponytail ~/.config/kilo
+   cp examples/instructions/AGENTS.md ~/.config/ponytail/AGENTS.md
+   cp examples/instructions/chat-response-style.md ~/.config/kilo/chat-response-style.md
+   # New installation only; skip when a live kilo.jsonc already exists.
+   if [ ! -f ~/.config/kilo/kilo.jsonc ]; then cp examples/kilo.jsonc ~/.config/kilo/kilo.jsonc; fi
+   ```
+
+5. Preview the current CTO installation, then apply it:
+
+   ```sh
+   node scripts/install-cto.mjs            # inspect targets and changes
+   node scripts/install-cto.mjs --apply    # back up, then install
+   ```
+
+   `--profiles-only --apply` upgrades the native profiles without replacing a running MCP scheduler. Full details, including the separate terminal scheduler and restoration, are in [CTO setup](docs/cto-setup.md).
+
+6. Merge only the relevant keys from `examples/vscode/settings.jsonc` into VS Code user settings. Review auto-approval, desktop-control, and file-history permissions before adopting them; see [Security](SECURITY.md).
+7. Authenticate only the provider routes you intend to use through Kilo's provider UI or the provider's official CLI. Never put keys or tokens in `kilo.jsonc`, agent files, or this repository.
+8. In an idle Kilo window run **Kilo Code: Reload Config and Skills**, then start a fresh chat and select **CTO (Recommended)** or **CTO + JEV**. Existing chats may retain their old agent.
+9. Run the smoke checks in [Installation and recovery](docs/installation.md#smoke-checks). Run `./scripts/verify.sh` for the repository's static, protocol, and fixture checks.
+
+Optional extra bridges and screen tooling are documented in [Installation](docs/installation.md). Custom bundle patches are not stock Kilo features and are not required for the CTO profiles.
+
+The historical Astra/Fable/Opus leads are described in [Astra, Fable and Opus + Jev](docs/astra-jev.md). They are not the current default.
 
 The native Claude Code extension snapshot is under [`claude-code/`](claude-code/README.md).
 
@@ -140,7 +162,7 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 ## Documentation
 
 - [Configuration history: dated setups and how to restore them](docs/configuration-history.md)
-- [Astra, Fable and Opus + Jev Engineering Leads: installation, limits, and verified behavior](docs/astra-jev.md)
+- [Historical Astra, Fable and Opus + Jev leads: installation, limits, and verified behavior](docs/astra-jev.md)
 - [Codex model picker: Astra and Fable leads, DeepSeek and GLM](docs/codex-model-picker.md)
 - [Architecture](docs/architecture.md)
 - [Task routing and operating process](docs/task-routing.md)
@@ -154,11 +176,16 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 - [Configuration inventory](docs/configuration-inventory.md)
 - [Security and secret handling](SECURITY.md)
 
+## License
+
+Original repository content is available under the [MIT License](LICENSE), copyright 2026 Shrikrishna Gavhane. Third-party material keeps its own license; see [Third-party notices](THIRD_PARTY_NOTICES.md) for the Ponytail policy text and the Hanken Grotesk font.
+
 ## Repository map
 
 ```text
 .
 ├── README.md
+├── LICENSE
 ├── SECURITY.md
 ├── THIRD_PARTY_NOTICES.md
 ├── assets/                  # GitHub-ready vector artwork (hero.svg, architecture.svg)
@@ -186,3 +213,5 @@ Browser automation and macOS computer use are documented under [`agent-vision/`]
 Every dated configuration has a Git tag, `config-YYYY-MM-DD`. See [Configuration history](docs/configuration-history.md) for what each date contained and how to restore it (`git fetch --tags`, then `git checkout config-YYYY-MM-DD`).
 
 Model names, extension directories, and provider identifiers can change. Treat the examples as a known-good architectural pattern and verify the currently available model IDs before applying them to a different machine.
+
+Version evidence is deliberately narrow: the 2026-10-18 snapshot used Kilo Code 7.8.12, while the September 19 inventory recorded 7.7.2 and the October 9 CTO rollout recorded 7.8.2. Patches are matched to the anchors documented in their own files; there is no general compatibility claim for other builds. Run each patch's `--check` or the safe gate before installing, and leave Kilo unpatched if an anchor is not recognized.

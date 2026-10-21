@@ -105,6 +105,7 @@ try {
   assert.equal(c.permission.bash['echo *'], 'deny');
   assert(c.instructions.includes('custom-policy.md'));
   const primary = fs.readFileSync(path.join(install, 'agent', 'CTO (Recommended).md'), 'utf8');
+  assert(primary.includes(process.env.CTO_PONYTAIL_FILE), 'primary must use the configured canonical policy path');
   assert.match(primary, /model: test\/preserved-cto\nvariant: medium/);
   assert.match(primary, /^steps: 300$/m);
   assert.match(primary, /task:\n    "\*": deny\n    deepseek-implementer: allow\n    glm-investigator: allow\n    luna-utility: allow/);

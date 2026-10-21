@@ -11,11 +11,11 @@ Use the current CTO with its configured DeepSeek implementers, GLM investigators
 
 - Small fix or dependency chain: work directly or use a bounded `task` child. Native children share the parent's directory; independent non-overlapping assignments can run with `background: true`, with one writer per overlapping file. Serialize dependent changes. Read-only investigation/review can run independently when it will not race unfinished edits.
 - Independent write-heavy work: use Kilo Agent Manager **worktree** sessions. Multiple Local sessions, or multiple sessions in one worktree, still share files and are not isolation.
-- A broad task split across frontend/backend needs one stream per actual repository. This project's parent `/Users/shri/Downloads/Code/Reputation Systems App` is **not** a Git repository. The real repositories are its `frontend` and `backend` directories. Quote every path. Confirm with `git -C "$repo" rev-parse --show-toplevel`; never create a worktree at the parent.
+- A broad task split across frontend/backend needs one stream per actual repository. The workspace parent directory may not be a Git repository; the real repositories are its component directories (for example `frontend` and `backend`). Quote every path. Confirm with `git -C "$repo" rev-parse --show-toplevel`; never create a worktree at the parent.
 
 ## Assign concrete work
 
-Read [assignment-and-integration.md](references/assignment-and-integration.md) when launching worktree writers. Record the exact selected repository, starting revision, file ownership, dependencies, acceptance criteria, expected checks, and evidence destination for each stream. Coding delegates must read `/Users/shri/.config/ponytail/AGENTS.md` and applicable project rules, and forward that policy reference on further delegation. Use existing suitable worktrees when available.
+Read [assignment-and-integration.md](references/assignment-and-integration.md) when launching worktree writers. Record the exact selected repository, starting revision, file ownership, dependencies, acceptance criteria, expected checks, and evidence destination for each stream. Coding delegates must read `~/.config/ponytail/AGENTS.md` and applicable project rules, and forward that policy reference on further delegation. Use existing suitable worktrees when available.
 
 Use the installed `agent_manager` tool's actual schema and `agent_manager_models` only when an override is needed. Select worktree mode and confirm the returned repository/directory/branch before any edits. If the installed version cannot target the required repository, open that repository in Agent Manager and create the worktree there; do not silently fall back to Local. Respect the active session's permissions.
 

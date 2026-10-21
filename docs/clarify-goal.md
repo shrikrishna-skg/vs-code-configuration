@@ -1,6 +1,6 @@
 # Clarify goal
 
-The existing Kilo wand is labeled **Clarify goal**. It always sends the draft, supported attachments and a bounded slice of recent conversation to **DeepSeek V4.1 Flash Ultra on LithosAI**, independently of the main chat's selected model. It then shows an editable **Review your goal** panel. **Use this prompt** applies the text without sending it. Cancel dismisses that preview and keeps the draft. Attachments remain in the composer.
+This repository’s custom patch labels the Kilo wand **Clarify goal**; the behavior below is not a stock Kilo feature. It always sends the draft, supported attachments and a bounded slice of recent conversation to **DeepSeek V4.1 Flash Ultra on LithosAI**, independently of the main chat's selected model. It then shows an editable **Review your goal** panel. **Use this prompt** applies the text without sending it. Cancel dismisses that preview and keeps the draft. Attachments remain in the composer.
 
 The clarification model must preserve scope, inspection-only requests, constraints and file references. It should leave a clear request nearly unchanged and ask one question when a materially ambiguous request cannot be resolved. A short approval needs a preceding assistant proposal; it must not create authorization from unrelated history. These are model instructions, not a guarantee of perfect interpretation, so the preview remains editable.
 
@@ -17,7 +17,7 @@ Loading text uses the theme's input foreground rather than the generic disabled 
 - Up to eight explicitly attached files are accepted. Supported inline images/PDFs require declared model support; text references must be regular files under 128 KB and each excerpt is limited to 6,000 characters. Unsupported attachments fail visibly. No silent model switch or image omission.
 - The canonical Ponytail policy at `~/.config/ponytail/AGENTS.md` is included. Existing execution models, provider credentials, permissions and other agents are preserved.
 - `clarify-goal-ui.js` supplies the inline panel and label. The request snapshots the draft, attachments, chat, model, variant and agent; applying a response after those change is refused. The original undo mechanism is retained.
-- `clarify-goal.mjs` patches the installed local Kilo 7.8.2 bundles at exact known anchors and refuses unsupported bundles. The existing reapply watcher includes the new patch. New Kilo builds may require refreshed anchors.
+- `clarify-goal.mjs` patches the installed local Kilo 7.8.12 bundles at exact known anchors and refuses unsupported bundles. Earlier notes used 7.8.2. The existing reapply script includes the patch; a LaunchAgent plist is not shipped. New Kilo builds may require refreshed anchors.
 
 ## Installation and rollback
 

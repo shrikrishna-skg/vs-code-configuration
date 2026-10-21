@@ -2,6 +2,8 @@
 
 The shared [goal-continuity policy and validation](goal-continuity.md) apply to both profiles and any selected Kilo model. Follow-ups preserve the current goal; Ponytail is forwarded to isolated workers.
 
+This is a custom Kilo configuration, not a stock VS Code or Kilo Code feature. The installer needs Node.js and an existing `~/.config/kilo/kilo.jsonc`; it merges that file rather than replacing unrelated settings. Bundle patches described below are version-sensitive and optional.
+
 Two Kilo profiles now share the [native multi-agent policy](../examples/cto/native-policy.md). See [native routing, UI and validation](cto-native.md). The earlier `examples/cto/policy.md` applies only to the separate MCP scheduler and coordinated terminal workflow.
 
 - **CTO (Recommended)**: your selected chat model; direct execution for small tasks; visible native workers for useful independent work. The installer preserves existing profile model defaults.
@@ -17,34 +19,33 @@ Native workers and the separate worker service read model routes from the instal
 
 ## Install and recovery
 
+Back up `~/.config/kilo` first. For a new machine, copy `examples/kilo.jsonc` to `~/.config/kilo/kilo.jsonc` and replace its placeholders; if a live configuration already exists, keep it so the installer can preserve its routes.
+
 ```sh
+mkdir -p ~/.config/kilo
+if [ -d ~/.config/kilo ]; then cp -R ~/.config/kilo ~/.config/kilo.backup-$(date +%Y%m%d-%H%M%S); fi
 node scripts/test-cto.mjs
-node scripts/install-cto.mjs          # inspect changes
-node scripts/install-cto.mjs --apply  # back up, then install
+node scripts/install-cto.mjs                     # dry-run: inspect targets and changes
+node scripts/install-cto.mjs --apply             # back up, then install
 # Upgrade just the native profiles without replacing a running MCP scheduler:
+node scripts/install-cto.mjs --profiles-only     # dry-run
 node scripts/install-cto.mjs --profiles-only --apply
 ```
 
-The installer merges live configuration, installs both CTO profiles and three native specialist profiles, enables the shared agent board, hides the six retired custom profiles, and updates default/remembered selection. Full installation also installs the separate `cto` MCP server for terminal workflows; `--profiles-only` leaves that service untouched. Built-in modes, installed model routes, providers, credentials and unrelated settings are retained. Old definitions remain recoverable.
+With no arguments the installer only inspects and prints the files it would write. The installer merges live configuration, installs both CTO profiles and three native specialist profiles, enables the shared agent board, hides the six retired custom profiles, and updates default/remembered selection. Full installation also installs the separate `cto` MCP server for terminal workflows; `--profiles-only` leaves that service untouched. Built-in modes, installed model routes, providers, credentials and unrelated settings are retained. Old definitions remain recoverable.
+
+The installer prints its private backup directory. Restoration refuses to overwrite files changed since installation and retains task records and worktrees. See [Installation and recovery](installation.md) for prerequisites, provider authentication, smoke checks and the optional patch gate.
 
 Use **Kilo Code: Reload Config and Skills** in an idle Kilo window. Existing sessions can retain their previously selected agent; select the new CTO profile or start a new session. A whole VS Code reload is not required by the installer.
 
-The selected-label patch is separate from the profile installer and targets the known custom Kilo bundle. Apply it to both surfaces:
+The selected-label patch is separate from the profile installer and targets the known custom Kilo bundle from the current 7.8.12 snapshot. It is an optional patch, not an official Kilo feature, and an unrecognized bundle must be left unmodified. Apply it to both surfaces:
 
 ```sh
-node examples/patches/cto-selected-label.mjs /absolute/path/to/extension/dist/webview.js
-node examples/patches/cto-selected-label.mjs /absolute/path/to/extension/dist/agent-manager.js
+node examples/patches/safe-kilo-patches.mjs patch examples/patches/cto-selected-label.mjs /absolute/path/to/extension/dist/webview.js
+node examples/patches/safe-kilo-patches.mjs patch examples/patches/cto-selected-label.mjs /absolute/path/to/extension/dist/agent-manager.js
 ```
 
-Reopen the idle Kilo editor to load the updated bundle. The live update hook in `~/.config/kilo/patches/reapply-kilo-patches.sh` reapplies this patch; unsupported bundle shapes fail without modification. Each bundle has a `.pre-cto-selected-label` backup. To undo just this display change, remove its two `ensure cto-selected-label.mjs` lines from the update hook, run those patch commands with `--restore`, and reopen the idle editor. Restoration changes only the label expression, preserving other bundle patches.
-
-The installer prints a private backup directory. To restore:
-
-```sh
-node scripts/install-cto.mjs --restore /absolute/path/to/printed/backup
-```
-
-Restoration refuses to overwrite a file changed since installation. It retains task records and worker worktrees. Cancel active workers before restoring/removing their service.
+Reopen the idle Kilo editor to load the updated bundle. On the audited machine, the live update hook at `~/.config/kilo/patches/reapply-kilo-patches.sh` reapplies this patch; the repository includes the script but not a LaunchAgent plist. Unsupported bundle shapes fail without modification. Each bundle has a `.pre-cto-selected-label` backup. To undo just this display change, remove its two `ensure cto-selected-label.mjs` lines from the update hook, run those patch commands with `--restore`, and reopen the idle editor. Restoration changes only the label expression, preserving other bundle patches.
 
 ## Separate MCP scheduler architecture (terminal workflow)
 

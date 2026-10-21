@@ -1,5 +1,7 @@
 # CTO implementation checklist
 
+> **Historical record.** This page records the 2026-10-09 CTO rollout and later evaluation notes. Version-sensitive details describe the builds used then; see [Configuration inventory](configuration-inventory.md) for the current 7.8.12 snapshot.
+
 Requested outcome: replace the six custom Kilo picker entries with **CTO (Recommended)** and **CTO + JEV**, sharing one operating policy. Support up to fourteen concurrent specialist workers, including up to six writers, with explicit ownership, resumable assignments and evidence-based completion. Built-in modes remain available.
 
 ## 1. Inventory and recovery
@@ -51,7 +53,7 @@ Requested outcome: replace the six custom Kilo picker entries with **CTO (Recomm
 
 ## Findings
 
-The installed extension is `shrikrishna-skg.kilo-code-local` 7.8.2. Live worker profiles use LithosAI routes, unlike older repository examples. Existing delivery tools explicitly note that native task children share their checkout. The new service uses isolated CLI sessions instead. Live parallel writing and guarded integration were verified in a disposable repository.
+At rollout time the installed extension was `shrikrishna-skg.kilo-code-local` 7.8.2. The current 2026-10-18 snapshot used 7.8.12; this section remains a historical rollout record. Live worker profiles use LithosAI routes, unlike older repository examples. Existing delivery tools explicitly note that native task children share their checkout. The new service uses isolated CLI sessions instead. Live parallel writing and guarded integration were verified in a disposable repository.
 
 ## Rollout evidence — 2026-10-09
 
@@ -62,10 +64,10 @@ The installed extension is `shrikrishna-skg.kilo-code-local` 7.8.2. Live worker 
 - Two DeepSeek writers produced separate modules concurrently. Both individual checks passed, both patches were accepted, and the combined import/assertion check passed in the destination.
 - `node scripts/test-cto.mjs` passed: capacity rules, accepted dependencies, dirty snapshots without index changes, scope quarantine, destination edit protection, failed checks, cancellation, read-only acceptance and installer rollback. These use a deterministic fake worker, not fourteen paid live model sessions.
 - JavaScript syntax checks and `git diff --check` passed. The full `scripts/verify.sh` run stopped at the existing `scripts/test-typesafe.mjs:17` parser: it passes commented `examples/kilo.jsonc` directly to `JSON.parse`. Full repository verification is therefore **not passing**.
-- Live backup: `/Users/shri/.config/kilo/backups/cto-2026-10-09T07-09-19-584Z`. Restoration command:
+- Live backup: `~/.config/kilo/backups/cto-2026-10-09T07-09-19-584Z`. Restoration command:
 
   ```sh
-  node scripts/install-cto.mjs --restore /Users/shri/.config/kilo/backups/cto-2026-10-09T07-09-19-584Z
+  node scripts/install-cto.mjs --restore ~/.config/kilo/backups/cto-2026-10-09T07-09-19-584Z
   ```
 
 The functional rollout is complete. Maximum provider-load reliability, model routing quality and speed/defect comparisons are still unmeasured; the ceiling is capacity, not a recommendation to use fifteen agents on every task.
@@ -86,7 +88,7 @@ Remaining quality evaluation is about representative engineering outcomes and pr
 
 The first live orchestrated test correctly dispatched two isolated DeepSeek workers, but the CTO then scheduled a wakeup and ended its turn before review/acceptance. This was not accepted as successful completion. The fix adds bounded `cto_status` waits (maximum 20 seconds), denies `schedule_wakeup` in both CTO profiles, and explicitly requires current-turn review, acceptance and integration checks. Automated checks exercise wait deadlines, invalid limits and early return on state changes.
 
-The updated live configuration has backup `/Users/shri/.config/kilo/backups/cto-2026-10-09T07-13-21-631Z`; restore this first to undo the workflow follow-up, before using the original rollout backup if fully rolling back.
+The updated live configuration has backup `~/.config/kilo/backups/cto-2026-10-09T07-13-21-631Z`; restore this first to undo the workflow follow-up, before using the original rollout backup if fully rolling back.
 
 
 - [x] **Final live end-to-end rerun passed:** one Opus CTO submitted two DeepSeek implementers before waiting; used `cto_status` with `waitMs: 20000`; inspected worker diffs; accepted both patches; and ran the original repository's three tests with **3 passed / 0 failed**. The entire cycle finished in the same turn, with no scheduled wakeup. An independent check confirmed two accepted jobs, passing worker checks, and changes only to `normalize.mjs` and `unique.mjs`; acceptance fixtures remained unchanged.

@@ -1,6 +1,6 @@
 # Chat reading and composer patches (2026-10-13, updated 2026-10-18)
 
-Five patches change how Kilo chat replies read and how the composer behaves, plus one small selector tweak. They target the local Kilo build `kilo-code-local-7.8.2` and are version-sensitive: each one matches exact text in the installed bundle and makes no change when that text is not found.
+Five patches change how Kilo chat replies read and how the composer behaves, plus one small selector tweak. They are custom modifications to the installed Kilo bundle, not stock VS Code or Kilo Code features. The current snapshot targets Kilo 7.8.12; earlier notes mention 7.8.2. They are version-sensitive: each one matches exact text in the installed bundle and makes no change when that text is not found.
 
 | Patch | What it does | Bundles it touches |
 |---|---|---|
@@ -85,7 +85,7 @@ Added 2026-10-18.
 - **Outside-folder prompts are intentional in Auto.** A shell command that changes from the project into its parent directory can trigger `external_directory` before the command runs, even when `ls` or `grep` itself is allowed. For a chat that needs to work across repositories or edit Kilo configuration, select **Full access** in that chat. Changing the mode processes its existing eligible permission request; do not resend the task. This does not change other chats or bypass denied tools, sandbox escalation, or skill-shell consent.
 - Effort choices are stored under session-specific keys in the extension's `variantSelections` global state. Loading a chat restores its saved value instead of changing a shared agent preference.
 - To-do expansion starts closed and is saved per chat in localStorage (`kilo.todo.expanded.v2:`). VS Code persists this extension's webview origin across restarts; both open and closed choices are retained.
-- The local `ai.kilo.reapply-patches` LaunchAgent runs at login and watches the extensions directory. Patch scripts and helper sources live outside the extension under `~/.config/kilo/patches`.
+- On the audited machine, a local `ai.kilo.reapply-patches` LaunchAgent ran at login and watched the extensions directory. That plist is **not** included in this repository; run `scripts/reapply-kilo-patches.sh` manually or create and review your own macOS service. Patch scripts and helper sources live outside the extension under `~/.config/kilo/patches`.
 - Scroll recovery can recreate its helper from the supported build's original native code, so it does not depend on a previous patched bundle. Custom patches run independently: an incompatible patch is reported without preventing the remaining patches from running.
 - These patches still target known bundle anchors. A future incompatible Kilo build is reported as a failure and needs adaptation; the reapply job does not claim success or rewrite unknown code.
 

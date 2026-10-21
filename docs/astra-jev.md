@@ -1,5 +1,7 @@
 # Astra + Jev Engineering Lead
 
+> **Historical setup.** This page documents the Astra/Fable/Opus leads used before the 2026-10-09 CTO replacement. It is retained for dated restoration and reference. The current setup is **CTO (Recommended)** and **CTO + JEV**; see [CTO setup](cto-setup.md). These are custom Kilo configurations, not stock VS Code or Kilo features.
+
 Installed and smoke-tested on 2026-09-21 (America/Chicago). This is an optional
 experimental primary agent, not the default lead and not a replacement for Fable.
 
@@ -216,7 +218,7 @@ Kilo's inspected schema has no agent-order setting. A narrow reversible patch
 reorders only the visible array after `agentsLoaded`, leaving default selection
 and backend agent definitions alone. Exact anchors were checked in installed
 7.7.2, 7.7.5, 7.7.6, 7.7.7, 7.7.9 and 7.8.1 bundles (older versions remain during pending updates).
-The script refuses unknown/ambiguous bundle layouts and is idempotent.
+These historical checks do not establish compatibility with the current 7.8.12 snapshot or any other build; run `--check` first. The script refuses unknown/ambiguous bundle layouts and is idempotent.
 
 After an update, run these commands from this repository. The script reads VS
 Code's extension registry, checks Kilo's identity/version against its manifest,
@@ -258,7 +260,7 @@ API integration continue to work. `.pre-jev-order` backups remain available, but
 prefer `--restore` over replacing the entire bundle with an older backup.
 
 Pre-install Kilo config backup:
-`/Users/shri/.config/kilo/jev-backup.sCyou8/kilo.jsonc`.
+`~/.config/kilo/jev-backup.sCyou8/kilo.jsonc` (on the audited machine; use the backup path printed by your own installer).
 For rollback, remove only the new MCP entry and its global permission rule, move
 the new agent/bridge files aside, and refresh Kilo. Preserve unrelated newer config
 changes instead of blindly restoring the whole backup. Remove the Keychain item

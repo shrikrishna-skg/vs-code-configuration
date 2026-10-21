@@ -9,7 +9,7 @@
 - Private repository content copied only for debugging
 - Personal account IDs or machine-specific secrets
 
-The examples use placeholders for executable paths and contain no credentials.
+This repository is public. Examples use placeholders for executable paths and contain no credentials. A secret committed here should be treated as public immediately, even if the commit is later removed.
 
 ## Local permissions
 
@@ -19,9 +19,15 @@ Agent permissions should follow least privilege:
 - Leaf workers cannot create additional agents.
 - Concurrent writers receive non-overlapping ownership.
 - External-directory access is granted only for explicitly required paths.
-- The reproduced Claude file-history permission supports local recovery/context workflows but exposes historical file copies to Kilo; remove it when that capability is unnecessary.
+- Auto-approval, Full access, desktop control, and Claude file-history access are opt-in choices, not safe defaults. Review each before adopting it; file-history access exposes historical file copies to Kilo, and desktop control can observe or operate the screen.
 - Local CLI results are reviewed by the lead before acceptance.
+
+The examples are illustrative. Do not modify a live configuration solely to match them.
 
 ## Reporting a problem
 
-Because this is a private personal configuration repository, report a discovered secret by removing it from the working tree, rotating the credential immediately, and rewriting Git history if it was committed. Deleting only the latest line or commit is not sufficient once a credential has entered history.
+Because this is a public repository, do not open a public issue containing a secret, token, account identifier, private transcript, or other sensitive detail.
+
+If GitHub private vulnerability reporting is enabled for this repository, use **Security > Report a vulnerability** in the GitHub interface. If it is not enabled, open a minimal public issue that describes the class of problem without the sensitive value, or contact the maintainer through the maintainer account listed on the repository. No security email address is stated here because none is provided.
+
+For a discovered secret: remove it from the working tree, rotate the credential immediately, and rewrite Git history if it was committed. Deleting only the latest line or commit is not sufficient once a credential has entered history. Assume any secret pushed to this public repository has been exposed.

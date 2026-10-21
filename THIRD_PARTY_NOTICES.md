@@ -1,5 +1,7 @@
 # Third-party notices
 
+Original repository content is licensed under the [MIT License](LICENSE). The following third-party material keeps its own license and attribution; the MIT license does not replace those terms.
+
 ## Ponytail
 
 The reproducible coding-policy example at `examples/instructions/AGENTS.md` includes the upstream Ponytail policy text.
